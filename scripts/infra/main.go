@@ -1,0 +1,244 @@
+package main
+
+import (
+	"bufio"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"os/signal"
+	"regexp"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/alicebob/miniredis/v2"
+	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
+	"github.com/google/uuid"
+)
+
+type MailMessage struct {
+	ID      string `json:"ID"`
+	Snippet string `json:"Snippet"`
+	Body    string `json:"Body"`
+	To      string `json:"To"`
+}
+
+type MailStore struct {
+	mu       sync.RWMutex
+	messages []MailMessage
+}
+
+func (s *MailStore) Add(msg MailMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.messages = append([]MailMessage{msg}, s.messages...)
+}
+
+func (s *MailStore) List() []MailMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	res := make([]MailMessage, len(s.messages))
+	copy(res, s.messages)
+	return res
+}
+
+func (s *MailStore) Get(id string) (MailMessage, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, m := range s.messages {
+		if m.ID == id {
+			return m, true
+		}
+	}
+	return MailMessage{}, false
+}
+
+func main() {
+	fmt.Println("🚀 Menjalankan Shared Local Infrastructure (Postgres, Redis, Mailpit)...")
+
+	// 1. Miniredis di port 6379
+	sRedis := miniredis.NewMiniRedis()
+	if err := sRedis.StartAddr("127.0.0.1:6379"); err != nil {
+		fmt.Printf("Peringatan Redis 6379: %v (mungkin sudah berjalan)\n", err)
+	} else {
+		defer sRedis.Close()
+		fmt.Println("🔴 Redis aktif di 127.0.0.1:6379")
+	}
+
+	// 2. Embedded PostgreSQL di port 5432
+	homeDir, _ := os.UserHomeDir()
+	stalePid := homeDir + "/.embedded-postgres-go/extracted/data/postmaster.pid"
+	_ = os.Remove(stalePid)
+
+	pgCfg := embeddedpostgres.DefaultConfig().
+		Port(5432).
+		Database("pmb_auth").
+		Username("pmb_user").
+		Password("pmb_password")
+	pg := embeddedpostgres.NewDatabase(pgCfg)
+	if err := pg.Start(); err != nil {
+		fmt.Printf("Peringatan Postgres 5432: %v (mungkin sudah berjalan)\n", err)
+	} else {
+		defer pg.Stop()
+		fmt.Println("🐘 PostgreSQL aktif di 127.0.0.1:5432 (DB: pmb_auth, User: pmb_user)")
+	}
+
+	// 3. Mock Mailpit (SMTP :1025, HTTP :8025)
+	store := &MailStore{}
+
+	// SMTP Listener
+	smtpListener, err := net.Listen("tcp", "127.0.0.1:1025")
+	if err != nil {
+		fmt.Printf("Peringatan SMTP 1025: %v\n", err)
+	} else {
+		defer smtpListener.Close()
+		fmt.Println("📧 Mailpit SMTP aktif di 127.0.0.1:1025")
+		go func() {
+			for {
+				conn, err := smtpListener.Accept()
+				if err != nil {
+					return
+				}
+				go handleSMTP(conn, store)
+			}
+		}()
+	}
+
+	// HTTP API Listener
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/v1/messages", func(w http.ResponseWriter, r *http.Request) {
+		msgs := store.List()
+		type summary struct {
+			ID      string `json:"ID"`
+			Snippet string `json:"Snippet"`
+		}
+		var summaries []summary
+		for _, m := range msgs {
+			summaries = append(summaries, summary{ID: m.ID, Snippet: m.Snippet})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"total":    len(msgs),
+			"messages": summaries,
+		})
+	})
+
+	mux.HandleFunc("/api/v1/message/", func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(r.URL.Path, "/")
+		id := parts[len(parts)-1]
+		msg, ok := store.Get(id)
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{
+			"ID":      msg.ID,
+			"Snippet": msg.Snippet,
+			"Text":    msg.Body,
+			"HTML":    msg.Body,
+		})
+	})
+
+	httpServer := &http.Server{Addr: "127.0.0.1:8025", Handler: mux}
+	go func() {
+		fmt.Println("📬 Mailpit Web/API aktif di http://127.0.0.1:8025")
+		_ = httpServer.ListenAndServe()
+	}()
+
+	fmt.Println("✨ Infrastruktur siap! Menunggu shutdown signal (SIGINT/SIGTERM)...")
+
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
+	<-sig
+
+	fmt.Println("Menutup infrastruktur...")
+	_ = httpServer.Close()
+}
+
+func handleSMTP(conn net.Conn, store *MailStore) {
+	defer conn.Close()
+	reader := bufio.NewReader(conn)
+	writer := bufio.NewWriter(conn)
+
+	writer.WriteString("220 mailpit.local ESMTP MockMailpit\r\n")
+	writer.Flush()
+
+	var toAddr string
+	var inData bool
+	var bodyBuilder strings.Builder
+
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		lineTrim := strings.TrimRight(line, "\r\n")
+
+		if inData {
+			if lineTrim == "." {
+				inData = false
+				body := bodyBuilder.String()
+				msgID := uuid.New().String()
+
+				clean := strings.ReplaceAll(body, "\r", " ")
+				clean = strings.ReplaceAll(clean, "\n", " ")
+				snippet := clean
+				if len(snippet) > 150 {
+					snippet = snippet[:150]
+				}
+
+				store.Add(MailMessage{
+					ID:      msgID,
+					Snippet: snippet,
+					Body:    body,
+					To:      toAddr,
+				})
+
+				writer.WriteString("250 OK: queued as " + msgID + "\r\n")
+				writer.Flush()
+				continue
+			}
+			bodyBuilder.WriteString(line)
+			continue
+		}
+
+		upper := strings.ToUpper(lineTrim)
+		if strings.HasPrefix(upper, "EHLO") || strings.HasPrefix(upper, "HELO") {
+			writer.WriteString("250-mailpit.local\r\n250-PIPELINING\r\n250-8BITMIME\r\n250 OK\r\n")
+			writer.Flush()
+		} else if strings.HasPrefix(upper, "MAIL FROM:") {
+			writer.WriteString("250 OK\r\n")
+			writer.Flush()
+		} else if strings.HasPrefix(upper, "RCPT TO:") {
+			re := regexp.MustCompile(`<([^>]+)>`)
+			matches := re.FindStringSubmatch(lineTrim)
+			if len(matches) > 1 {
+				toAddr = matches[1]
+			}
+			writer.WriteString("250 OK\r\n")
+			writer.Flush()
+		} else if strings.HasPrefix(upper, "DATA") {
+			inData = true
+			bodyBuilder.Reset()
+			writer.WriteString("354 Start mail input; end with <CRLF>.<CRLF>\r\n")
+			writer.Flush()
+		} else if strings.HasPrefix(upper, "QUIT") {
+			writer.WriteString("221 Bye\r\n")
+			writer.Flush()
+			break
+		} else if strings.HasPrefix(upper, "RSET") {
+			bodyBuilder.Reset()
+			writer.WriteString("250 OK\r\n")
+			writer.Flush()
+		} else if strings.HasPrefix(upper, "NOOP") {
+			writer.WriteString("250 OK\r\n")
+			writer.Flush()
+		} else {
+			writer.WriteString("250 OK\r\n")
+			writer.Flush()
+		}
+	}
+}
