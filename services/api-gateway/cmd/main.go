@@ -12,51 +12,72 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	"github.com/pkm-asia/pmb-backend/pkg/logger"
-	"github.com/pkm-asia/pmb-backend/pkg/requestid"
-	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/api-gateway/internal/config"
+	"github.com/pkm-asia/pmb-backend/services/api-gateway/internal/health"
+	"github.com/pkm-asia/pmb-backend/services/api-gateway/internal/jwks"
+	"github.com/pkm-asia/pmb-backend/services/api-gateway/internal/proxy"
+	"github.com/pkm-asia/pmb-backend/services/api-gateway/internal/server"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
 func main() {
 	_ = godotenv.Load()
 
-	appEnv := os.Getenv("APP_ENV")
-	if appEnv == "" {
-		appEnv = "development"
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		panic("Gagal memuat konfigurasi API Gateway: " + err.Error())
 	}
 
-	appPort := os.Getenv("APP_PORT")
-	if appPort == "" {
-		appPort = "8000"
-	}
-
-	appLog, err := logger.Init(appEnv)
+	appLog, err := logger.Init(cfg.AppEnv)
 	if err != nil {
 		panic("Gagal menginisialisasi logger API Gateway: " + err.Error())
 	}
 	defer appLog.Sync()
 
-	if appEnv == "production" {
+	if cfg.AppEnv == "production" {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	r := gin.New()
-	r.Use(requestid.Middleware())
-	r.Use(logger.GinRecovery(appLog))
-	r.Use(logger.GinLogger(appLog))
+	appLog.Info("Memulai API Gateway PMB...",
+		zap.String("port", cfg.AppPort),
+		zap.String("env", cfg.AppEnv),
+		zap.String("routes_config", cfg.RoutesConfigPath),
+	)
 
-	// Health check endpoints
-	r.GET("/health", func(c *gin.Context) {
-		response.Success(c, http.StatusOK, "API Gateway healthy", gin.H{
-			"status":  "up",
-			"service": "api-gateway",
-			"env":     appEnv,
-			"time":    time.Now().Format(time.RFC3339),
+	// Inisialisasi Redis Client
+	var rdb *redis.Client
+	if cfg.RedisAddr != "" {
+		rdb = redis.NewClient(&redis.Options{
+			Addr:     cfg.RedisAddr,
+			Password: cfg.RedisPassword,
 		})
-	})
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if err := rdb.Ping(pingCtx).Err(); err != nil {
+			appLog.Warn("Redis tidak merespon saat start gateway (rate limit/denylist offline): " + err.Error())
+		} else {
+			appLog.Info("✅ Terhubung ke Redis")
+		}
+		pingCancel()
+	}
+
+	// Inisialisasi JWKS Client
+	jwksClient := jwks.NewClient(cfg.JWKSURL, appLog)
+
+	// Inisialisasi Reverse Proxy Handler
+	proxyHandler, err := proxy.NewProxyHandler(cfg.Routes, appLog)
+	if err != nil {
+		appLog.Fatal("Gagal menginisialisasi reverse proxy", zap.Error(err))
+	}
+
+	// Inisialisasi Health Handler
+	healthHandler := health.NewHealthHandler(cfg.Routes)
+
+	// Inisialisasi Gin Engine dengan urutan middleware PRD 6.3
+	r := server.SetupGatewayEngine(cfg, jwksClient, rdb, proxyHandler, healthHandler, appLog)
 
 	srv := &http.Server{
-		Addr:         ":" + appPort,
+		Addr:         ":" + cfg.AppPort,
 		Handler:      r,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
@@ -64,9 +85,9 @@ func main() {
 	}
 
 	go func() {
-		appLog.Info("Memulai API Gateway", zap.String("port", appPort), zap.String("env", appEnv))
+		appLog.Info("API Gateway siap melayani request", zap.String("addr", srv.Addr))
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			appLog.Fatal("Gagal menjalankan API Gateway", zap.Error(err))
+			appLog.Fatal("Gagal menjalankan server API Gateway", zap.Error(err))
 		}
 	}()
 

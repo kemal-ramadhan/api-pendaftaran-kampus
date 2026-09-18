@@ -1,6 +1,7 @@
 package response
 
 import (
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -123,3 +124,11 @@ func InternalServerError(c *gin.Context, message string) {
 	}
 	Error(c, http.StatusInternalServerError, ErrCodeInternalError, message, nil)
 }
+
+// WriteJSON menuliskan objek response ke standard http.ResponseWriter
+func WriteJSON(w http.ResponseWriter, status int, data interface{}) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(data)
+}
+
