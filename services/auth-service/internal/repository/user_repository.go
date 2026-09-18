@@ -20,6 +20,8 @@ type UserRepository interface {
 	UpdateLastLogin(ctx context.Context, userID uuid.UUID) error
 	UpdateStatus(ctx context.Context, userID uuid.UUID, status string) error
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
+	FindUsers(ctx context.Context, role, status, q string, page, perPage int) ([]model.User, int64, error)
+	FindBatch(ctx context.Context, ids []uuid.UUID) ([]model.User, error)
 }
 
 type userRepository struct {
@@ -105,3 +107,55 @@ func (r *userRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 	}
 	return count > 0, nil
 }
+
+func (r *userRepository) FindUsers(ctx context.Context, role, status, q string, page, perPage int) ([]model.User, int64, error) {
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+	offset := (page - 1) * perPage
+
+	query := r.db.WithContext(ctx).Model(&model.User{})
+
+	if status != "" {
+		query = query.Where("users.status = ?", status)
+	}
+
+	if q != "" {
+		search := "%" + strings.ToLower(q) + "%"
+		query = query.Where("LOWER(users.full_name) LIKE ? OR LOWER(users.email) LIKE ?", search, search)
+	}
+
+	if role != "" {
+		query = query.Joins("JOIN user_roles ON user_roles.user_id = users.id").
+			Joins("JOIN roles ON roles.id = user_roles.role_id").
+			Where("roles.code = ?", role)
+	}
+
+	var total int64
+	if err := query.Distinct("users.id").Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var users []model.User
+	err := query.Distinct("users.id", "users.email", "users.full_name", "users.phone", "users.status", "users.created_at", "users.updated_at").
+		Preload("UserRoles.Role").
+		Order("users.created_at DESC").
+		Limit(perPage).
+		Offset(offset).
+		Find(&users).Error
+
+	return users, total, err
+}
+
+func (r *userRepository) FindBatch(ctx context.Context, ids []uuid.UUID) ([]model.User, error) {
+	var users []model.User
+	err := r.db.WithContext(ctx).
+		Preload("UserRoles.Role").
+		Where("id IN ?", ids).
+		Find(&users).Error
+	return users, err
+}
+

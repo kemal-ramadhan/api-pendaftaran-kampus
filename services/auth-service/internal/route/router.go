@@ -7,15 +7,19 @@ import (
 
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/controller"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/middleware"
+	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/token"
 )
 
 func SetupRoutes(
 	r *gin.Engine,
 	authCtrl *controller.AuthController,
+	adminCtrl *controller.AdminController,
+	internalCtrl *controller.InternalController,
 	healthCtrl *controller.HealthController,
 	tokenMgr token.TokenManager,
 	sessionStore token.SessionStore,
+	internalToken string,
 ) {
 	// Swagger Documentation
 	r.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -49,5 +53,28 @@ func SetupRoutes(
 		authProtected.PUT("/password", authCtrl.ChangePassword)
 		authProtected.POST("/logout", authCtrl.Logout)
 		authProtected.POST("/logout-all", authCtrl.LogoutAll)
+	}
+
+	// Admin Endpoints (Role: superadmin)
+	admin := auth.Group("/admin")
+	admin.Use(middleware.AuthMiddleware(tokenMgr, sessionStore))
+	admin.Use(middleware.RequireRole(model.RoleSuperadmin))
+	{
+		admin.GET("/roles", adminCtrl.GetRoles)
+		admin.GET("/users", adminCtrl.ListUsers)
+		admin.POST("/users", adminCtrl.CreateUser)
+		admin.GET("/users/:id", adminCtrl.GetUser)
+		admin.PUT("/users/:id", adminCtrl.UpdateUser)
+		admin.PUT("/users/:id/roles", adminCtrl.UpdateUserRoles)
+		admin.PATCH("/users/:id/status", adminCtrl.UpdateUserStatus)
+	}
+
+	// Internal Endpoints (Inter-Service, tidak diekspos keluar)
+	internal := r.Group("/internal")
+	internal.Use(middleware.InternalAuthMiddleware(internalToken))
+	{
+		internal.GET("/users/:id", internalCtrl.GetUser)
+		internal.POST("/users/batch", internalCtrl.GetBatchUsers)
+		internal.POST("/users/:id/roles", internalCtrl.AddUserRole)
 	}
 }

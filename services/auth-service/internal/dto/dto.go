@@ -94,3 +94,59 @@ type ChangePasswordRequest struct {
 	Password             string `json:"password" binding:"required,min=8"`
 	PasswordConfirmation string `json:"password_confirmation" binding:"required,eqfield=Password"`
 }
+
+// --- Admin & Internal DTOs (Milestone M2) ---
+
+type RoleAssignmentDTO struct {
+	Code      string `json:"code" binding:"required"`
+	ScopeType string `json:"scope_type"`
+	ScopeID   string `json:"scope_id"`
+}
+
+type AdminCreateUserRequest struct {
+	Email                string              `json:"email" binding:"required,email"`
+	FullName             string              `json:"full_name" binding:"required,min=2,max=255"`
+	Phone                string              `json:"phone"`
+	Roles                []RoleAssignmentDTO `json:"roles" binding:"required,min=1"`
+	Password             string              `json:"password"`
+	SendSetPasswordEmail bool                `json:"send_set_password_email"`
+}
+
+type AdminUpdateUserRequest struct {
+	FullName string `json:"full_name" binding:"required,min=2,max=255"`
+	Phone    string `json:"phone"`
+}
+
+type AdminUpdateRolesRequest struct {
+	Roles []RoleAssignmentDTO `json:"roles" binding:"required,min=1"`
+}
+
+type AdminUpdateStatusRequest struct {
+	Status string `json:"status" binding:"required,oneof=active inactive"`
+}
+
+type AdminListUsersQuery struct {
+	Role    string `form:"role"`
+	Status  string `form:"status"`
+	Q       string `form:"q"`
+	Page    int    `form:"page,default=1"`
+	PerPage int    `form:"per_page,default=20"`
+}
+
+type RoleResponseData struct {
+	ID          uint   `json:"id"`
+	Code        string `json:"code"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type BatchUsersRequest struct {
+	IDs []string `json:"ids" binding:"required,min=1,max=500"`
+}
+
+type AddUserRoleRequest struct {
+	Role      string `json:"role" binding:"required"`
+	ScopeType string `json:"scope_type"`
+	ScopeID   string `json:"scope_id"`
+}
+

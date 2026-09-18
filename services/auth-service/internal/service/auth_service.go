@@ -35,8 +35,12 @@ var (
 	ErrResetTokenInvalid   = errors.New("token reset kata sandi tidak valid atau telah kedaluwarsa")
 	ErrTokenInvalid        = errors.New("token tidak valid")
 	ErrTokenRevoked        = errors.New("token telah dicabut atau sesi berakhir")
-	ErrOldPasswordMismatch = errors.New("kata sandi saat ini tidak sesuai")
-	ErrUserNotFound        = errors.New("pengguna tidak ditemukan")
+	ErrOldPasswordMismatch     = errors.New("kata sandi saat ini tidak sesuai")
+	ErrUserNotFound            = errors.New("pengguna tidak ditemukan")
+	ErrRoleNotFound            = errors.New("role tidak ditemukan")
+	ErrLastSuperadmin          = errors.New("sistem harus memiliki minimal satu superadmin aktif")
+	ErrSelfDemoteSuperadmin    = errors.New("superadmin tidak boleh mencabut role superadmin dari dirinya sendiri")
+	ErrSelfDeactivateSuperadmin = errors.New("superadmin tidak boleh menonaktifkan akun miliknya sendiri")
 )
 
 type AuthService interface {

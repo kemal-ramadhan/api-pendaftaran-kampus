@@ -95,6 +95,30 @@ func (r *mockUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, e
 	return u != nil, err
 }
 
+func (r *mockUserRepo) FindUsers(ctx context.Context, role, status, q string, page, perPage int) ([]model.User, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var res []model.User
+	for _, u := range r.users {
+		cpy := *u
+		res = append(res, cpy)
+	}
+	return res, int64(len(res)), nil
+}
+
+func (r *mockUserRepo) FindBatch(ctx context.Context, ids []uuid.UUID) ([]model.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var res []model.User
+	for _, id := range ids {
+		if u, ok := r.users[id]; ok {
+			cpy := *u
+			res = append(res, cpy)
+		}
+	}
+	return res, nil
+}
+
 type mockRoleRepo struct {
 	roles map[string]*model.Role
 }
@@ -121,6 +145,15 @@ func (r *mockRoleRepo) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]mo
 func (r *mockRoleRepo) RemoveUserRoles(ctx context.Context, userID uuid.UUID) error {
 	return nil
 }
+
+func (r *mockRoleRepo) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error {
+	return nil
+}
+
+func (r *mockRoleRepo) CountActiveSuperadmins(ctx context.Context) (int64, error) {
+	return 1, nil
+}
+
 
 type mockOTPRepo struct {
 	mu   sync.Mutex

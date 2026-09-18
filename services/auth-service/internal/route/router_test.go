@@ -31,10 +31,12 @@ func TestSetupRoutes(t *testing.T) {
 	}
 
 	authCtrl := controller.NewAuthController(nil, tm)
+	adminCtrl := controller.NewAdminController(nil)
+	internalCtrl := controller.NewInternalController(nil)
 	healthCtrl := controller.NewHealthController(nil, nil, "test")
 
 	r := gin.New()
-	SetupRoutes(r, authCtrl, healthCtrl, tm, nil)
+	SetupRoutes(r, authCtrl, adminCtrl, internalCtrl, healthCtrl, tm, nil, "test-internal-token")
 
 	// Uji route yang terdaftar
 	endpoints := []struct {
@@ -47,6 +49,8 @@ func TestSetupRoutes(t *testing.T) {
 		{http.MethodGet, "/auth/health", http.StatusServiceUnavailable},
 		{http.MethodGet, "/.well-known/jwks.json", http.StatusOK},
 		{http.MethodGet, "/auth/me", http.StatusUnauthorized}, // Tanpa token
+		{http.MethodGet, "/auth/admin/users", http.StatusUnauthorized}, // Admin tanpa token
+		{http.MethodGet, "/internal/users/1", http.StatusForbidden}, // Internal tanpa token
 	}
 
 	for _, ep := range endpoints {

@@ -107,6 +107,43 @@ func (r *fakeUserRepo) ExistsByEmail(ctx context.Context, email string) (bool, e
 	return u != nil, err
 }
 
+func (r *fakeUserRepo) FindUsers(ctx context.Context, role, status, q string, page, perPage int) ([]model.User, int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var res []model.User
+	for _, u := range r.users {
+		if status != "" && u.Status != status {
+			continue
+		}
+		if q != "" {
+			search := strings.ToLower(q)
+			if !strings.Contains(strings.ToLower(u.FullName), search) && !strings.Contains(strings.ToLower(u.Email), search) {
+				continue
+			}
+		}
+		cpy := *u
+		res = append(res, cpy)
+	}
+	return res, int64(len(res)), nil
+}
+
+func (r *fakeUserRepo) FindBatch(ctx context.Context, ids []uuid.UUID) ([]model.User, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var res []model.User
+	idMap := make(map[uuid.UUID]bool)
+	for _, id := range ids {
+		idMap[id] = true
+	}
+	for _, u := range r.users {
+		if idMap[u.ID] {
+			cpy := *u
+			res = append(res, cpy)
+		}
+	}
+	return res, nil
+}
+
 type fakeRoleRepo struct {
 	mu        sync.Mutex
 	roles     map[string]*model.Role
@@ -117,6 +154,12 @@ func newFakeRoleRepo() *fakeRoleRepo {
 	return &fakeRoleRepo{
 		roles: map[string]*model.Role{
 			model.RoleCalonMahasiswa: {ID: 1, Code: model.RoleCalonMahasiswa, Name: "Calon Mahasiswa"},
+			model.RoleMahasiswa:      {ID: 2, Code: model.RoleMahasiswa, Name: "Mahasiswa"},
+			model.RoleAdminPMB:       {ID: 3, Code: model.RoleAdminPMB, Name: "Admin PMB"},
+			model.RoleKeuangan:       {ID: 4, Code: model.RoleKeuangan, Name: "Keuangan"},
+			model.RoleDosen:          {ID: 5, Code: model.RoleDosen, Name: "Dosen"},
+			model.RoleProdi:          {ID: 6, Code: model.RoleProdi, Name: "Prodi"},
+			model.RolePimpinan:       {ID: 7, Code: model.RolePimpinan, Name: "Pimpinan"},
 			model.RoleSuperadmin:     {ID: 8, Code: model.RoleSuperadmin, Name: "Superadmin"},
 		},
 		userRoles: make(map[uuid.UUID][]model.UserRole),
@@ -162,6 +205,29 @@ func (r *fakeRoleRepo) RemoveUserRoles(ctx context.Context, userID uuid.UUID) er
 	delete(r.userRoles, userID)
 	return nil
 }
+
+func (r *fakeRoleRepo) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.userRoles[userID] = roles
+	return nil
+}
+
+func (r *fakeRoleRepo) CountActiveSuperadmins(ctx context.Context) (int64, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var count int64
+	for _, list := range r.userRoles {
+		for _, ur := range list {
+			if ur.Role.Code == model.RoleSuperadmin {
+				count++
+				break
+			}
+		}
+	}
+	return count, nil
+}
+
 
 type fakeOTPRepo struct {
 	mu   sync.Mutex

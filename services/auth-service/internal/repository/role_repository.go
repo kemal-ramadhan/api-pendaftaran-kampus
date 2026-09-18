@@ -15,6 +15,8 @@ type RoleRepository interface {
 	AssignRole(ctx context.Context, userRole *model.UserRole) error
 	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]model.UserRole, error)
 	RemoveUserRoles(ctx context.Context, userID uuid.UUID) error
+	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error
+	CountActiveSuperadmins(ctx context.Context) (int64, error)
 }
 
 type roleRepository struct {
@@ -66,3 +68,37 @@ func (r *roleRepository) GetUserRoles(ctx context.Context, userID uuid.UUID) ([]
 func (r *roleRepository) RemoveUserRoles(ctx context.Context, userID uuid.UUID) error {
 	return r.db.WithContext(ctx).Where("user_id = ?", userID).Delete(&model.UserRole{}).Error
 }
+
+func (r *roleRepository) ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&model.UserRole{}).Error; err != nil {
+			return err
+		}
+		for i := range roles {
+			emptyScope := ""
+			if roles[i].ScopeType == nil {
+				roles[i].ScopeType = &emptyScope
+			}
+			if roles[i].ScopeID == nil {
+				roles[i].ScopeID = &emptyScope
+			}
+			if err := tx.Create(&roles[i]).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func (r *roleRepository) CountActiveSuperadmins(ctx context.Context) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Table("user_roles").
+		Joins("JOIN roles ON roles.id = user_roles.role_id").
+		Joins("JOIN users ON users.id = user_roles.user_id").
+		Where("roles.code = ? AND users.status = ? AND users.deleted_at IS NULL", model.RoleSuperadmin, model.UserStatusActive).
+		Distinct("user_roles.user_id").
+		Count(&count).Error
+	return count, err
+}
+
