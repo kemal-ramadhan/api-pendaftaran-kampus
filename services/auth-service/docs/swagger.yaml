@@ -1,0 +1,627 @@
+basePath: /
+definitions:
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.AuthResponseData:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      refresh_token:
+        type: string
+      token_type:
+        type: string
+      user:
+        $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UserResponseData'
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ChangePasswordRequest:
+    properties:
+      current_password:
+        type: string
+      password:
+        minLength: 8
+        type: string
+      password_confirmation:
+        type: string
+    required:
+    - current_password
+    - password
+    - password_confirmation
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ForgotPasswordRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.LoginRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+    required:
+    - email
+    - password
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RefreshRequest:
+    properties:
+      refresh_token:
+        type: string
+    required:
+    - refresh_token
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RegisterRequest:
+    properties:
+      email:
+        type: string
+      full_name:
+        maxLength: 255
+        minLength: 2
+        type: string
+      password:
+        minLength: 8
+        type: string
+      password_confirmation:
+        type: string
+      phone:
+        type: string
+    required:
+    - email
+    - full_name
+    - password
+    - password_confirmation
+    - phone
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RegisterResponse:
+    properties:
+      email:
+        type: string
+      otp_expires_at:
+        type: string
+      resend_available_at:
+        type: string
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ResendOTPRequest:
+    properties:
+      email:
+        type: string
+    required:
+    - email
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ResetPasswordRequest:
+    properties:
+      password:
+        minLength: 8
+        type: string
+      password_confirmation:
+        type: string
+      token:
+        type: string
+    required:
+    - password
+    - password_confirmation
+    - token
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UpdateProfileRequest:
+    properties:
+      full_name:
+        maxLength: 255
+        minLength: 2
+        type: string
+      phone:
+        type: string
+    required:
+    - full_name
+    - phone
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UserResponseData:
+    properties:
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: string
+      phone:
+        type: string
+      roles:
+        items:
+          type: string
+        type: array
+      scopes:
+        items:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.ScopeClaim'
+        type: array
+      status:
+        type: string
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.VerifyOTPRequest:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+    required:
+    - email
+    - otp
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.JWK:
+    properties:
+      alg:
+        type: string
+      e:
+        type: string
+      kid:
+        type: string
+      kty:
+        type: string
+      "n":
+        type: string
+      use:
+        type: string
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.JWKSResponse:
+    properties:
+      keys:
+        items:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.JWK'
+        type: array
+    type: object
+  github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.ScopeClaim:
+    properties:
+      id:
+        type: string
+      role:
+        type: string
+      type:
+        type: string
+    type: object
+  response.ErrorResponse:
+    properties:
+      error_code:
+        type: string
+      errors:
+        additionalProperties:
+          items:
+            type: string
+          type: array
+        type: object
+      message:
+        type: string
+      request_id:
+        type: string
+      success:
+        type: boolean
+    type: object
+  response.Meta:
+    properties:
+      page:
+        type: integer
+      per_page:
+        type: integer
+      total:
+        type: integer
+    type: object
+  response.SuccessResponse:
+    properties:
+      data: {}
+      message:
+        type: string
+      meta:
+        $ref: '#/definitions/response.Meta'
+      success:
+        type: boolean
+    type: object
+info:
+  contact:
+    name: Tim Pengembang PMB
+  description: Layanan Autentikasi dan Manajemen Pengguna Sistem PMB
+  title: PMB Auth Service API
+  version: "1.0"
+paths:
+  /.well-known/jwks.json:
+    get:
+      description: Mengembalikan JSON Web Key Set (JWKS) public key RS256 untuk verifikasi
+        token oleh API Gateway dan service lain.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_token.JWKSResponse'
+      summary: Public Key JWKS
+      tags:
+      - Auth
+  /auth/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Mengirimkan tautan reset kata sandi ke email pengguna. Selalu mengembalikan
+        respon sukses generik untuk keamanan.
+      parameters:
+      - description: Email Terdaftar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ForgotPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Lupa Kata Sandi (Kirim Tautan Reset)
+      tags:
+      - Auth
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Masuk ke akun menggunakan email dan kata sandi. Mengembalikan access
+        token dan refresh token.
+      parameters:
+      - description: Kredensial Login
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.AuthResponseData'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Login Pengguna
+      tags:
+      - Auth
+  /auth/logout:
+    post:
+      description: Mencabut sesi aktif saat ini dan memasukkan access token ke denylist.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout Sesi Saat Ini
+      tags:
+      - Auth
+  /auth/logout-all:
+    post:
+      description: Mencabut seluruh sesi login user di semua perangkat.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Logout Semua Sesi
+      tags:
+      - Auth
+  /auth/me:
+    get:
+      description: Mengambil informasi identitas akun, role, dan scope dari token
+        terautentikasi.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UserResponseData'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Profil Pengguna Saat Ini
+      tags:
+      - Auth
+  /auth/password:
+    put:
+      consumes:
+      - application/json
+      description: Mengganti kata sandi akun sendiri (wajib memasukkan kata sandi
+        saat ini). Otomatis mencabut sesi di perangkat lain.
+      parameters:
+      - description: Data Kata Sandi Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ChangePasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Ganti Kata Sandi Akun
+      tags:
+      - Auth
+  /auth/profile:
+    put:
+      consumes:
+      - application/json
+      description: Memperbarui data nama lengkap dan nomor telepon akun sendiri.
+      parameters:
+      - description: Data Profil Baru
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UpdateProfileRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.UserResponseData'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      security:
+      - BearerAuth: []
+      summary: Perbarui Profil Akun Sendiri
+      tags:
+      - Auth
+  /auth/refresh:
+    post:
+      consumes:
+      - application/json
+      description: Menukarkan refresh token aktif dengan pasangan access token dan
+        refresh token baru.
+      parameters:
+      - description: Refresh Token
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RefreshRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.AuthResponseData'
+              type: object
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Refresh Token (Rotasi Pasangan Token)
+      tags:
+      - Auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Pendaftaran mandiri calon mahasiswa baru. Otomatis mengirim kode
+        OTP ke email.
+      parameters:
+      - description: Data Pendaftaran
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.RegisterResponse'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Registrasi Calon Mahasiswa
+      tags:
+      - Auth
+  /auth/resend-otp:
+    post:
+      consumes:
+      - application/json
+      description: Mengirimkan ulang kode OTP verifikasi dengan cooldown 60 detik.
+      parameters:
+      - description: Email Tujuan
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ResendOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Kirim Ulang OTP
+      tags:
+      - Auth
+  /auth/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Mengubah kata sandi menggunakan token reset yang dikirim ke email.
+      parameters:
+      - description: Data Reset Kata Sandi
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.ResetPasswordRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "422":
+          description: Unprocessable Entity
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Reset Kata Sandi Baru
+      tags:
+      - Auth
+  /auth/verify:
+    post:
+      consumes:
+      - application/json
+      description: Verifikasi kode OTP pendaftaran. Jika sukses, akun menjadi aktif
+        dan langsung menerbitkan token login.
+      parameters:
+      - description: Data Verifikasi OTP
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.VerifyOTPRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            allOf:
+            - $ref: '#/definitions/response.SuccessResponse'
+            - properties:
+                data:
+                  $ref: '#/definitions/github_com_pkm-asia_pmb-backend_services_auth-service_internal_dto.AuthResponseData'
+              type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+        "429":
+          description: Too Many Requests
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Verifikasi OTP Email (Auto-login)
+      tags:
+      - Auth
+  /health:
+    get:
+      description: Memeriksa koneksi database PostgreSQL dan Redis
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/response.SuccessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/response.ErrorResponse'
+      summary: Pemeriksaan Kesehatan Service (Liveness & Readiness)
+      tags:
+      - Health
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

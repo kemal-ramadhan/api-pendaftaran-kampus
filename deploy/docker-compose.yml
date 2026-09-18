@@ -1,0 +1,145 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: pmb-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-pmb_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      POSTGRES_DB: ${DB_NAME:-pmb_auth}
+    ports:
+      - "${DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pmb_user} -d ${DB_NAME:-pmb_auth}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pmb-network
+
+  redis:
+    image: redis:7-alpine
+    container_name: pmb-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: pmb-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025" # SMTP
+      - "8025:8025" # Web UI
+    networks:
+      - pmb-network
+
+  auth-service:
+    build:
+      context: ..
+      dockerfile: services/auth-service/Dockerfile
+    container_name: pmb-auth-service
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: ${DB_NAME:-pmb_auth}
+      REDIS_ADDR: redis:6379
+      JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-}
+      JWT_KID: ${JWT_KID:-pmb-auth-1}
+      JWT_ISSUER: ${JWT_ISSUER:-pmb-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-pmb-api}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  api-gateway:
+    build:
+      context: ..
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: pmb-api-gateway
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: 8000
+      ROUTES_CONFIG: /app/config/routes.yaml
+      AUTH_SERVICE_URL: http://auth-service:8080
+      JWKS_URL: http://auth-service:8080/.well-known/jwks.json
+      REDIS_ADDR: redis:6379
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  # Observability profile
+  jaeger:
+    image: jaegertracing/all-in-one:1.57
+    container_name: pmb-jaeger
+    restart: unless-stopped
+    profiles: ["observability"]
+    ports:
+      - "16686:16686" # Web UI
+      - "14268:14268" # HTTP Jaeger collector
+    networks:
+      - pmb-network
+
+  prometheus:
+    image: prom/prometheus:v2.52.0
+    container_name: pmb-prometheus
+    restart: unless-stopped
+    profiles: ["observability"]
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - pmb-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  pmb-network:
+    driver: bridge

@@ -1,0 +1,39 @@
+# Environment variables
+.env
+.env.local
+.env.*.local
+*.env
+
+# Database & Persistent Data
+postgres-data/
+redis-data/
+
+# Keys & Certificates
+*.pem
+*.key
+*.crt
+*.cert
+
+# Binaries and build artifacts
+bin/
+dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test & Coverage artifacts
+*.out
+*.test
+coverage.html
+profile.out
+
+# IDE and OS specific
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db

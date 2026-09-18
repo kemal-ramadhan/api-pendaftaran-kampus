@@ -1,0 +1,128 @@
+version: "3.8"
+
+services:
+  db_auth:
+    image: postgres:15
+    container_name: db_auth
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: jatidiri_auth_db
+    volumes:
+      - /root/staging-jatidiri/go-jatidiri-app/jatidiri-auth-service/postgres-data:/var/lib/postgresql/data
+    networks:
+      - jatidiri_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7
+    container_name: jatidiri-auth-service-redis
+    networks:
+      - jatidiri_net
+
+  jatidiri-auth-service:
+    build: .
+    container_name: jatidiri-auth-service
+    env_file:
+      - .env
+    depends_on:
+      - db_auth
+      - redis
+    networks:
+      - jatidiri_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: on-failure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.auth.rule=PathPrefix(`/auth`)"
+      - "traefik.http.routers.customer.rule=PathPrefix(`/customer`)"
+      - "traefik.http.services.auth.loadbalancer.server.port=8080"
+
+
+  jatidiri-preparation-service:
+    build: ../jatidiri-preparation-service
+    container_name: jatidiri-preparation-service
+    env_file:
+      - ../jatidiri-preparation-service/.env
+    depends_on:
+      - db_auth
+      - redis
+    networks:
+      - jatidiri_net
+    restart: on-failure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.preparation.rule=PathPrefix(`/preparation`)"
+      - "traefik.http.services.preparation.loadbalancer.server.port=8080"
+
+  jatidiri-assesment-service:
+    build: ../jatidiri-assesment-service
+    container_name: jatidiri-assesment-service
+    env_file:
+      - ../jatidiri-assesment-service/.env
+    environment:
+      CUSTOMER_SERVICE_URL: "http://jatidiri-auth-service:8080"
+      COMMUNITY_SERVICE_URL: "http://jatidiri-komunitas-service:8080"
+      RUN_SEEDER: true   # 🔥 TAMBAHKAN INI
+    depends_on:
+      - db_auth
+      - redis
+    networks:
+      - jatidiri_net
+    restart: on-failure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.assesment.rule=PathPrefix(`/assesment`)"
+      - "traefik.http.services.assesment.loadbalancer.server.port=8080"
+
+  jatidiri-komunitas-service:
+    build: ../jatidiri-komunitas-service
+    container_name: jatidiri-komunitas-service
+    env_file:
+      - ../jatidiri-komunitas-service/.env
+    environment:
+      CUSTOMER_SERVICE_URL: "http://jatidiri-auth-service:8080"
+      AUTH_SERVICE_URL: "http://jatidiri-auth-service:8080"
+    depends_on:
+      - db_auth
+      - redis
+    networks:
+      - jatidiri_net
+    restart: on-failure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.komunitas.rule=PathPrefix(`/komunitas`)"
+      - "traefik.http.routers.members.rule=PathPrefix(`/members`)"
+      - "traefik.http.services.komunitas.loadbalancer.server.port=8080"
+
+  jatidiri-pemeriksaan-service:
+    build: ../jatidiri-pemeriksaan-service
+    volumes:
+      - ../uploads:/data/uploads
+    env_file:
+      - ../jatidiri-pemeriksaan-service/.env
+    depends_on:
+      db_auth:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - jatidiri_net
+    restart: on-failure
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pemeriksaan.rule=PathPrefix(`/pemeriksaan`)"
+      - "traefik.http.services.pemeriksaan.loadbalancer.server.port=8080"
+
+
+networks:
+  jatidiri_net:
+    external: true

@@ -1,0 +1,39 @@
+services:
+  auth:
+    url: ${AUTH_SERVICE_URL}
+    timeout: 10s
+  # slot service berikutnya (biarkan ter-comment sampai service dibuat)
+  # identity:     { url: ${IDENTITY_SERVICE_URL}, max_body: 5MB }      # /api/v1/identity
+  # organization: { url: ${ORGANIZATION_SERVICE_URL} }                 # /api/v1/organization
+  # admission:    { url: ${ADMISSION_SERVICE_URL}, max_body: 10MB }    # /api/v1/admission (pendaftaran + dokumen)
+  # finance:      { url: ${FINANCE_SERVICE_URL} }                      # /api/v1/finance
+  # selection:    { url: ${SELECTION_SERVICE_URL} }                    # /api/v1/selection
+  # exam:         { url: ${EXAM_SERVICE_URL} }                         # /api/v1/exam
+  # scoring:      { url: ${SCORING_SERVICE_URL} }                      # /api/v1/scoring
+  # student:      { url: ${STUDENT_SERVICE_URL} }                      # /api/v1/student
+  # nim:          { url: ${NIM_SERVICE_URL} }                          # /api/v1/nim
+
+routes:
+  - prefix: /api/v1/auth/.well-known
+    service: auth
+    rewrite: /.well-known
+    auth: public
+  - prefix: /api/v1/auth/admin
+    service: auth
+    rewrite: /auth/admin
+    auth: required
+    roles: [superadmin]
+  - prefix: /api/v1/auth
+    service: auth
+    rewrite: /auth
+    auth: required
+    public_paths:
+      - POST /register
+      - POST /verify
+      - GET /health
+      - POST /resend-otp
+      - POST /login
+      - POST /refresh
+      - POST /forgot-password
+      - POST /reset-password
+    rate_limit: { requests: 60, window: 1m }

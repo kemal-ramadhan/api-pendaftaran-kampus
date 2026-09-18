@@ -1,0 +1,1040 @@
+{
+  "info": {
+    "_postman_id": "735e0889-b55e-470d-a476-a96072aaf584",
+    "name": "EduPilot",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "24666632",
+    "_collection_link": "https://go.postman.co/collection/24666632-735e0889-b55e-470d-a476-a96072aaf584?source=collection_link"
+  },
+  "item": [
+    {
+      "name": "AUTH",
+      "item": [
+        {
+          "name": "Register",
+          "item": [
+            {
+              "name": "Register",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"name\": \"Jemmi Halil\",\r\n  \"email\": \"jemmi.halil@jatidiri.app\",\r\n  \"password\": \"@jemmi.halil!\",\r\n  \"role\": \"teachers\" // students, teachers, regulers, workers, families, psychology, marketing\r\n//   \"phone\": \"08986004676\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Success Register",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"email\": \"km.kemal03@gmail.com\",\r\n  \"password\": \"Kk1617102084\",\r\n  \"role\": \"regulers\" // students, teachers, regulers, workers, families\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{base_url}}/auth/register",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "auth",
+                        "register"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "Text",
+                  "header": [
+                    {
+                      "key": "Access-Control-Allow-Credentials",
+                      "value": "true"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Headers",
+                      "value": "Authorization, Content-Type, X-Requested-With"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Methods",
+                      "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "670"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Mon, 17 Nov 2025 07:10:25 GMT"
+                    },
+                    {
+                      "key": "Permissions-Policy",
+                      "value": "geolocation=(), microphone=(), camera=()"
+                    },
+                    {
+                      "key": "Referrer-Policy",
+                      "value": "strict-origin-when-cross-origin"
+                    },
+                    {
+                      "key": "Strict-Transport-Security",
+                      "value": "max-age=31536000; includeSubDomains"
+                    },
+                    {
+                      "key": "X-Content-Type-Options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "X-Frame-Options",
+                      "value": "DENY"
+                    },
+                    {
+                      "key": "X-Ratelimit-Limit",
+                      "value": "5"
+                    },
+                    {
+                      "key": "X-Ratelimit-Remaining",
+                      "value": "4"
+                    },
+                    {
+                      "key": "X-Ratelimit-Reset",
+                      "value": "600"
+                    },
+                    {
+                      "key": "X-Request-Id",
+                      "value": "c1eab81e-a1ce-4852-8a69-d856bdaedeeb"
+                    },
+                    {
+                      "key": "X-Xss-Protection",
+                      "value": "1; mode=block"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"message\": \"user created successfully\",\n    \"user\": {\n        \"access_token\": \"{{json_web_token}}\",\n        \"refresh_token\": \"{{json_web_token}}\",\n        \"message\": \"login success\",\n        \"user\": {\n            \"id\": 1,\n            \"email\": \"km.kemal03@gmail.com\",\n            \"customer\": {\n                \"id\": 1,\n                \"user_id\": 1,\n                \"role\": \"regulers\",\n                \"created_at\": \"2025-11-17T07:10:25.422984635Z\",\n                \"updated_at\": \"2025-11-17T07:10:25.422984728Z\"\n            }\n        }\n    }\n}"
+                }
+              ]
+            },
+            {
+              "name": "Verifiy Email",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n    \"email\": \"jemmi.halil@jatidiri.app\", // email\r\n    \"otp\": 164378 // otp\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/verify",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "verify"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Resend OTP",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/resend-otp",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "resend-otp"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Auth",
+          "item": [
+            {
+              "name": "Login",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"email\": \"school@gmail.com\",\r\n  \"password\": \"Kk1617102084\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Logout",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/auth/logout",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "logout"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "SSO Google",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{base_url}}/auth/google/login",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "google",
+                    "login"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Me",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/auth/me",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "me"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Profile",
+          "item": [
+            {
+              "name": "Update Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"full_name\": \"Kemal Ramadhan\",\r\n  \"phone\": \"08986004677\",\r\n  \"birth_place\": \"Bandung\",\r\n  \"birth_date\": \"2001-05-12\",\r\n  \"gender\": \"1\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/profile",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "profile"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Update Profile By Id",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n\"customer_id\": 24574,\r\n  \"full_name\": \"WAFI NUR ROHMAN\",\r\n  \"phone\": \"082320502190\",\r\n  \"birth_place\": \"Bandung\",\r\n  \"birth_date\": \"2001-05-12\",\r\n  \"gender\": \"1\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/profile/{{CustomerID}}",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "profile",
+                    "{{CustomerID}}"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Photo Profile",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    {
+                      "key": "photo",
+                      "type": "file",
+                      "uuid": "e112fd78-5bb1-4ebc-9653-f02ab3e129d3",
+                      "src": "/D:/KEMAL RAMADHAN/PROGRAM/sistem-pendaftaran/public/assets/icons/mascot.png"
+                    }
+                  ]
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/photo-profile",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "photo-profile"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Change Role",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"role\": \"teachers\" // students, teachers, regulers, workers, families\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/change-role",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "change-role"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Forget Password",
+          "item": [
+            {
+              "name": "Forget Password Request",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"email\": \"km.kemal03@gmail.com\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/forgot-password",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "forgot-password"
+                  ]
+                }
+              },
+              "response": []
+            },
+            {
+              "name": "Reset - Password",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\r\n  \"token\": \"Sekolah Tinggi Ilmu Kesehatan Budi Luhur Cimahi\",\r\n  \"password\": \"@stikes.budiluhur!\"\r\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "url": {
+                  "raw": "{{base_url}}/auth/register",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "register"
+                  ]
+                }
+              },
+              "response": [
+                {
+                  "name": "Success Register",
+                  "originalRequest": {
+                    "method": "POST",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "body": {
+                      "mode": "raw",
+                      "raw": "{\r\n  \"email\": \"km.kemal03@gmail.com\",\r\n  \"password\": \"Kk1617102084\",\r\n  \"role\": \"regulers\" // students, teachers, regulers, workers, families\r\n}",
+                      "options": {
+                        "raw": {
+                          "language": "json"
+                        }
+                      }
+                    },
+                    "url": {
+                      "raw": "{{base_url}}/auth/register",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "auth",
+                        "register"
+                      ]
+                    }
+                  },
+                  "status": "Created",
+                  "code": 201,
+                  "_postman_previewlanguage": "Text",
+                  "header": [
+                    {
+                      "key": "Access-Control-Allow-Credentials",
+                      "value": "true"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Headers",
+                      "value": "Authorization, Content-Type, X-Requested-With"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Methods",
+                      "value": "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+                    },
+                    {
+                      "key": "Access-Control-Allow-Origin",
+                      "value": "*"
+                    },
+                    {
+                      "key": "Content-Length",
+                      "value": "670"
+                    },
+                    {
+                      "key": "Content-Type",
+                      "value": "application/json; charset=utf-8"
+                    },
+                    {
+                      "key": "Date",
+                      "value": "Mon, 17 Nov 2025 07:10:25 GMT"
+                    },
+                    {
+                      "key": "Permissions-Policy",
+                      "value": "geolocation=(), microphone=(), camera=()"
+                    },
+                    {
+                      "key": "Referrer-Policy",
+                      "value": "strict-origin-when-cross-origin"
+                    },
+                    {
+                      "key": "Strict-Transport-Security",
+                      "value": "max-age=31536000; includeSubDomains"
+                    },
+                    {
+                      "key": "X-Content-Type-Options",
+                      "value": "nosniff"
+                    },
+                    {
+                      "key": "X-Frame-Options",
+                      "value": "DENY"
+                    },
+                    {
+                      "key": "X-Ratelimit-Limit",
+                      "value": "5"
+                    },
+                    {
+                      "key": "X-Ratelimit-Remaining",
+                      "value": "4"
+                    },
+                    {
+                      "key": "X-Ratelimit-Reset",
+                      "value": "600"
+                    },
+                    {
+                      "key": "X-Request-Id",
+                      "value": "c1eab81e-a1ce-4852-8a69-d856bdaedeeb"
+                    },
+                    {
+                      "key": "X-Xss-Protection",
+                      "value": "1; mode=block"
+                    }
+                  ],
+                  "cookie": [],
+                  "body": "{\n    \"message\": \"user created successfully\",\n    \"user\": {\n        \"access_token\": \"{{json_web_token}}\",\n        \"refresh_token\": \"{{json_web_token}}\",\n        \"message\": \"login success\",\n        \"user\": {\n            \"id\": 1,\n            \"email\": \"km.kemal03@gmail.com\",\n            \"customer\": {\n                \"id\": 1,\n                \"user_id\": 1,\n                \"role\": \"regulers\",\n                \"created_at\": \"2025-11-17T07:10:25.422984635Z\",\n                \"updated_at\": \"2025-11-17T07:10:25.422984728Z\"\n            }\n        }\n    }\n}"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "name": "Other",
+          "item": [
+            {
+              "name": "Customers List",
+              "item": [
+                {
+                  "name": "Customers By Pagination",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{base_url}}/other/customers?page={{page}}&limit={{Limit}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "other",
+                        "customers"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "{{page}}"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "{{Limit}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Customers Search",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{base_url}}/other/customers?search={{Search}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "other",
+                        "customers"
+                      ],
+                      "query": [
+                        {
+                          "key": "search",
+                          "value": "{{Search}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Pagination + Search",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{base_url}}/other/customers?page={{page}}&limit={{limit}}&search={{Search}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "other",
+                        "customers"
+                      ],
+                      "query": [
+                        {
+                          "key": "page",
+                          "value": "{{page}}"
+                        },
+                        {
+                          "key": "limit",
+                          "value": "{{limit}}"
+                        },
+                        {
+                          "key": "search",
+                          "value": "{{Search}}"
+                        }
+                      ]
+                    }
+                  },
+                  "response": []
+                },
+                {
+                  "name": "Show Customers",
+                  "event": [
+                    {
+                      "listen": "prerequest",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    },
+                    {
+                      "listen": "test",
+                      "script": {
+                        "exec": [
+                          ""
+                        ],
+                        "type": "text/javascript",
+                        "packages": {},
+                        "requests": {}
+                      }
+                    }
+                  ],
+                  "request": {
+                    "method": "GET",
+                    "header": [
+                      {
+                        "key": "Authorization",
+                        "value": "Bearer {{token_access}}",
+                        "type": "text"
+                      }
+                    ],
+                    "url": {
+                      "raw": "{{base_url}}/other/customers/{{CustomerId}}",
+                      "host": [
+                        "{{base_url}}"
+                      ],
+                      "path": [
+                        "other",
+                        "customers",
+                        "{{CustomerId}}"
+                      ]
+                    }
+                  },
+                  "response": []
+                }
+              ]
+            },
+            {
+              "name": "Statistik Pengguna",
+              "event": [
+                {
+                  "listen": "prerequest",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                },
+                {
+                  "listen": "test",
+                  "script": {
+                    "exec": [
+                      ""
+                    ],
+                    "type": "text/javascript",
+                    "packages": {},
+                    "requests": {}
+                  }
+                }
+              ],
+              "request": {
+                "method": "GET",
+                "header": [
+                  {
+                    "key": "Authorization",
+                    "value": "Bearer {{token_access}}",
+                    "type": "text"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/other/statistik",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "other",
+                    "statistik"
+                  ]
+                }
+              },
+              "response": []
+            }
+          ]
+        },
+        {
+          "name": "Helth",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  ""
+                ],
+                "type": "text/javascript",
+                "packages": {},
+                "requests": {}
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/health",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "health"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "AI",
+      "item": [
+        {
+          "name": "Ai For the help",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{APIKEY}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n    \"model\": \"inclusionai/ling-3.0-flash-free\",\n    \"messages\": [\n            { \n                \"role\": \"user\",\n                \"content\": \"Hello, Blackbox!\" \n            }\n        ],\n    \"stream\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "https://api.blackbox.ai/chat/completions",
+              "protocol": "https",
+              "host": [
+                "api",
+                "blackbox",
+                "ai"
+              ],
+              "path": [
+                "chat",
+                "completions"
+              ]
+            }
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "auth_secret_00dm",
+      "secret": true
+    },
+    {
+      "key": "bearer_token_09vb",
+      "secret": true
+    }
+  ]
+}

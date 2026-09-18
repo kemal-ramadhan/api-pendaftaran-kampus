@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS password_resets;
+DROP TABLE IF EXISTS user_otps;
+DROP TABLE IF EXISTS user_roles;
+DROP TABLE IF EXISTS roles;
+DROP TABLE IF EXISTS users;
