@@ -37,3 +37,7 @@ profile.out
 *~
 .DS_Store
 Thumbs.db
+
+# Postman local caches
+.postman/
+postman/

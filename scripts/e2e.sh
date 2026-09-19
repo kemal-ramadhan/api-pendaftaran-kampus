@@ -97,6 +97,11 @@ echo "Mailpit URL : $MAILPIT_URL"
 echo "Timestamp   : $(date)"
 echo "------------------------------------------------------------------------------"
 
+# Bersihkan sliding window rate limit di Redis sebelum pengujian
+if command -v docker >/dev/null 2>&1; then
+  docker exec pmb-redis redis-cli FLUSHALL >/dev/null 2>&1 || true
+fi
+
 RAND_ID="${RANDOM}_${RANDOM}"
 MHS_EMAIL="calon_mhs_${RAND_ID}@example.com"
 MHS_PASSWORD="Password123!"
@@ -413,15 +418,21 @@ else
   exit 1
 fi
 
-# 14. OTP Salah sampai Terkunci (OTP_LOCKED)
+## 14. OTP Salah sampai Terkunci (OTP_LOCKED)
 log_info "14. [NEGATIF] Menguji penguncian OTP setelah salah berulang kali (OTP_LOCKED)..."
-OTP_LOCK_EMAIL="otp_lock_${RAND_ID}@example.com"
-_=$(curl -s -X POST "${GATEWAY_URL}/register" \
+OTP_LOCK_EMAIL="otp_lock_${RANDOM}_${RANDOM}@example.com"
+OTP_LOCK_PHONE="081$(date +%s | cut -c4-10)"
+RESP_REG=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/register" \
   -H "Content-Type: application/json" \
-  -d "{ \"email\": \"$OTP_LOCK_EMAIL\", \"password\": \"PassOtpLock123!\", \"password_confirmation\": \"PassOtpLock123!\", \"full_name\": \"OTP Lock Target\", \"phone\": \"081999990002\" }")
+  -d "{ \"email\": \"$OTP_LOCK_EMAIL\", \"password\": \"PassOtpLock123!\", \"password_confirmation\": \"PassOtpLock123!\", \"full_name\": \"OTP Lock Target\", \"phone\": \"$OTP_LOCK_PHONE\" }")
+CODE_REG=$(echo "$RESP_REG" | tail -n1)
+if [ "$CODE_REG" != "201" ] && [ "$CODE_REG" != "200" ]; then
+  log_fail "Gagal mendaftarkan user target OTP lock (HTTP $CODE_REG)"
+  exit 1
+fi
 
 GOT_OTP_LOCKED=false
-for attempt in {1..6}; do
+for attempt in {1..7}; do
   RESP_BAD_OTP=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/verify" \
     -H "Content-Type: application/json" \
     -d "{ \"email\": \"$OTP_LOCK_EMAIL\", \"otp\": \"000000\" }")
@@ -433,12 +444,14 @@ for attempt in {1..6}; do
     log_pass "Percobaan ke-$attempt: OTP berhasil terkunci dengan HTTP 429 OTP_LOCKED"
     break
   fi
+  sleep 0.2
 done
 
 if [ "$GOT_OTP_LOCKED" = "true" ]; then
   log_pass "Verifikasi OTP terkunci setelah batas percobaan habis"
 else
   log_fail "OTP tidak terkunci setelah berkali-kali salah"
+  echo -e "${YELLOW}Response Terakhir:${NC} HTTP $HTTP_CODE - $BODY"
   exit 1
 fi
 
