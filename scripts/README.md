@@ -4,7 +4,7 @@ Direktori ini memuat skrip otomatisasi dan verifikasi end-to-end (E2E) sistem PM
 
 ## 1. Skrip Pengujian End-to-End (`e2e.sh`)
 
-Skrip `scripts/e2e.sh` menjalankan alur bisnis calon mahasiswa dan otorisasi admin secara menyeluruh **melalui API Gateway** (`http://localhost:8000/api/v1/auth/...`).
+Skrip `scripts/e2e.sh` menjalankan alur bisnis calon mahasiswa, otorisasi admin, serta skenario pengujian negatif dan keamanan secara menyeluruh **melalui API Gateway** (`http://localhost:8000/api/v1/auth/...`).
 
 ### Skenario yang Diuji:
 1. **Pendaftaran Calon Mahasiswa** (`POST /register`) via API Gateway.
@@ -18,22 +18,47 @@ Skrip `scripts/e2e.sh` menjalankan alur bisnis calon mahasiswa dan otorisasi adm
 9. **Superadmin Membuat User Internal** (`POST /admin/users`) -> membuat user dengan role `keuangan`.
 10. **Login Staf Keuangan** (`POST /login`) -> autentikasi akun staf keuangan.
 11. **Pengujian Otorisasi RBAC Gateway** (`GET /admin/users` oleh keuangan) -> dipastikan **403 Forbidden**.
+12. **Skenario Negatif Keamanan**:
+    - Percobaan OTP salah berulang hingga terkunci (`OTP_LOCKED`, HTTP 429).
+    - Login salah 5x berturut-turut hingga lockout (`TOO_MANY_ATTEMPTS`, HTTP 429).
+    - Login email tak terdaftar (`INVALID_CREDENTIALS`, HTTP 401, pesan sama persis dengan password salah).
+    - Token Reuse Detection: Refresh token lama yang sudah dirotasi digunakan kembali (`TOKEN_REVOKED`, HTTP 401).
+    - Penolakan Refresh Token sebagai Access Token (`TOKEN_INVALID`, HTTP 401).
+    - Anti-Spoofing: Injeksi header palsu `X-User-ID` dari klien dibersihkan/ditimpa.
+    - Pemblokiran Akses Gateway ke Endpoint Internal Hilir (`/internal/*` -> HTTP 404).
+    - Alur Lupa & Reset Password (`POST /forgot-password` -> baca token dari Mailpit -> `POST /reset-password` -> login sukses dengan password baru).
 
-### Cara Menjalankan
+---
 
-#### A. Menggunakan Docker Compose (Direkomendasikan di Server/CI)
+## 2. Cara Menjalankan
+
+### A. Menggunakan Docker Asli (Wajib untuk Verifikasi Resmi & CI/CD)
+> [!IMPORTANT]
+> Pengujian resmi sistem HARUS dijalankan terhadap container Docker asli (PostgreSQL 15, Redis 7, dan Mailpit resmi).
+
 ```bash
 # 1. Jalankan seluruh container
 docker compose -f deploy/docker-compose.yml up -d --build
 
-# 2. Jalankan skrip verifikasi
+# 2. Jalankan skrip verifikasi (Linux / macOS)
 bash scripts/e2e.sh
+
+# 2. Jalankan di Windows (menggunakan Git Bash)
+"C:\Program Files\Git\bin\bash.exe" scripts/e2e.sh
 ```
 
-#### B. Menggunakan Standalone / Local Dev Environment (Tanpa Docker)
-Jika Docker belum terpasang di host pengembang, lingkungan dapat dijalankan secara lokal:
+---
+
+### B. Lingkungan Standalone / In-Memory (`scripts/infra`)
+> [!WARNING]
+> **LABEL PERINGATAN (PENTING):**
+> `scripts/infra/` adalah infrastruktur tiruan/mock berbasis in-memory (`miniredis`, `embedded-postgres`, dan listener SMTP tiruan).
+> **Hanya digunakan untuk keperluan development darurat ketika Docker engine tidak terpasang di komputer pengembang.**
+> Komponen ini **BUKAN PENGGANTI TES DI DOCKER ASLI**, karena perilaku concurrency, storage disk, dan persistensi state berbeda dengan PostgreSQL dan Redis produksi.
+
+Jika terpaksa menjalankan tanpa Docker:
 ```bash
-# Terminal 1: Jalankan Infrastruktur (PostgreSQL 5432, Redis 6379, Mailpit 1025/8025)
+# Terminal 1: Jalankan Infrastruktur Tiruan (Postgres 5432, Redis 6379, Mailpit 1025/8025)
 cd scripts/infra
 go run .
 
