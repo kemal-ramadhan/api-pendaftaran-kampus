@@ -61,8 +61,7 @@ func (ctl *InternalController) GetUser(c *gin.Context) {
 // @Router /internal/users/batch [post]
 func (ctl *InternalController) GetBatchUsers(c *gin.Context) {
 	var req dto.BatchUsersRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Daftar ID tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -103,8 +102,7 @@ func (ctl *InternalController) AddUserRole(c *gin.Context) {
 	}
 
 	var req dto.AddUserRoleRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data role tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 

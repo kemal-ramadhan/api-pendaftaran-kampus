@@ -2,8 +2,10 @@ package response
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -132,3 +134,136 @@ func TestValidationErrorResponse(t *testing.T) {
 		t.Errorf("expected errors on email field")
 	}
 }
+
+type dummyPayload struct {
+	Email string `json:"email" binding:"required,email"`
+	Name  string `json:"name" binding:"required,min=3"`
+}
+
+func TestFormatBindingError_EmptyBody(t *testing.T) {
+	msg, errMap := FormatBindingError(io.EOF)
+	if msg != "Data permintaan (body) tidak boleh kosong" {
+		t.Errorf("expected clean indonesian message for EOF, got '%s'", msg)
+	}
+	if len(errMap["body"]) == 0 || errMap["body"][0] == "EOF" {
+		t.Errorf("errors.body must not be EOF, got: %v", errMap["body"])
+	}
+}
+
+func TestFormatBindingError_InvalidJSON(t *testing.T) {
+	msg, errMap := FormatBindingError(io.ErrUnexpectedEOF)
+	if msg != "Format data JSON tidak valid atau rusak" {
+		t.Errorf("expected clean indonesian message for syntax error, got '%s'", msg)
+	}
+	if len(errMap["json"]) == 0 {
+		t.Errorf("expected errors.json to be populated")
+	}
+}
+
+func TestBindJSON_EmptyBodyHTTP(t *testing.T) {
+	r := setupTestRouter()
+	r.POST("/test-bind", func(c *gin.Context) {
+		var req dummyPayload
+		if !BindJSON(c, &req) {
+			return
+		}
+		Success(c, http.StatusOK, "OK", nil)
+	})
+
+	// Request dengan body kosong
+	req := httptest.NewRequest(http.MethodPost, "/test-bind", strings.NewReader(""))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status 422 for empty body, got %d", w.Code)
+	}
+
+	var resp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if resp.ErrorCode != ErrCodeValidationError {
+		t.Errorf("expected error_code %s, got %s", ErrCodeValidationError, resp.ErrorCode)
+	}
+	if resp.Message != "Data permintaan (body) tidak boleh kosong" {
+		t.Errorf("expected indonesian empty body message, got '%s'", resp.Message)
+	}
+	// Pastikan TIDAK ADA "EOF" yang membocorkan error internal Go
+	for field, msgs := range resp.Errors {
+		for _, m := range msgs {
+			if m == "EOF" {
+				t.Errorf("internal Go error 'EOF' must not be exposed in field %s", field)
+			}
+		}
+	}
+}
+
+func TestBindJSON_InvalidJSONHTTP(t *testing.T) {
+	r := setupTestRouter()
+	r.POST("/test-bind", func(c *gin.Context) {
+		var req dummyPayload
+		if !BindJSON(c, &req) {
+			return
+		}
+		Success(c, http.StatusOK, "OK", nil)
+	})
+
+	// Request dengan format JSON rusak
+	req := httptest.NewRequest(http.MethodPost, "/test-bind", strings.NewReader("{ broken json "))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status 422 for malformed json, got %d", w.Code)
+	}
+
+	var resp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if resp.Message != "Format data JSON tidak valid atau rusak" {
+		t.Errorf("expected malformed JSON message, got '%s'", resp.Message)
+	}
+	if len(resp.Errors["json"]) == 0 {
+		t.Errorf("expected errors['json'] to be populated")
+	}
+}
+
+func TestBindJSON_ValidationFailedHTTP(t *testing.T) {
+	r := setupTestRouter()
+	r.POST("/test-bind", func(c *gin.Context) {
+		var req dummyPayload
+		if !BindJSON(c, &req) {
+			return
+		}
+		Success(c, http.StatusOK, "OK", nil)
+	})
+
+	// Request dengan valid JSON tetapi field tidak valid
+	req := httptest.NewRequest(http.MethodPost, "/test-bind", strings.NewReader(`{"email":"bukan-email","name":"a"}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected status 422 for validation error, got %d", w.Code)
+	}
+
+	var resp ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+
+	if len(resp.Errors["email"]) == 0 {
+		t.Errorf("expected validation error on email")
+	}
+	if len(resp.Errors["name"]) == 0 {
+		t.Errorf("expected validation error on name")
+	}
+}
+

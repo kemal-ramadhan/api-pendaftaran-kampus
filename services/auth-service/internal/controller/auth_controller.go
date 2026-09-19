@@ -38,8 +38,7 @@ func NewAuthController(authService service.AuthService, tokenManager token.Token
 // @Router /auth/register [post]
 func (ctl *AuthController) Register(c *gin.Context) {
 	var req dto.RegisterRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data pendaftaran tidak valid", map[string][]string{"form": {err.Error()}})
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -73,8 +72,7 @@ func (ctl *AuthController) Register(c *gin.Context) {
 // @Router /auth/verify [post]
 func (ctl *AuthController) VerifyOTP(c *gin.Context) {
 	var req dto.VerifyOTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Input verifikasi OTP tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -111,8 +109,7 @@ func (ctl *AuthController) VerifyOTP(c *gin.Context) {
 // @Router /auth/resend-otp [post]
 func (ctl *AuthController) ResendOTP(c *gin.Context) {
 	var req dto.ResendOTPRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Email tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -142,8 +139,7 @@ func (ctl *AuthController) ResendOTP(c *gin.Context) {
 // @Router /auth/login [post]
 func (ctl *AuthController) Login(c *gin.Context) {
 	var req dto.LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Format data login tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -186,8 +182,7 @@ func (ctl *AuthController) Login(c *gin.Context) {
 // @Router /auth/refresh [post]
 func (ctl *AuthController) Refresh(c *gin.Context) {
 	var req dto.RefreshRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Refresh token diperlukan", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -296,8 +291,7 @@ func (ctl *AuthController) UpdateProfile(c *gin.Context) {
 	}
 
 	var req dto.UpdateProfileRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data profil tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -331,8 +325,7 @@ func (ctl *AuthController) ChangePassword(c *gin.Context) {
 	}
 
 	var req dto.ChangePasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Input kata sandi tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -364,8 +357,7 @@ func (ctl *AuthController) ChangePassword(c *gin.Context) {
 // @Router /auth/forgot-password [post]
 func (ctl *AuthController) ForgotPassword(c *gin.Context) {
 	var req dto.ForgotPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Format email tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -394,8 +386,7 @@ func (ctl *AuthController) ForgotPassword(c *gin.Context) {
 // @Router /auth/reset-password [post]
 func (ctl *AuthController) ResetPassword(c *gin.Context) {
 	var req dto.ResetPasswordRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Input reset kata sandi tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 

@@ -95,8 +95,7 @@ func (ctl *AdminController) CreateUser(c *gin.Context) {
 	actorID, _ := middleware.GetUserID(c)
 
 	var req dto.AdminCreateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data pembuatan pengguna tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -170,8 +169,7 @@ func (ctl *AdminController) UpdateUser(c *gin.Context) {
 	}
 
 	var req dto.AdminUpdateUserRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data pembaruan tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -215,8 +213,7 @@ func (ctl *AdminController) UpdateUserRoles(c *gin.Context) {
 	}
 
 	var req dto.AdminUpdateRolesRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Data role tidak valid", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
@@ -264,8 +261,7 @@ func (ctl *AdminController) UpdateUserStatus(c *gin.Context) {
 	}
 
 	var req dto.AdminUpdateStatusRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		response.UnprocessableEntity(c, "Status tidak valid (pilih 'active' atau 'inactive')", nil)
+	if !response.BindJSON(c, &req) {
 		return
 	}
 
