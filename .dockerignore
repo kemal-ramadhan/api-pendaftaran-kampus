@@ -1,0 +1,28 @@
+# Git and metadata
+.git/
+.github/
+
+# Documentation and references
+docs/
+reference/
+*.pdf
+*.md
+
+# Verification scripts and local tools
+scripts/
+
+# Binaries and temporary files
+*.exe
+*.test
+*.out
+tmp/
+temp/
+coverage/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db
