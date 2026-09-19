@@ -20,5 +20,8 @@ func NewAuditLogRepository(db *gorm.DB) AuditLogRepository {
 }
 
 func (r *auditLogRepository) Create(ctx context.Context, log *model.AuditLog) error {
+	if log.Metadata == "" {
+		log.Metadata = "{}"
+	}
 	return r.db.WithContext(ctx).Create(log).Error
 }

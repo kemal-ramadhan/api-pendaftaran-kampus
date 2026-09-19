@@ -59,7 +59,7 @@ func SeedSuperadmin(ctx context.Context, db *gorm.DB, cfg *config.Config, log *z
 	var existingUser model.User
 	err := db.WithContext(ctx).Where("email = ?", email).First(&existingUser).Error
 	if err == nil {
-		// Sudah ada
+		log.Info("Akun superadmin bawaan sudah ada di database, melewati seed", zap.String("email", email))
 		return nil
 	}
 	if err != gorm.ErrRecordNotFound {
