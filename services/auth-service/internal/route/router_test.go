@@ -36,7 +36,7 @@ func TestSetupRoutes(t *testing.T) {
 	healthCtrl := controller.NewHealthController(nil, nil, "test")
 
 	r := gin.New()
-	SetupRoutes(r, authCtrl, adminCtrl, internalCtrl, healthCtrl, tm, nil, "test-internal-token")
+	SetupRoutes(r, authCtrl, adminCtrl, internalCtrl, healthCtrl, tm, nil, "test-internal-token", "test-gateway-secret")
 
 	// Uji route yang terdaftar
 	endpoints := []struct {

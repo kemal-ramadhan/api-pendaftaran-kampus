@@ -9,7 +9,7 @@ COPY services/api-gateway/go.mod services/api-gateway/go.sum* ./services/api-gat
 
 # Download dependencies
 WORKDIR /app/services/api-gateway
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy source code
 WORKDIR /app
@@ -18,7 +18,9 @@ COPY services/api-gateway/ ./services/api-gateway/
 
 # Build binary
 WORKDIR /app/services/api-gateway
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/api-gateway ./cmd/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/api-gateway ./cmd/main.go
 
 # Production stage
 FROM alpine:3.20

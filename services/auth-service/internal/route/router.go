@@ -5,6 +5,7 @@ import (
 	swaggerFiles "github.com/swaggo/files"
 	ginSwagger "github.com/swaggo/gin-swagger"
 
+	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/controller"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/middleware"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/model"
@@ -20,6 +21,7 @@ func SetupRoutes(
 	tokenMgr token.TokenManager,
 	sessionStore token.SessionStore,
 	internalToken string,
+	gatewaySharedSecret string,
 ) {
 	// Swagger Documentation
 	r.GET("/docs/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
@@ -32,8 +34,9 @@ func SetupRoutes(
 	// Well-Known JWKS
 	r.GET("/.well-known/jwks.json", authCtrl.GetJWKS)
 
-	// Public Auth Endpoints
+	// Auth Endpoints (Wajib melalui API Gateway dengan HMAC Signature yang sah)
 	auth := r.Group("/auth")
+	auth.Use(gatewayauth.Middleware(gatewaySharedSecret))
 	{
 		auth.POST("/register", authCtrl.Register)
 		auth.POST("/verify", authCtrl.VerifyOTP)

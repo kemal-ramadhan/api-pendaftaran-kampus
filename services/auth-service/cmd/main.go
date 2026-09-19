@@ -142,7 +142,7 @@ func main() {
 	r.Use(logger.GinLogger(appLog))
 
 	// Setup Routes
-	route.SetupRoutes(r, authCtrl, adminCtrl, internalCtrl, healthCtrl, tokenMgr, sessionStore, cfg.InternalToken)
+	route.SetupRoutes(r, authCtrl, adminCtrl, internalCtrl, healthCtrl, tokenMgr, sessionStore, cfg.InternalToken, cfg.GatewaySharedSecret)
 
 	srv := &http.Server{
 		Addr:         ":" + cfg.AppPort,

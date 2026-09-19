@@ -3,8 +3,10 @@ package config
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -133,13 +135,27 @@ func ConnectDB(cfg *Config) (*gorm.DB, error) {
 		cfg.DBPort,
 	)
 
-	logLevel := gormlogger.Silent
+	gormLogLevel := gormlogger.Silent
 	if cfg.AppEnv == "development" {
-		logLevel = gormlogger.Warn
+		if strings.EqualFold(getEnv("LOG_LEVEL", "info"), "debug") {
+			gormLogLevel = gormlogger.Info
+		} else {
+			gormLogLevel = gormlogger.Warn
+		}
 	}
 
+	customGormLogger := gormlogger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		gormlogger.Config{
+			SlowThreshold:             200 * time.Millisecond,
+			LogLevel:                  gormLogLevel,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
+
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(logLevel),
+		Logger: customGormLogger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("gagal koneksi ke PostgreSQL: %w", err)

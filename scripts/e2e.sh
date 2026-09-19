@@ -30,6 +30,7 @@ set -e
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:8000/api/v1/auth}"
 GATEWAY_BASE="${GATEWAY_BASE:-http://localhost:8000}"
 MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
+AUTH_DIRECT_URL="${AUTH_DIRECT_URL:-http://localhost:8080}"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -628,6 +629,26 @@ HTTP_CODE=$(echo "$RESP" | tail -n1)
 BODY=$(echo "$RESP" | sed '$d')
 assert_status "Akses admin oleh user non-superadmin ditolak" "403" "$HTTP_CODE" "$BODY"
 log_pass "RBAC Gateway berhasil memblokir akses ke /admin/users dengan HTTP 403 Forbidden"
+
+# 20. [KEAMANAN] Menguji Proteksi Bypass Gateway: Request Langsung ke Auth-Service
+log_info "20. [KEAMANAN] Menguji proteksi bypass gateway: Request langsung ke auth-service..."
+if ! curl -s --connect-timeout 2 "${AUTH_DIRECT_URL}/health" >/dev/null 2>&1; then
+  echo -e "${YELLOW}[SKIP]${NC} Port auth-service langsung (${AUTH_DIRECT_URL}) tidak terbuka / tidak dapat diakses"
+else
+  DIRECT_RES=$(curl -s -w "\n%{http_code}" -X GET "${AUTH_DIRECT_URL}/auth/me" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  DIRECT_STATUS=$(echo "$DIRECT_RES" | tail -n1)
+  DIRECT_BODY=$(echo "$DIRECT_RES" | sed '$d')
+
+  assert_status "Request langsung ke auth-service tanpa gateway signature ditolak" "401" "$DIRECT_STATUS" "$DIRECT_BODY"
+
+  DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
+  if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
+    log_pass "Auth-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
+  else
+    log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
+  fi
+fi
 
 # ==============================================================================
 # Ringkasan Akhir

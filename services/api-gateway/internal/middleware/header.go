@@ -34,8 +34,9 @@ func HeaderPropagationMiddleware(sharedSecret string) gin.HandlerFunc {
 		req.Header.Set(gatewayauth.HeaderRequestID, reqID)
 
 		// 3. Jika user terautentikasi, propagasikan klaim identitas
+		userID := ""
 		if claims, ok := GetGatewayClaims(c); ok {
-			userID := claims.Subject
+			userID = claims.Subject
 			req.Header.Set(gatewayauth.HeaderUserID, userID)
 			req.Header.Set("X-User-Email", claims.Email)
 			req.Header.Set("X-User-Roles", strings.Join(claims.Roles, ","))
@@ -50,15 +51,15 @@ func HeaderPropagationMiddleware(sharedSecret string) gin.HandlerFunc {
 			} else {
 				req.Header.Set("X-User-Scopes", base64.RawURLEncoding.EncodeToString([]byte("[]")))
 			}
+		}
 
-			// Injeksi Timestamp dan Signature HMAC
-			nowStr := strconv.FormatInt(time.Now().Unix(), 10)
-			req.Header.Set(gatewayauth.HeaderGatewayTimestamp, nowStr)
+		// Injeksi Timestamp dan Signature HMAC untuk SEMUA request (publik maupun terautentikasi)
+		nowStr := strconv.FormatInt(time.Now().Unix(), 10)
+		req.Header.Set(gatewayauth.HeaderGatewayTimestamp, nowStr)
 
-			if sharedSecret != "" {
-				sig := gatewayauth.GenerateSignature(sharedSecret, reqID, userID, nowStr)
-				req.Header.Set(gatewayauth.HeaderGatewaySignature, sig)
-			}
+		if sharedSecret != "" {
+			sig := gatewayauth.GenerateSignature(sharedSecret, reqID, userID, nowStr)
+			req.Header.Set(gatewayauth.HeaderGatewaySignature, sig)
 		}
 
 		c.Next()

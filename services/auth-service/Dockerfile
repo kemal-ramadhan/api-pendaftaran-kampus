@@ -9,7 +9,7 @@ COPY services/auth-service/go.mod services/auth-service/go.sum* ./services/auth-
 
 # Download dependencies
 WORKDIR /app/services/auth-service
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy source code
 WORKDIR /app
@@ -18,7 +18,9 @@ COPY services/auth-service/ ./services/auth-service/
 
 # Build binary
 WORKDIR /app/services/auth-service
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/auth-service ./cmd/main.go
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/auth-service ./cmd/main.go
 
 # Production stage
 FROM alpine:3.20

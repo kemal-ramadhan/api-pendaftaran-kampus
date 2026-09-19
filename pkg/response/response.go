@@ -34,6 +34,7 @@ const (
 	ErrCodeForbidden           = "FORBIDDEN"
 	ErrCodeNotFound            = "NOT_FOUND"
 	ErrCodeRateLimited         = "RATE_LIMITED"
+	ErrCodeGatewaySignatureInvalid = "GATEWAY_SIGNATURE_INVALID"
 	ErrCodeUpstreamUnavailable = "UPSTREAM_UNAVAILABLE"
 	ErrCodeUpstreamTimeout     = "UPSTREAM_TIMEOUT"
 	ErrCodeInternalError       = "INTERNAL_ERROR"

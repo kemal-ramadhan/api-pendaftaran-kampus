@@ -1,0 +1,8 @@
+# Docker Compose Override Khusus Development
+# Otomatis dibaca oleh docker compose pada lingkungan development lokal.
+# Mengekspos port 8080 auth-service untuk akses Swagger UI langsung di http://localhost:8080/docs/index.html
+
+services:
+  auth-service:
+    ports:
+      - "${AUTH_PORT:-8080}:8080"

@@ -86,6 +86,13 @@ func NewProxyHandler(routesConfig *config.RoutesConfig, logger *zap.Logger) (*Pr
 			})
 		}
 
+		revProxy.ModifyResponse = func(resp *http.Response) error {
+			// Hapus header X-Request-ID dari respons upstream agar tidak duplikat dengan header gateway
+			resp.Header.Del("X-Request-ID")
+			resp.Header.Del("X-Request-Id")
+			return nil
+		}
+
 		ph.proxies[svcName] = revProxy
 	}
 

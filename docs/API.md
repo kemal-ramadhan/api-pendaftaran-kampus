@@ -69,6 +69,7 @@ Semua respons error membungkus informasi kesalahan secara seragam:
 | `FORBIDDEN` | 403 | Pengguna tidak memiliki role/scope yang disyaratkan. |
 | `NOT_FOUND` | 404 | Endpoint tidak ditemukan atau akses ke internal diblokir. |
 | `RATE_LIMITED` | 429 | IP melebihi ambang batas request gateway. |
+| `GATEWAY_SIGNATURE_INVALID` | 401 | Request bypass gateway langsung ke service hulu tanpa HMAC signature yang sah atau timestamp kedaluwarsa (> 60s). |
 | `UPSTREAM_UNAVAILABLE` | 502 | Layanan hilir auth sedang tidak dapat dihubungi. |
 | `UPSTREAM_TIMEOUT` | 504 | Layanan hilir melebihi batas waktu eksekusi (timeout). |
 | `INTERNAL_ERROR` | 500 | Kesalahan internal server tak terduga. |

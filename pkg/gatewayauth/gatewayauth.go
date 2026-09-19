@@ -64,7 +64,7 @@ func Middleware(sharedSecret string) gin.HandlerFunc {
 		userID := c.GetHeader(HeaderUserID)
 
 		if sig == "" || ts == "" || !VerifySignature(sharedSecret, reqID, userID, ts, sig, DefaultMaxSkew) {
-			response.Error(c, http.StatusForbidden, response.ErrCodeForbidden, "Akses ditolak: signature gateway tidak valid atau kedaluwarsa", nil)
+			response.Error(c, http.StatusUnauthorized, response.ErrCodeGatewaySignatureInvalid, "Akses ditolak: signature gateway tidak valid atau kedaluwarsa", nil)
 			c.Abort()
 			return
 		}
