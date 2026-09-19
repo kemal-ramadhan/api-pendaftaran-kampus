@@ -68,9 +68,23 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
 
 ---
 
-## 9. Penundaan Fitur Non-Kritis ke Milestone M4
-- **Status**: Disetujui lead, 18 Sep 2026
-- **Keputusan**: Fitur import CSV user (`POST /auth/admin/users/import`), profil observability (Jaeger/Prometheus), dan file Postman collection ditunda pengerjaannya ke Milestone M4.
-- **Rasional**: Memaksimalkan fokus dan kecepatan implementasi alur kritis calon mahasiswa berjalan penuh melalui API Gateway (M1, M2, dan M3).
-- **Implikasi**: Admin API untuk manajemen user & role manual tetap diimplementasikan di M2.
+## 9. Status Import CSV dan Observability pada M4
+- **Status**: Diputuskan pada Milestone M4, 19 Sep 2026
+- **Keputusan**:
+  - **Import CSV Pengguna**: Penambahan endpoint `POST /auth/admin/users/import` digeser ke fase perluasan administrasi berikutnya. Saat ini superadmin telah dilengkapi fungsionalitas manajemen pengguna lengkap per-akun (`POST /api/v1/auth/admin/users`, `PUT /users/:id/roles`, aktivasi/deaktivasi) yang telah lolos uji RBAC di gateway dan unit testing.
+  - **Observability Profile**: Container `jaeger` dan `prometheus` telah didefinisikan lengkap di `deploy/docker-compose.yml` di bawah profile Docker Compose `observability`. Ekspor trace/metrics aktif saat flag atau env `OTEL_EXPORTER_ENDPOINT` dikonfigurasi.
+- **Rasional**: Sesuai arahan PRD Bagian 11 dan toleransi jadwal M4: memprioritaskan hardening alur calon mahasiswa, keamanan gateway (lockout, rate-limit, anti-spoofing, token reuse), verifikasi E2E otomatis, dan kelengkapan dokumentasi frontend serta Postman collection.
 
+---
+
+## 10. Akses Swagger UI di Lingkungan Development
+- **Keputusan**: Swagger UI auth service dibuka langsung di port host `8080` (`http://localhost:8080/docs/index.html`) pada `deploy/docker-compose.yml`, sementara API Gateway tetap memblokir path `/docs` dari akses publik (HTTP 404).
+- **Rasional**: Memenuhi kebutuhan developer frontend untuk meninjau dokumentasi OpenAPI interaktif, tanpa mengorbankan aturan keamanan gateway yang melarang eksposur endpoint dokumentasi internal ke publik di luar downstream.
+
+---
+
+## 11. Normalisasi Line-Ending Windows dan Optimasi Build Docker
+- **Keputusan**:
+  - Menambahkan `.gitattributes` dengan aturan `*.sh text eol=lf` agar script shell tidak terkonversi menjadi format CRLF di sistem operasi Windows.
+  - Menambahkan `.dockerignore` di root repositori untuk mengabaikan folder `reference/`, `docs/`, `scripts/`, `.git/`, dan file `.pdf`/`.md` dari context Docker build.
+- **Rasional**: Mencegah script shell rusak di Windows saat dieksekusi dengan Git Bash, serta memangkas ukuran build context dari 48 MB menjadi sangat ringkas sehingga proses `docker build` selesai dalam hitungan detik.
