@@ -1,0 +1,1370 @@
+{
+  "info": {
+    "_postman_id": "pmb-auth-gateway-v2-collection",
+    "name": "PMB Backend API (Auth \u0026 Gateway)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. AUTH (Calon Mahasiswa \u0026 Publik)",
+      "item": [
+        {
+          "name": "1.1 Register Calon Mahasiswa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon_mhs_demo@example.com\",\n  \"password\": \"Password123!\",\n  \"password_confirmation\": \"Password123!\",\n  \"full_name\": \"Ahmad Dani\",\n  \"phone\": \"081234567890\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "register"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created (Success)",
+              "originalRequest": null,
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Pendaftaran berhasil, silakan periksa email Anda untuk kode OTP\",\n  \"data\": {\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"otp_expires_at\": \"2026-09-19T08:30:00Z\",\n    \"resend_available_at\": \"2026-09-19T08:21:00Z\"\n  }\n}"
+            },
+            {
+              "name": "422 Validation Error",
+              "originalRequest": null,
+              "status": "Unprocessable Entity",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Format data tidak valid\",\n  \"error_code\": \"VALIDATION_ERROR\",\n  \"errors\": {\n    \"email\": [\"Format email tidak valid\"],\n    \"password\": [\"Kata sandi minimal 8 karakter\"]\n  },\n  \"request_id\": \"9ca3a762-15e2-4f9d-93f6-53b8ff13d265\"\n}"
+            },
+            {
+              "name": "409 Email Taken",
+              "originalRequest": null,
+              "status": "Conflict",
+              "code": 409,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Email sudah terdaftar\",\n  \"error_code\": \"EMAIL_TAKEN\",\n  \"request_id\": \"7a14e912-32b1-4cd9-99bb-927181048211\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.2 Verify OTP (Auto-Login)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon_mhs_demo@example.com\",\n  \"otp\": \"123456\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "verify"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Verifikasi email berhasil, Anda telah masuk ke sistem\",\n  \"data\": {\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIs...\",\n    \"refresh_token\": \"eyJhbGciOiJSUzI1NiIs...\",\n    \"token_type\": \"Bearer\",\n    \"expires_in\": 900,\n    \"user\": {\n      \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n      \"email\": \"calon_mhs_demo@example.com\",\n      \"full_name\": \"Ahmad Dani\",\n      \"phone\": \"+6281234567890\",\n      \"roles\": [\"calon_mahasiswa\"],\n      \"scopes\": [],\n      \"status\": \"active\"\n    }\n  }\n}"
+            },
+            {
+              "name": "400 OTP Invalid",
+              "originalRequest": null,
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Kode OTP tidak valid atau salah: sisa percobaan 4\",\n  \"error_code\": \"OTP_INVALID\",\n  \"request_id\": \"b9347891-62aa-41f2-ba22-127161821034\"\n}"
+            },
+            {
+              "name": "429 OTP Locked",
+              "originalRequest": null,
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Percobaan OTP melebihi batas maksimal, silakan kirim ulang OTP baru\",\n  \"error_code\": \"OTP_LOCKED\",\n  \"request_id\": \"029c7821-ff55-4819-a189-981273910114\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.access_token) {",
+                  "        pm.environment.set(\"token_access\", jsonData.data.access_token);",
+                  "        pm.collectionVariables.set(\"token_access\", jsonData.data.access_token);",
+                  "        console.log(\"Saved token_access:\", jsonData.data.access_token);",
+                  "    }",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.refresh_token) {",
+                  "        pm.environment.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        pm.collectionVariables.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        console.log(\"Saved token_refresh:\", jsonData.data.refresh_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.3 Resend OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon_mhs_demo@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/resend-otp",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "resend-otp"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Jika email terdaftar, kode OTP baru telah dikirimkan\",\n  \"data\": null\n}"
+            },
+            {
+              "name": "429 Cooldown Active",
+              "originalRequest": null,
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Mohon tunggu 60 detik sebelum meminta OTP kembali\",\n  \"error_code\": \"OTP_RESEND_COOLDOWN\",\n  \"request_id\": \"e1739210-912a-45c1-9011-817293019284\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.4 Login Calon Mahasiswa",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon_mhs_demo@example.com\",\n  \"password\": \"Password123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Login berhasil\",\n  \"data\": {\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIs...\",\n    \"refresh_token\": \"eyJhbGciOiJSUzI1NiIs...\",\n    \"token_type\": \"Bearer\",\n    \"expires_in\": 900,\n    \"user\": {\n      \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n      \"email\": \"calon_mhs_demo@example.com\",\n      \"full_name\": \"Ahmad Dani\",\n      \"phone\": \"+6281234567890\",\n      \"roles\": [\"calon_mahasiswa\"],\n      \"scopes\": [],\n      \"status\": \"active\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Invalid Credentials",
+              "originalRequest": null,
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Email atau kata sandi yang Anda masukkan salah\",\n  \"error_code\": \"INVALID_CREDENTIALS\",\n  \"request_id\": \"fa193847-9102-48cb-a831-918237461920\"\n}"
+            },
+            {
+              "name": "403 Email Not Verified",
+              "originalRequest": null,
+              "status": "Forbidden",
+              "code": 403,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Email Anda belum diverifikasi, silakan selesaikan proses verifikasi OTP\",\n  \"error_code\": \"EMAIL_NOT_VERIFIED\",\n  \"request_id\": \"cb819201-3829-4112-9843-182937461902\"\n}"
+            },
+            {
+              "name": "429 Too Many Attempts (Lockout 15m)",
+              "originalRequest": null,
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Akun terkunci sementara karena terlalu banyak percobaan gagal. Silakan coba lagi setelah 15 menit\",\n  \"error_code\": \"TOO_MANY_ATTEMPTS\",\n  \"request_id\": \"dd920192-4819-4820-9182-718293019284\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.access_token) {",
+                  "        pm.environment.set(\"token_access\", jsonData.data.access_token);",
+                  "        pm.collectionVariables.set(\"token_access\", jsonData.data.access_token);",
+                  "        console.log(\"Saved token_access:\", jsonData.data.access_token);",
+                  "    }",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.refresh_token) {",
+                  "        pm.environment.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        pm.collectionVariables.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        console.log(\"Saved token_refresh:\", jsonData.data.refresh_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.5 Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{token_refresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "refresh"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success Rotation)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Token berhasil diperbarui\",\n  \"data\": {\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIs...NEW...\",\n    \"refresh_token\": \"eyJhbGciOiJSUzI1NiIs...NEW...\",\n    \"token_type\": \"Bearer\",\n    \"expires_in\": 900,\n    \"user\": {\n      \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n      \"email\": \"calon_mhs_demo@example.com\",\n      \"full_name\": \"Ahmad Dani\",\n      \"phone\": \"+6281234567890\",\n      \"roles\": [\"calon_mahasiswa\"],\n      \"scopes\": [],\n      \"status\": \"active\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 Token Revoked / Reuse Detected",
+              "originalRequest": null,
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Token telah dicabut\",\n  \"error_code\": \"TOKEN_REVOKED\",\n  \"request_id\": \"92817263-1928-4829-9182-918273645192\"\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.access_token) {",
+                  "        pm.environment.set(\"token_access\", jsonData.data.access_token);",
+                  "        pm.collectionVariables.set(\"token_access\", jsonData.data.access_token);",
+                  "        console.log(\"Saved token_access:\", jsonData.data.access_token);",
+                  "    }",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.refresh_token) {",
+                  "        pm.environment.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        pm.collectionVariables.set(\"token_refresh\", jsonData.data.refresh_token);",
+                  "        console.log(\"Saved token_refresh:\", jsonData.data.refresh_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "1.6 Forgot Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"calon_mhs_demo@example.com\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/forgot-password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "forgot-password"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Generic Response)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Jika email terdaftar, instruksi reset kata sandi telah dikirimkan\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.7 Reset Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"example_reset_token_hex_32_bytes\",\n  \"password\": \"NewPassword123!\",\n  \"password_confirmation\": \"NewPassword123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/reset-password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "reset-password"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Kata sandi berhasil diperbarui, silakan masuk kembali\",\n  \"data\": null\n}"
+            },
+            {
+              "name": "400 Reset Token Invalid",
+              "originalRequest": null,
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Token reset kata sandi tidak valid atau telah kedaluwarsa\",\n  \"error_code\": \"RESET_TOKEN_INVALID\",\n  \"request_id\": \"51829304-9182-4182-9182-918273645192\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.8 Logout (Current Session)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{token_refresh}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Logout berhasil\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.9 Logout All Sessions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/logout-all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "logout-all"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Semua sesi login berhasil dicabut\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "1.10 JWKS Public Keys",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/auth/.well-known/jwks.json",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                ".well-known",
+                "jwks.json"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (JWKS JSON)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"keys\": [\n    {\n      \"kty\": \"RSA\",\n      \"use\": \"sig\",\n      \"alg\": \"RS256\",\n      \"kid\": \"pmb-auth-1\",\n      \"n\": \"u19827...\",\n      \"e\": \"AQAB\"\n    }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. PROFILE",
+      "item": [
+        {
+          "name": "2.1 Get Profile (Me)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "me"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Profil berhasil diambil\",\n  \"data\": {\n    \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"full_name\": \"Ahmad Dani\",\n    \"phone\": \"+6281234567890\",\n    \"roles\": [\"calon_mahasiswa\"],\n    \"scopes\": [],\n    \"status\": \"active\"\n  }\n}"
+            },
+            {
+              "name": "401 Token Missing / Expired",
+              "originalRequest": null,
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Token autentikasi telah kedaluwarsa\",\n  \"error_code\": \"TOKEN_EXPIRED\",\n  \"request_id\": \"a1827364-9182-4918-b819-192837461928\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.2 Update Profile (Display Name \u0026 Phone)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Ahmad Dani Pratama\",\n  \"phone\": \"081298765432\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/profile",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "profile"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Profil berhasil diperbarui\",\n  \"data\": {\n    \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"full_name\": \"Ahmad Dani Pratama\",\n    \"phone\": \"+6281298765432\",\n    \"roles\": [\"calon_mahasiswa\"],\n    \"scopes\": [],\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "2.3 Change Password (Self)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_password\": \"Password123!\",\n  \"password\": \"PasswordBaru123!\",\n  \"password_confirmation\": \"PasswordBaru123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/password",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "password"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Kata sandi berhasil diubah, semua sesi lain telah dicabut\",\n  \"data\": null\n}"
+            },
+            {
+              "name": "400 Old Password Mismatch",
+              "originalRequest": null,
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Kata sandi saat ini tidak cocok\",\n  \"error_code\": \"VALIDATION_ERROR\",\n  \"request_id\": \"c1827364-1928-4918-a819-192837461928\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. ADMIN (Superadmin Only)",
+      "item": [
+        {
+          "name": "3.1 Login Superadmin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"superadmin@kampus.ac.id\",\n  \"password\": \"Superadmin123!\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "login"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Login berhasil\",\n  \"data\": {\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIs...ADMIN...\",\n    \"refresh_token\": \"eyJhbGciOiJSUzI1NiIs...\",\n    \"token_type\": \"Bearer\",\n    \"expires_in\": 900,\n    \"user\": {\n      \"email\": \"superadmin@kampus.ac.id\",\n      \"full_name\": \"Super Administrator\",\n      \"roles\": [\"superadmin\"],\n      \"status\": \"active\"\n    }\n  }\n}"
+            }
+          ],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.data \u0026\u0026 jsonData.data.access_token) {",
+                  "        pm.environment.set(\"admin_token_access\", jsonData.data.access_token);",
+                  "        pm.collectionVariables.set(\"admin_token_access\", jsonData.data.access_token);",
+                  "        console.log(\"Saved admin_token_access:\", jsonData.data.access_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3.2 List Users (Paginated \u0026 Filtered)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users?page=1\u0026per_page=20\u0026status=active\u0026role=keuangan",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Daftar pengguna berhasil diambil\",\n  \"data\": [\n    {\n      \"id\": \"f1829304-9182-4182-9182-918273645192\",\n      \"email\": \"keuangan@univ.ac.id\",\n      \"full_name\": \"Staf Keuangan PMB\",\n      \"roles\": [\"keuangan\"],\n      \"status\": \"active\"\n    }\n  ],\n  \"meta\": {\n    \"page\": 1,\n    \"per_page\": 20,\n    \"total\": 1\n  }\n}"
+            },
+            {
+              "name": "403 Forbidden (Non-Superadmin)",
+              "originalRequest": null,
+              "status": "Forbidden",
+              "code": 403,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Anda tidak memiliki izin untuk mengakses resource ini\",\n  \"error_code\": \"FORBIDDEN\",\n  \"request_id\": \"e1827364-9182-4918-b819-192837461928\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.3 Create User (Internal Role with Scope)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"prodi_ti@univ.ac.id\",\n  \"full_name\": \"Kaprodi Teknik Informatika\",\n  \"phone\": \"081288887777\",\n  \"password\": \"ProdiSecret123!\",\n  \"roles\": [\n    {\n      \"code\": \"prodi\",\n      \"scope_type\": \"prodi\",\n      \"scope_id\": \"TI\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created (Success)",
+              "originalRequest": null,
+              "status": "Created",
+              "code": 201,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Pengguna baru berhasil dibuat\",\n  \"data\": {\n    \"id\": \"98127364-9182-4182-9182-918273645192\",\n    \"email\": \"prodi_ti@univ.ac.id\",\n    \"full_name\": \"Kaprodi Teknik Informatika\",\n    \"roles\": [\"prodi\"],\n    \"scopes\": [\n      {\n        \"role\": \"prodi\",\n        \"type\": \"prodi\",\n        \"id\": \"TI\"\n      }\n    ],\n    \"status\": \"active\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.4 Get User Detail by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users/{{test_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{test_user_id}}"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Detail pengguna berhasil diambil\",\n  \"data\": {\n    \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"full_name\": \"Ahmad Dani Pratama\",\n    \"roles\": [\"calon_mahasiswa\"],\n    \"status\": \"active\"\n  }\n}"
+            },
+            {
+              "name": "404 User Not Found",
+              "originalRequest": null,
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Pengguna tidak ditemukan\",\n  \"error_code\": \"NOT_FOUND\",\n  \"request_id\": \"a1827364-9182-4918-b819-192837461928\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.5 Update User by ID",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Kaprodi TI Universitas\",\n  \"phone\": \"081277776666\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users/{{test_user_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{test_user_id}}"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Data pengguna berhasil diperbarui\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.6 Update User Roles",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roles\": [\n    {\n      \"code\": \"admin_pmb\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users/{{test_user_id}}/roles",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{test_user_id}}",
+                "roles"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Role pengguna berhasil diperbarui\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.7 Deactivate User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users/{{test_user_id}}/deactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{test_user_id}}",
+                "deactivate"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Akun pengguna berhasil dinonaktifkan\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "3.8 Reactivate User",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/auth/admin/users/{{test_user_id}}/reactivate",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "auth",
+                "admin",
+                "users",
+                "{{test_user_id}}",
+                "reactivate"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Akun pengguna berhasil diaktifkan kembali\",\n  \"data\": null\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. INTERNAL (Service-to-Service)",
+      "item": [
+        {
+          "name": "4.1 Internal Get User by ID (Direct Auth Service)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Internal-Token",
+                "value": "{{internal_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{auth_service_direct_url}}/internal/users/{{test_user_id}}",
+              "host": [
+                "{{auth_service_direct_url}}"
+              ],
+              "path": [
+                "internal",
+                "users",
+                "{{test_user_id}}"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Success)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Data user berhasil diambil\",\n  \"data\": {\n    \"id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"full_name\": \"Ahmad Dani\",\n    \"roles\": [\"calon_mahasiswa\"],\n    \"status\": \"active\"\n  }\n}"
+            },
+            {
+              "name": "401 Unauthorized (Invalid Internal Token)",
+              "originalRequest": null,
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": false,\n  \"message\": \"Token internal tidak valid\",\n  \"error_code\": \"TOKEN_INVALID\",\n  \"request_id\": \"b1827364-9182-4918-b819-192837461928\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "4.2 Internal Verify Token (Direct Auth Service)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Internal-Token",
+                "value": "{{internal_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"token\": \"{{token_access}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{auth_service_direct_url}}/internal/token/verify",
+              "host": [
+                "{{auth_service_direct_url}}"
+              ],
+              "path": [
+                "internal",
+                "token",
+                "verify"
+              ]
+            }
+          },
+          "response": [
+            {
+              "name": "200 OK (Valid Token)",
+              "originalRequest": null,
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": true,\n  \"message\": \"Token valid\",\n  \"data\": {\n    \"valid\": true,\n    \"user_id\": \"e2c34914-9e32-474c-81be-3c9735d10d65\",\n    \"email\": \"calon_mhs_demo@example.com\",\n    \"roles\": [\"calon_mahasiswa\"]\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "auth_service_direct_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "token_access",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "token_refresh",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "admin_token_access",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "internal_token",
+      "value": "secret-internal-token",
+      "type": "string"
+    }
+  ]
+}
