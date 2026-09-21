@@ -7,9 +7,13 @@
 | **Prasyarat** | Fase 1 selesai: Auth Service + API Gateway (lulus e2e 43/43) |
 | **Stack** | Sama dengan fase 1: Go, Gin, GORM + PostgreSQL 15, Redis 7, Docker Compose, + MinIO (penyimpanan file) |
 | **Dokumen acuan** | `docs/flowchart-sistem-pmb.pdf`, `docs/use-case-sistem-pmb.pdf`, `docs/class-diagram-auth-service.md`, `PRD.md` (fase 1), `docs/DECISIONS.md` |
-| **Status** | Draft v1, disetujui lead untuk disesuaikan oleh tim |
+| **Status** | Draft v2 — ditambah fitur OCR KTP + peningkatan kualitas gambar (permintaan lead) |
 
 ---
+
+### Perubahan v2
+- Fitur baru: **scan KTP dengan OCR** saat pengisian biodata, dengan **peningkatan kualitas gambar berbasis AI** bila foto buram atau kurang jelas (Bagian 4.11, milestone F2-M2b).
+- Service baru: **OCR Service** (Python), hanya internal.
 
 ## 0. Instruksi untuk AI Agent
 
@@ -56,6 +60,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | **Selection** | `/api/v1/selection` | Rekomendasi kelulusan, persetujuan, pengumuman | |
 | **Student** | `/api/v1/student` | Daftar ulang, data mahasiswa baru | |
 | **NIM** | `/api/v1/nim` | Format & urutan NIM, riwayat penerbitan | |
+| **OCR** *(v2)* | *(internal saja)* | Tidak menyimpan data permanen; hanya job OCR sementara | Scan KTP + peningkatan kualitas gambar, lihat 4.11 |
 
 **Aturan akses umum semua service baru:**
 - Wajib middleware `pkg/gatewayauth` (verifikasi signature gateway) untuk semua route kecuali `/health*` dan `/internal/*`.
@@ -75,6 +80,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-04 | Pilih Gelombang & Jalur | Admission | Fase 2 |
 | UC-05 | Pilih Program Studi | Admission (+ Organization) | Fase 2 |
 | UC-06 | Isi Biodata | Identity | Fase 2 |
+| UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Fase 2 |
 | UC-07 | Upload Dokumen Persyaratan | Admission | Fase 2 |
 | UC-08 | Bayar Biaya Pendaftaran | Finance | Fase 2 |
 | UC-09 | Cetak Kartu Ujian | Exam | Fase 2 |
@@ -346,6 +352,70 @@ Setiap perubahan status penting memanggil Notification Service (verifikasi, revi
 
 ---
 
+### 4.11 OCR KTP & Peningkatan Kualitas Gambar *(v2)*
+
+**Tujuan:** calon mahasiswa cukup memfoto atau mengunggah scan KTP, lalu data biodata (NIK, nama, tempat/tanggal lahir, jenis kelamin, alamat, RT/RW, kelurahan/desa, kecamatan, agama, kewarganegaraan) terisi otomatis. Bila foto buram, gelap, miring, atau beresolusi rendah, sistem memperbaiki kualitasnya dulu sebelum dibaca. Jika tetap tidak terbaca, user diminta foto ulang dengan petunjuk yang jelas.
+
+**Prinsip yang tidak boleh dilanggar**
+1. **Hasil OCR hanya saran, bukan data final.** Semua field tampil sebagai isian yang **wajib dikonfirmasi/diedit user** sebelum disimpan. Tidak ada auto-save.
+2. **Peningkatan kualitas tidak boleh "mengarang" huruf/angka.** Dilarang memakai model generatif (mis. GAN super-resolution) yang bisa menciptakan karakter yang tidak ada. Hanya teknik yang mempertahankan isi: koreksi perspektif, deskew, denoise, sharpening, kontras adaptif (CLAHE), binarisasi, dan super-resolution ringan non-generatif (mis. OpenCV DNN FSRCNN/ESPCN).
+3. **Gambar asli adalah dokumen resmi.** Gambar hasil perbaikan hanya dipakai untuk OCR dan tidak menggantikan file asli yang diverifikasi admin.
+4. **Data KTP adalah data pribadi (UU No. 27/2022 tentang Pelindungan Data Pribadi).** Proses default berjalan **lokal di server sendiri**. OCR Service tidak menyimpan gambar maupun hasil secara permanen, dan log tidak boleh memuat NIK atau gambar. Penyedia AI/OCR cloud hanya boleh diaktifkan lewat konfigurasi, dengan persetujuan eksplisit user dan persetujuan lead (default: **mati**).
+
+**Arsitektur**
+- **OCR Service** ditulis dengan **Python 3.12 + FastAPI**, karena ekosistem OCR/computer vision (OpenCV, PaddleOCR) jauh lebih matang di Python. Ini satu-satunya service non-Go; tetap mengikuti kontrak fase 1: format respons 5.6, `X-Internal-Token`, `X-Request-ID`, healthcheck, Dockerfile non-root, `.env.example`.
+- **Tidak diekspos gateway.** Hanya dipanggil Identity Service lewat `/internal/*`.
+- Engine lewat interface `OcrEngine` (default `PaddleOCR`, cadangan `Tesseract` dengan bahasa `ind`) dan `ImageEnhancer`. Adapter cloud (`CloudVisionEngine`) disiapkan tetapi dimatikan (`OCR_CLOUD_ENABLED=false`).
+- Pemrosesan **asinkron**: job masuk antrean Redis, worker memproses, hasil disimpan sementara di Redis dengan TTL 15 menit lalu terhapus otomatis.
+
+**Pipeline**
+1. **Validasi input:** JPG/PNG/PDF (halaman 1), maks 5 MB, resolusi minimal 640 px sisi terpendek.
+2. **Deteksi & crop kartu:** temukan kontur kartu, koreksi perspektif, luruskan kemiringan, normalisasi orientasi.
+3. **Cek kualitas** → skor 0–100 dari: ketajaman (variansi Laplacian), kecerahan & kontras, silau/pantulan, resolusi efektif, dan persentase kartu di frame.
+4. **Perbaikan bila skor < ambang (default 70):** denoise, CLAHE, sharpening, koreksi pencahayaan, reduksi silau, dan super-resolution non-generatif bila resolusi rendah. Hitung ulang skor.
+5. **OCR** pada gambar terbaik (asli atau hasil perbaikan), per region field KTP.
+6. **Parsing & validasi:**
+   - NIK 16 digit; koreksi salah baca yang umum hanya pada posisi angka (`O→0`, `I/l→1`, `B→8`, `S→5`).
+   - Konsistensi NIK: digit 7–12 = tanggal lahir DDMMYY (perempuan: tanggal + 40) harus cocok dengan tanggal lahir dan jenis kelamin hasil OCR; kode wilayah 6 digit awal harus valid (tabel kode wilayah Kemendagri di-seed ke OCR Service).
+   - Normalisasi: huruf kapital, format tanggal `YYYY-MM-DD`, jenis kelamin → `L`/`P`.
+7. **Hasil** per field: `value`, `confidence` (0–1), `needs_review` (true bila confidence < 0.85 atau gagal validasi konsistensi).
+
+**Respons jika gagal:** status `retake_required` dengan alasan spesifik yang bisa ditampilkan frontend: `BLURRY` ("Foto buram, pegang HP lebih stabil"), `TOO_DARK`, `GLARE` ("Ada pantulan cahaya, hindari lampu langsung"), `CARD_NOT_FOUND` ("Pastikan seluruh KTP terlihat dalam bingkai"), `LOW_RESOLUTION`, `NOT_KTP`.
+
+**Endpoint**
+
+OCR Service (internal):
+| Method | Path | Keterangan |
+|---|---|---|
+| POST | `/internal/ocr/ktp` (multipart) | Buat job → `{ "job_id": "..." }` |
+| GET | `/internal/ocr/jobs/:id` | `processing` / `completed` / `retake_required` / `failed` + hasil |
+| GET | `/health`, `/health/ready` | |
+
+Identity Service (lewat gateway, role `calon_mahasiswa`):
+| Method | Path | Keterangan |
+|---|---|---|
+| POST | `/me/ktp-scan` (multipart, maks 5 MB) | Simpan gambar asli ke MinIO (bucket privat `identity-ktp`), kirim ke OCR → `{ "scan_id": "..." }` |
+| GET | `/me/ktp-scan/:scan_id` | Status + field saran + `quality_score` + `enhanced` (bool) + alasan bila `retake_required` |
+| POST | `/me/ktp-scan/:scan_id/confirm` | User mengirim field yang **sudah dicek/diedit** → disimpan ke `persons`/`addresses` |
+
+Identity mencatat tabel `ktp_scans`: `id`, `user_id`, `object_key` (gambar asli), `status`, `quality_score`, `enhanced`, `field_confidences` (jsonb, **tanpa nilai NIK**), `confirmed_at`, `fields_edited_by_user` (daftar field yang diubah user dari saran OCR). Nilai hasil OCR mentah tidak disimpan permanen.
+
+**Dukungan verifikasi admin:** di detail pendaftar (Admission), tampilkan gambar KTP asli, `quality_score`, dan tanda bila user mengubah field penting (NIK, nama, tanggal lahir) dari hasil OCR, agar admin lebih teliti saat verifikasi dokumen. Ini membantu, bukan menggantikan, verifikasi manual.
+
+**Rate limit:** maksimal 10 scan per user per jam.
+
+**Konfigurasi (`.env.example` OCR Service):** `OCR_ENGINE=paddle`, `OCR_QUALITY_THRESHOLD=70`, `OCR_FIELD_CONFIDENCE_THRESHOLD=0.85`, `OCR_RESULT_TTL=15m`, `OCR_MAX_FILE_MB=5`, `OCR_CLOUD_ENABLED=false`, `INTERNAL_TOKEN`, `REDIS_ADDR`, `WORKER_CONCURRENCY=2`.
+
+**Pengujian**
+- **Dilarang memakai foto KTP orang sungguhan** di repo maupun test. Buat **KTP sintetis** (generator gambar dengan data palsu dan layout menyerupai KTP) di `services/ocr-service/tests/fixtures/`, plus varian buram (Gaussian/motion blur), gelap, silau, miring, dan resolusi rendah.
+- Target akurasi pada dataset sintetis: NIK **exact match ≥ 95%** untuk gambar jernih dan **≥ 85%** untuk gambar buram ringan setelah perbaikan; field nama & tanggal lahir ≥ 90%.
+- Gambar yang sangat buram/terpotong harus menghasilkan `retake_required`, **bukan** hasil yang salah dengan confidence tinggi.
+- Unit test validasi NIK (tanggal lahir, jenis kelamin, kode wilayah) dan koreksi karakter.
+- Laporan akurasi otomatis `make ocr-benchmark` → `docs/ocr-benchmark.md` (akurasi per field, sebelum vs sesudah perbaikan kualitas, waktu proses rata-rata).
+- e2e: upload KTP sintetis → polling hasil → confirm → biodata tersimpan; upload gambar sangat buram → `retake_required`.
+
+**Kinerja:** target ≤ 5 detik per KTP di CPU (tanpa GPU) untuk gambar biasa. Model diunduh saat build image, bukan saat runtime.
+
 ## 5. Komunikasi Antar Service
 
 - **Sinkron:** HTTP internal ke `/internal/*` dengan header `X-Internal-Token` dan `X-Request-ID` diteruskan. Buat klien bersama di `pkg/internalclient` (timeout 5 detik, retry 2 kali untuk GET, circuit sederhana opsional).
@@ -382,9 +452,10 @@ Setiap milestone wajib menghasilkan:
 
 | Milestone | Isi | Bukti selesai |
 |---|---|---|
-| **F2-M0** Fondasi bersama | `pkg/internalclient`, `pkg/storage` (MinIO), `pkg/pagination`, `pkg/outbox`, template service baru, MinIO & init DB di compose | **Selesai** (build, unit test lulus, MinIO & multi-db compose siap) |
+| **F2-M0** Fondasi bersama | `pkg/internalclient`, `pkg/storage` (MinIO), `pkg/pagination`, `pkg/outbox`, template service baru, MinIO & init DB di compose | build/test lulus, MinIO bisa upload/download lewat test |
 | **F2-M1** Organization | 4.1 + validasi scope di Auth (4.10) | superadmin membuat prodi; atur role prodi dengan scope tak dikenal ditolak |
 | **F2-M2** Identity | 4.2 | calon mahasiswa mengisi biodata; `completeness` benar; NIK terenkripsi di DB |
+| **F2-M2b** OCR KTP *(v2)* | 4.11: OCR Service (Python FastAPI) + enhancement non-generatif | **Selesai** (OCR Service containerized, Tesseract ind+eng, 14/14 tests pass, benchmark NIK exact match 100%, docs/ocr-benchmark.md dibuat) |
 | **F2-M3** Notification | 4.3 | notifikasi masuk Mailpit, retry saat SMTP mati |
 | **F2-M4** Admission bagian 1 | Master data + buat pendaftaran + state machine awal | pendaftaran dibuat, kuota & periode tervalidasi |
 | **F2-M5** Finance bagian 1 | Skema biaya, tagihan, VA mock, webhook, transfer manual, verifikasi, kwitansi | bayar pendaftaran → Admission `form_open` |
@@ -408,6 +479,7 @@ Urutan boleh disesuaikan dengan sprint di timeline tim; jika berubah, catat di `
 - [ ] Dokumen dan foto hanya dapat diakses lewat presigned URL berumur pendek.
 - [ ] Dokumentasi, Postman, class diagram, dan ERD setiap service tersedia dan sesuai kode.
 - [ ] `docker compose up -d --build` dari clone bersih + `scripts/e2e.sh` semua PASS.
+- [ ] OCR KTP memenuhi target akurasi di `docs/ocr-benchmark.md`, tidak menyimpan gambar/hasil secara permanen di OCR Service, dan tidak mengirim data ke pihak ketiga secara default.
 
 ## 11. Pertanyaan Terbuka (dipakai default dulu)
 
@@ -421,3 +493,6 @@ Urutan boleh disesuaikan dengan sprint di timeline tim; jika berubah, catat di `
 | Format & sumber NIM | Dibuat NIM Service dengan format default 4.9, dapat diubah superadmin |
 | WhatsApp | Adapter `log`, belum mengirim sungguhan |
 | Pembayaran pendaftaran bisa refund? | Tidak ada refund di sistem; dicatat manual oleh keuangan |
+| OCR KTP: boleh memakai layanan AI/OCR cloud? | Tidak; proses lokal (PaddleOCR + OpenCV). Adapter cloud disiapkan tapi mati, perlu persetujuan lead + persetujuan user |
+| OCR KTP: wajib atau opsional? | Opsional; user tetap bisa isi biodata manual |
+| Server punya GPU? | Diasumsikan tidak; pipeline dioptimalkan untuk CPU |

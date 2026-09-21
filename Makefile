@@ -1,4 +1,4 @@
-.PHONY: up down restart ps logs build vet test lint swag gen-keys
+.PHONY: up down restart ps logs build vet test lint swag gen-keys ocr-benchmark test-ocr
 
 COMPOSE_FILE := deploy/docker-compose.yml
 
@@ -41,4 +41,11 @@ swag:
 
 gen-keys:
 	go run ./scripts/genkeys/main.go
+
+ocr-benchmark:
+	docker compose -f $(COMPOSE_FILE) exec -T ocr-service python tests/benchmark.py
+	docker compose -f $(COMPOSE_FILE) cp ocr-service:/app/ocr-benchmark.md docs/ocr-benchmark.md
+
+test-ocr:
+	docker compose -f $(COMPOSE_FILE) exec -T ocr-service pytest -v tests/
 

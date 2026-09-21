@@ -161,6 +161,37 @@ services:
     networks:
       - pmb-network
 
+  ocr-service:
+    build:
+      context: ../services/ocr-service
+      dockerfile: Dockerfile
+    container_name: pmb-ocr-service
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 8088
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      REDIS_ADDR: redis:6379
+      OCR_ENGINE: tesseract
+      OCR_QUALITY_THRESHOLD: 70
+      OCR_FIELD_CONFIDENCE_THRESHOLD: 0.85
+      OCR_RESULT_TTL: 15m
+      OCR_MAX_FILE_MB: 5
+      OCR_CLOUD_ENABLED: "false"
+      WORKER_CONCURRENCY: 2
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8088/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
   # Observability profile
   jaeger:
     image: jaegertracing/all-in-one:1.57

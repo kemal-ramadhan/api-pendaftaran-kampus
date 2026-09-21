@@ -360,3 +360,79 @@ Untuk pengalaman pengguna yang mulus (*seamless session*), frontend (Vue/React) 
 | `PUT /auth/profile/:id` | **Dihapus (Celah IDOR)** | User hanya boleh mengedit profil diri sendiri (`PUT /auth/profile`). Pengeditan user lain dialihkan ke endpoint admin terproteksi. |
 | `PUT /auth/change-role` | **Dihapus (Privilege Escalation)** | Pengguna tidak dapat menaikkan role sendiri. Perubahan role hanya dapat dilakukan superadmin via `/admin/users/:id/roles`. |
 | Endpoint `/internal/*` | **Diblokir di Gateway** | Klien publik ditolak HTTP 404 jika mencoba mengakses endpoint internal. Hanya dapat diakses komunikasi antar-service dengan `X-Internal-Token`. |
+
+---
+
+## 8. Rincian Endpoint — OCR Service (Internal)
+
+Layanan pengenalan teks KTP otomatis dan peningkatan kualitas citra berbasis *content-preserving* (FastAPI + Python 3.12). Layanan ini **tidak diekspos ke publik oleh API Gateway** dan hanya dapat dipanggil oleh service internal (seperti Identity Service).
+
+### 8.1 Membuat Job OCR KTP
+- **Method / URL**: `POST /internal/ocr/ktp`
+- **Header**:
+  - `X-Internal-Token: <token_internal>`
+  - `X-Request-ID: <uuid>`
+- **Content-Type**: `multipart/form-data`
+- **Body Form-Data**:
+  - `file`: Berkas gambar KTP (JPG, PNG, atau PDF halaman 1, maks 5 MB).
+- **Respons Sukses (202 Accepted)**:
+  ```json
+  {
+    "success": true,
+    "message": "Job OCR berhasil dibuat dan sedang diproses",
+    "data": {
+      "job_id": "7b01fa2d-7d88-466d-9b09-0ef5ad11b332",
+      "status": "processing"
+    }
+  }
+  ```
+
+### 8.2 Mengambil Status dan Hasil Job OCR
+- **Method / URL**: `GET /internal/ocr/jobs/:job_id`
+- **Header**:
+  - `X-Internal-Token: <token_internal>`
+  - `X-Request-ID: <uuid>`
+- **Respons Sukses — Status `completed` (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Status job OCR berhasil diambil",
+    "data": {
+      "job_id": "7b01fa2d-7d88-466d-9b09-0ef5ad11b332",
+      "status": "completed",
+      "quality_score": 88.5,
+      "enhanced": false,
+      "reason": null,
+      "reason_message": null,
+      "fields": {
+        "nik": { "value": "3273011508050001", "confidence": 0.95, "needs_review": false },
+        "nama": { "value": "BUDI SANTOSO", "confidence": 0.90, "needs_review": false },
+        "tempat_lahir": { "value": "BANDUNG", "confidence": 0.90, "needs_review": false },
+        "tanggal_lahir": { "value": "2005-08-15", "confidence": 0.90, "needs_review": false },
+        "jenis_kelamin": { "value": "L", "confidence": 0.90, "needs_review": false },
+        "alamat": { "value": "JL. MERDEKA NO. 45", "confidence": 0.90, "needs_review": false },
+        "rt_rw": { "value": "003/007", "confidence": 0.90, "needs_review": false },
+        "kel_desa": { "value": "BABAKAN CIAMIS", "confidence": 0.90, "needs_review": false },
+        "kecamatan": { "value": "SUMUR BANDUNG", "confidence": 0.90, "needs_review": false },
+        "agama": { "value": "ISLAM", "confidence": 0.90, "needs_review": false },
+        "kewarganegaraan": { "value": "WNI", "confidence": 0.95, "needs_review": false }
+      }
+    }
+  }
+  ```
+- **Respons Sukses — Status `retake_required` (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Status job OCR berhasil diambil",
+    "data": {
+      "job_id": "7b01fa2d-7d88-466d-9b09-0ef5ad11b332",
+      "status": "retake_required",
+      "quality_score": 12.0,
+      "enhanced": false,
+      "reason": "BLURRY",
+      "reason_message": "Foto buram, pegang HP lebih stabil dan pastikan fokus",
+      "fields": null
+    }
+  }
+  ```

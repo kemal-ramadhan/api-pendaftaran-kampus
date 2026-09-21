@@ -44,4 +44,9 @@ postman/
 
 reference/
 
-reference/
+# Python cache & test artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+services/ocr-service/tests/fixtures/

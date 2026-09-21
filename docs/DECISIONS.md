@@ -133,3 +133,16 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
 - **Keputusan**: NIK disimpan dalam format AES-256-GCM (string base64 gabungan nonce 12 byte + ciphertext). Kolom `nik_hash` menyimpan SHA-256 hex dari NIK polos dengan indeks UNIQUE di database untuk verifikasi keunikan tanpa mendeskripsi seluruh isi tabel.
 - **Rasional**: Memenuhi standar privasi data pribadi (UU PDP) sekaligus menjaga performa pencarian unik di database.
 
+---
+
+## 17. Fase 2: OCR Service KTP & Peningkatan Kualitas Gambar Non-Generatif (F2-M2b)
+- **Status**: Diputuskan pada Milestone F2-M2b, 21 Sep 2026
+- **Keputusan**:
+  - OCR Service dibangun menggunakan **Python 3.12 + FastAPI**, berjalan di Docker container berbasis `python:3.12-slim` dengan Tesseract OCR (`ind+eng`), OpenCV headless, Pillow, dan Redis.
+  - Menjaga kepatuhan kontrak Fase 1: middleware verifikasi `X-Internal-Token`, propagasi `X-Request-ID`, format response JSON standar (`success`, `message`, `data`/`error_code`), serta endpoint healthcheck (`/health` dan `/health/ready`).
+  - **Larangan Generative AI**: Peningkatan kualitas gambar diwajibkan 100% menggunakan teknik pengawetan konten (*content-preserving*): deskewing & perspective warp (OpenCV), Bilateral Filtering (denoise), CLAHE pada kanal Luminance, Unsharp Masking, dan Lanczos non-generative scaling. Tidak menggunakan model generatif (GAN/diffusion) agar tidak mengarang atau mengubah karakter NIK/teks KTP.
+  - **Kepatuhan Privasi Data Pribadi (UU No. 27/2022)**: Parameter `OCR_CLOUD_ENABLED=false` aktif secara default, tidak ada data yang dikirim ke penyedia cloud luar, data hasil OCR hanya disimpan sementara di Redis dengan TTL 15 menit, dan log audit tidak memuat NIK atau file citra.
+  - **Pengujian Tanpa KTP Asli**: Seluruh fixture pengujian dan benchmark dihasilkan menggunakan generator KTP sintetis buatan (`services/ocr-service/tests/synthetic_ktp_generator.py`) dengan data fiktif.
+  - **Benchmark**: Dilengkapi perintah `make ocr-benchmark` yang mengeksekusi evaluasi performa dan akurasi terotomasi ke `docs/ocr-benchmark.md`.
+- **Rasional**: Menghadirkan kapabilitas OCR yang cepat (rata-rata 2.10 detik di CPU), akurat (NIK exact match 100% pada gambar jernih & buram ringan), aman dari risiko halusinasi AI generatif, dan patuh regulasi privasi data.
+
