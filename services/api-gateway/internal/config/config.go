@@ -174,9 +174,12 @@ func LoadRoutesConfig(filePath string) (*RoutesConfig, error) {
 		if val, ok := os.LookupEnv(varName); ok {
 			return val
 		}
-		// Default fallback jika AUTH_SERVICE_URL tidak ada di env
+		// Default fallback jika AUTH_SERVICE_URL / OCR_SERVICE_URL tidak ada di env
 		if varName == "AUTH_SERVICE_URL" {
 			return "http://auth-service:8080"
+		}
+		if varName == "OCR_SERVICE_URL" {
+			return "http://ocr-service:8088"
 		}
 		return m
 	})

@@ -112,8 +112,12 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
       MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
-      MAIL_HOST: mailpit
-      MAIL_PORT: 1025
+      MAIL_HOST: ${MAIL_HOST:-mailpit}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-pmb@kampus.ac.id}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-PMB Universitas}
       SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}
       SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-Superadmin123!}
     volumes:
@@ -144,6 +148,7 @@ services:
       APP_PORT: 8000
       ROUTES_CONFIG: /app/config/routes.yaml
       AUTH_SERVICE_URL: http://auth-service:8080
+      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
