@@ -25,6 +25,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/token"
 	_ "github.com/pkm-asia/pmb-backend/services/auth-service/docs"
 	"go.uber.org/zap"
+	"gorm.io/gorm"
 )
 
 // @title PMB Auth Service API
@@ -56,10 +57,18 @@ func main() {
 		zap.String("port", cfg.AppPort),
 	)
 
-	// Inisialisasi Database PostgreSQL
-	db, err := config.ConnectDB(cfg)
+	// Inisialisasi Database PostgreSQL dengan retry
+	var db *gorm.DB
+	for attempt := 1; attempt <= 15; attempt++ {
+		db, err = config.ConnectDB(cfg)
+		if err == nil {
+			break
+		}
+		appLog.Warn("Menunggu koneksi DB...", zap.Int("attempt", attempt), zap.Error(err))
+		time.Sleep(1 * time.Second)
+	}
 	if err != nil {
-		appLog.Warn("Koneksi DB belum tersedia saat start (bisa berjalan di test/container offline): " + err.Error())
+		appLog.Warn("Koneksi DB belum tersedia saat start: " + err.Error())
 	} else {
 		appLog.Info("✅ Terhubung ke PostgreSQL")
 		// Jalankan Migrasi & Seeder

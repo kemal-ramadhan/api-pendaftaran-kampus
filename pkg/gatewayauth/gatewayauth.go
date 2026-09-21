@@ -3,13 +3,18 @@ package gatewayauth
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 )
 
@@ -18,8 +23,23 @@ const (
 	HeaderGatewayTimestamp = "X-Gateway-Timestamp"
 	HeaderRequestID        = "X-Request-ID"
 	HeaderUserID           = "X-User-ID"
+	HeaderUserEmail        = "X-User-Email"
+	HeaderUserRoles        = "X-User-Roles"
+	HeaderUserScopes       = "X-User-Scopes"
 	DefaultMaxSkew         = 60 * time.Second
 )
+
+var (
+	ErrUserIDMissing = errors.New("header X-User-ID tidak ditemukan")
+	ErrUserIDInvalid = errors.New("format X-User-ID tidak valid")
+)
+
+// ScopeClaim merepresentasikan entitas scope hak akses pengguna
+type ScopeClaim struct {
+	Role string `json:"role"`
+	Type string `json:"type"`
+	ID   string `json:"id"`
+}
 
 // GenerateSignature menghasilkan signature HMAC-SHA256 dari X-Request-ID + X-User-ID + timestamp
 func GenerateSignature(secret, requestID, userID, timestamp string) string {
@@ -69,6 +89,109 @@ func Middleware(sharedSecret string) gin.HandlerFunc {
 			return
 		}
 
+		c.Next()
+	}
+}
+
+// GetUserID mengekstrak dan mem-parse X-User-ID dari header request
+func GetUserID(c *gin.Context) (uuid.UUID, error) {
+	raw := strings.TrimSpace(c.GetHeader(HeaderUserID))
+	if raw == "" {
+		return uuid.Nil, ErrUserIDMissing
+	}
+	id, err := uuid.Parse(raw)
+	if err != nil {
+		return uuid.Nil, ErrUserIDInvalid
+	}
+	return id, nil
+}
+
+// GetUserEmail mengambil X-User-Email dari header request
+func GetUserEmail(c *gin.Context) string {
+	return strings.TrimSpace(c.GetHeader(HeaderUserEmail))
+}
+
+// GetUserRoles mengambil daftar roles dari header X-User-Roles
+func GetUserRoles(c *gin.Context) []string {
+	raw := strings.TrimSpace(c.GetHeader(HeaderUserRoles))
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	roles := make([]string, 0, len(parts))
+	for _, p := range parts {
+		trimmed := strings.TrimSpace(p)
+		if trimmed != "" {
+			roles = append(roles, trimmed)
+		}
+	}
+	return roles
+}
+
+// HasRole memeriksa apakah pengguna memiliki salah satu dari roles yang ditentukan
+func HasRole(c *gin.Context, requiredRole string) bool {
+	for _, r := range GetUserRoles(c) {
+		if r == requiredRole {
+			return true
+		}
+	}
+	return false
+}
+
+// HasAnyRole memeriksa apakah pengguna memiliki setidaknya salah satu dari daftar roles yang ditentukan
+func HasAnyRole(c *gin.Context, requiredRoles ...string) bool {
+	userRoles := GetUserRoles(c)
+	for _, req := range requiredRoles {
+		for _, ur := range userRoles {
+			if ur == req {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// GetUserScopes mem-parse header X-User-Scopes (base64url encoded JSON)
+func GetUserScopes(c *gin.Context) []ScopeClaim {
+	raw := strings.TrimSpace(c.GetHeader(HeaderUserScopes))
+	if raw == "" {
+		return nil
+	}
+
+	decoded, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		// Fallback ke standard base64 jika ada padding
+		decoded, err = base64.StdEncoding.DecodeString(raw)
+		if err != nil {
+			return nil
+		}
+	}
+
+	var scopes []ScopeClaim
+	if err := json.Unmarshal(decoded, &scopes); err != nil {
+		return nil
+	}
+	return scopes
+}
+
+// GetScopeID mencari scope ID untuk kombinasi role dan scopeType tertentu
+func GetScopeID(c *gin.Context, role, scopeType string) (string, bool) {
+	for _, s := range GetUserScopes(c) {
+		if (role == "" || s.Role == role) && (scopeType == "" || s.Type == scopeType) {
+			return s.ID, true
+		}
+	}
+	return "", false
+}
+
+// RequireRole adalah middleware Gin untuk memastikan user memiliki salah satu dari roles yang ditentukan
+func RequireRole(roles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !HasAnyRole(c, roles...) {
+			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak memiliki hak akses untuk resource ini")
+			c.Abort()
+			return
+		}
 		c.Next()
 	}
 }

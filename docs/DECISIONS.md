@@ -88,3 +88,48 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - Menambahkan `.gitattributes` dengan aturan `*.sh text eol=lf` agar script shell tidak terkonversi menjadi format CRLF di sistem operasi Windows.
   - Menambahkan `.dockerignore` di root repositori untuk mengabaikan folder `reference/`, `docs/`, `scripts/`, `.git/`, dan file `.pdf`/`.md` dari context Docker build.
 - **Rasional**: Mencegah script shell rusak di Windows saat dieksekusi dengan Git Bash, serta memangkas ukuran build context dari 48 MB menjadi sangat ringkas sehingga proses `docker build` selesai dalam hitungan detik.
+
+---
+
+## 12. Fase 2: Shared Foundation (F2-M0) — Paket Bersama & Outbox Pattern
+- **Status**: Dikonfirmasi dan disetujui lead, 21 Sep 2026
+- **Keputusan**:
+  - Menyediakan paket bersama di `pkg/`:
+    - `pkg/internalclient`: HTTP client terstandarisasi untuk panggilan `/internal/*` dengan timeout 5s, auto-retry 2x untuk GET, dan propagasi `X-Internal-Token` serta `X-Request-ID`.
+    - `pkg/storage`: Klien MinIO/S3 dengan sniffer deteksi MIME type 512 byte pertama (`http.DetectContentType`) dan generator presigned URL.
+    - `pkg/pagination`: Helper limit-offset, sorting aman, dan mapping metadata paginasi standar.
+    - `pkg/outbox`: Implementasi Outbox pattern (`outbox_events` tabel, repository, dan worker poller) untuk menjamin propagasi status mutasi lintas service tanpa inkonsistensi data.
+    - `pkg/gatewayauth`: Helper ekstraksi identitas (`GetUserID`, `GetUserRoles`, `GetUserScopes`, `RequireRole`).
+    - `pkg/internalauth`: Ekstraksi middleware verifikasi token internal bersama.
+- **Rasional**: Memastikan 10 microservice baru di Fase 2 dibangun di atas fondasi yang konsisten tanpa menduplikasi kode infrastruktur.
+
+---
+
+## 13. Standar URL Webhook Payment Provider di Gateway
+- **Keputusan**: URL publik webhook payment gateway diarahkan ke `/api/v1/finance/webhooks/payments/:provider` dengan mode `auth: public` pada gateway, lalu di-rewrite ke Finance Service.
+- **Rasional**: Menjaga konsistensi namespace gateway (`/api/v1/<service>/*`) tanpa melanggar batasan publik provider.
+
+---
+
+## 14. Pemisahan Bucket MinIO per Domain Layanan
+- **Keputusan**: Berkas disimpan dalam bucket privat terpisah per service:
+  - `pmb-admission-documents`
+  - `pmb-identity-photos`
+  - `pmb-finance-proofs`
+  - `pmb-finance-receipts`
+  - `pmb-exam-cards`
+  Seluruh berkas bersifat privat dan hanya dapat diakses melalui presigned URL berumur 5 menit.
+- **Rasional**: Mencegah kebocoran berkas antar domain dan membatasi blast radius hak akses storage.
+
+---
+
+## 15. Pewarisan Batas Body (MaxBody) Gateway dari Service ke Route
+- **Keputusan**: Gateway `LoadRoutesConfig` mewarisi `MaxBody` dari `services[name].MaxBody` jika route tidak menetapkan `max_body` spesifik. Default gateway adalah 1 MB, sedangkan route unggah dokumen diset 5–10 MB.
+- **Rasional**: Mencegah request multipart upload foto profil dan dokumen pendaftaran tertolak oleh batas default gateway 1 MB.
+
+---
+
+## 16. Format Enkripsi NIK At-Rest dan Hashing Unik
+- **Keputusan**: NIK disimpan dalam format AES-256-GCM (string base64 gabungan nonce 12 byte + ciphertext). Kolom `nik_hash` menyimpan SHA-256 hex dari NIK polos dengan indeks UNIQUE di database untuk verifikasi keunikan tanpa mendeskripsi seluruh isi tabel.
+- **Rasional**: Memenuhi standar privasi data pribadi (UU PDP) sekaligus menjaga performa pencarian unik di database.
+

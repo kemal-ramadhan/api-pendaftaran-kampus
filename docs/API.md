@@ -73,6 +73,19 @@ Semua respons error membungkus informasi kesalahan secara seragam:
 | `UPSTREAM_UNAVAILABLE` | 502 | Layanan hilir auth sedang tidak dapat dihubungi. |
 | `UPSTREAM_TIMEOUT` | 504 | Layanan hilir melebihi batas waktu eksekusi (timeout). |
 | `INTERNAL_ERROR` | 500 | Kesalahan internal server tak terduga. |
+| `INVALID_STATE` | 409 | Transisi status pendaftaran ilegal atau di luar alur state machine. |
+| `QUOTA_EXCEEDED` | 409 | Kuota pendaftaran atau kuota kelulusan prodi telah terpenuhi. |
+| `PERIOD_CLOSED` | 400 | Gelombang pendaftaran belum dibuka atau sudah ditutup. |
+| `DUPLICATE_APPLICATION` | 409 | Pengguna sudah memiliki pendaftaran aktif pada gelombang yang sama. |
+| `DOCUMENT_REQUIRED` | 422 | Dokumen wajib persyaratan belum diunggah sebelum submit pendaftaran. |
+| `BIODATA_INCOMPLETE` | 422 | Profil pendaftar, alamat KTP, ortu, atau pendidikan belum lengkap. |
+| `PAYMENT_REQUIRED` | 400 | Tindakan memerlukan pelunasan tagihan terlebih dahulu. |
+| `INSTALLMENT_NOT_ALLOWED` | 400 | Skema biaya pendaftaran atau prodi tidak mengizinkan opsi cicilan. |
+| `SCORES_LOCKED` | 409 | Nilai seleksi telah dikunci karena rekomendasi prodi telah disubmit. |
+| `RESULT_NOT_PUBLISHED` | 403 | Pengumuman hasil seleksi belum dipublikasikan secara resmi. |
+| `FILE_TYPE_NOT_ALLOWED` | 422 | Format berkas bukan PDF, JPG, atau PNG yang sah (validasi MIME magic header). |
+| `FILE_TOO_LARGE` | 422 | Ukuran berkas melebihi batas maksimal (maks 2 MB). |
+| `WEBHOOK_SIGNATURE_INVALID` | 401 | Tanda tangan verifikasi webhook payment gateway tidak sah. |
 
 ---
 

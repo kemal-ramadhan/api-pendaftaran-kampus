@@ -13,6 +13,7 @@ scripts/
 
 # Binaries and temporary files
 *.exe
+**/*.exe
 *.test
 *.out
 tmp/

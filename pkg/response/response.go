@@ -38,6 +38,21 @@ const (
 	ErrCodeUpstreamUnavailable = "UPSTREAM_UNAVAILABLE"
 	ErrCodeUpstreamTimeout     = "UPSTREAM_TIMEOUT"
 	ErrCodeInternalError       = "INTERNAL_ERROR"
+
+	// Fase 2 Error Codes sesuai PRD Bagian 7
+	ErrCodeInvalidState         = "INVALID_STATE"
+	ErrCodeQuotaExceeded        = "QUOTA_EXCEEDED"
+	ErrCodePeriodClosed         = "PERIOD_CLOSED"
+	ErrCodeDuplicateApplication = "DUPLICATE_APPLICATION"
+	ErrCodeDocumentRequired     = "DOCUMENT_REQUIRED"
+	ErrCodeBiodataIncomplete    = "BIODATA_INCOMPLETE"
+	ErrCodePaymentRequired      = "PAYMENT_REQUIRED"
+	ErrCodeInstallmentNotAllowed = "INSTALLMENT_NOT_ALLOWED"
+	ErrCodeScoresLocked         = "SCORES_LOCKED"
+	ErrCodeResultNotPublished   = "RESULT_NOT_PUBLISHED"
+	ErrCodeFileTypeNotAllowed   = "FILE_TYPE_NOT_ALLOWED"
+	ErrCodeFileTooLarge         = "FILE_TOO_LARGE"
+	ErrCodeWebhookSignatureInvalid = "WEBHOOK_SIGNATURE_INVALID"
 )
 
 // Meta memuat data paginasi
@@ -112,6 +127,11 @@ func Forbidden(c *gin.Context, errorCode, message string) {
 // NotFound mengirimkan respons 404
 func NotFound(c *gin.Context, message string) {
 	Error(c, http.StatusNotFound, ErrCodeNotFound, message, nil)
+}
+
+// Conflict mengirimkan respons 409 Conflict
+func Conflict(c *gin.Context, errorCode, message string) {
+	Error(c, http.StatusConflict, errorCode, message, nil)
 }
 
 // UnprocessableEntity mengirimkan respons 422 untuk kesalahan validasi form/payload

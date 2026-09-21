@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net"
@@ -16,6 +17,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 	"github.com/google/uuid"
+	_ "github.com/lib/pq"
 )
 
 type MailMessage struct {
@@ -83,6 +85,7 @@ func main() {
 	} else {
 		defer pg.Stop()
 		fmt.Println("🐘 PostgreSQL aktif di 127.0.0.1:5432 (DB: pmb_auth, User: pmb_user)")
+		initOtherDBs("postgres://pmb_user:pmb_password@127.0.0.1:5432/pmb_auth?sslmode=disable")
 	}
 
 	// 3. Mock Mailpit (SMTP :1025, HTTP :8025)
@@ -242,3 +245,39 @@ func handleSMTP(conn net.Conn, store *MailStore) {
 		}
 	}
 }
+
+func initOtherDBs(connStr string) {
+	db, err := sql.Open("postgres", connStr)
+	if err != nil {
+		fmt.Printf("Gagal koneksi ke postgres untuk inisialisasi DB: %v\n", err)
+		return
+	}
+	defer db.Close()
+
+	dbs := []string{
+		"pmb_organization",
+		"pmb_identity",
+		"pmb_notification",
+		"pmb_admission",
+		"pmb_finance",
+		"pmb_exam",
+		"pmb_scoring",
+		"pmb_selection",
+		"pmb_student",
+		"pmb_nim",
+	}
+
+	for _, name := range dbs {
+		var exists bool
+		_ = db.QueryRow("SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", name).Scan(&exists)
+		if !exists {
+			_, err = db.Exec("CREATE DATABASE " + name)
+			if err != nil {
+				fmt.Printf("Gagal membuat DB %s: %v\n", name, err)
+			} else {
+				fmt.Printf("📦 Database %s berhasil dibuat\n", name)
+			}
+		}
+	}
+}
+

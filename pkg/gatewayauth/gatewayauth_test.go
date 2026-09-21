@@ -107,3 +107,79 @@ func TestGatewayAuth_Middleware(t *testing.T) {
 		t.Errorf("Request dengan signature valid harus 200, didapat %d", w4.Code)
 	}
 }
+
+func TestGatewayAuth_UserIdentityHelpers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("Extract valid identity and scopes", func(t *testing.T) {
+		r := gin.New()
+		r.GET("/identity", func(c *gin.Context) {
+			uid, err := GetUserID(c)
+			if err != nil {
+				c.String(http.StatusBadRequest, err.Error())
+				return
+			}
+			email := GetUserEmail(c)
+			roles := GetUserRoles(c)
+			scopes := GetUserScopes(c)
+			scopeID, hasScope := GetScopeID(c, "prodi", "prodi")
+
+			if uid.String() != "00000000-0000-0000-0000-000000000001" {
+				c.String(http.StatusInternalServerError, "uid mismatch")
+				return
+			}
+			if email != "user@kampus.ac.id" {
+				c.String(http.StatusInternalServerError, "email mismatch")
+				return
+			}
+			if len(roles) != 2 || !HasRole(c, "prodi") || !HasAnyRole(c, "admin", "prodi") {
+				c.String(http.StatusInternalServerError, "role mismatch")
+				return
+			}
+			if len(scopes) != 1 || !hasScope || scopeID != "TI" {
+				c.String(http.StatusInternalServerError, "scope mismatch")
+				return
+			}
+			c.String(http.StatusOK, "OK")
+		})
+
+		req, _ := http.NewRequest(http.MethodGet, "/identity", nil)
+		req.Header.Set(HeaderUserID, "00000000-0000-0000-0000-000000000001")
+		req.Header.Set(HeaderUserEmail, "user@kampus.ac.id")
+		req.Header.Set(HeaderUserRoles, "dosen, prodi")
+		// [{"role":"prodi","type":"prodi","id":"TI"}] in base64url: W3sicm9sZSI6InByb2RpIiwidHlwZSI6InByb2RpIiwiaWQiOiJUSSJ9XQ
+		req.Header.Set(HeaderUserScopes, "W3sicm9sZSI6InByb2RpIiwidHlwZSI6InByb2RpIiwiaWQiOiJUSSJ9XQ")
+
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d: %s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("RequireRole middleware", func(t *testing.T) {
+		r := gin.New()
+		r.GET("/admin-only", RequireRole("superadmin", "admin_pmb"), func(c *gin.Context) {
+			c.String(http.StatusOK, "OK")
+		})
+
+		// Unauthorized role
+		req1, _ := http.NewRequest(http.MethodGet, "/admin-only", nil)
+		req1.Header.Set(HeaderUserRoles, "calon_mahasiswa")
+		w1 := httptest.NewRecorder()
+		r.ServeHTTP(w1, req1)
+		if w1.Code != http.StatusForbidden {
+			t.Errorf("Expected 403, got %d", w1.Code)
+		}
+
+		// Authorized role
+		req2, _ := http.NewRequest(http.MethodGet, "/admin-only", nil)
+		req2.Header.Set(HeaderUserRoles, "admin_pmb, dosen")
+		w2 := httptest.NewRecorder()
+		r.ServeHTTP(w2, req2)
+		if w2.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", w2.Code)
+		}
+	})
+}
+

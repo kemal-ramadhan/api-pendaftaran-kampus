@@ -199,6 +199,9 @@ func LoadRoutesConfig(filePath string) (*RoutesConfig, error) {
 		if r.Rewrite == "" {
 			rc.Routes[i].Rewrite = r.Prefix
 		}
+		if r.MaxBody == "" && svc.MaxBody != "" {
+			rc.Routes[i].MaxBody = svc.MaxBody
+		}
 	}
 
 	// Sort routes: prefix terpanjang lebih dulu agar pencocokan spesifik menang

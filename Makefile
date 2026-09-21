@@ -3,7 +3,7 @@
 COMPOSE_FILE := deploy/docker-compose.yml
 
 up:
-	docker compose -f $(COMPOSE_FILE) up -d postgres redis mailpit
+	docker compose -f $(COMPOSE_FILE) up -d postgres redis mailpit minio minio-init
 
 up-all:
 	docker compose -f $(COMPOSE_FILE) up -d

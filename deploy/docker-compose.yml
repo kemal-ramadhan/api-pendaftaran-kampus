@@ -11,6 +11,7 @@ services:
       - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pmb_user} -d ${DB_NAME:-pmb_auth}"]
       interval: 5s
@@ -44,6 +45,50 @@ services:
       - "8025:8025" # Web UI
     networks:
       - pmb-network
+
+  minio:
+    image: quay.io/minio/minio:latest
+    container_name: pmb-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    container_name: pmb-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      /usr/bin/mc mb -p local/pmb-admission-documents;
+      /usr/bin/mc mb -p local/pmb-identity-photos;
+      /usr/bin/mc mb -p local/pmb-finance-proofs;
+      /usr/bin/mc mb -p local/pmb-finance-receipts;
+      /usr/bin/mc mb -p local/pmb-exam-cards;
+      exit 0;
+      "
+    networks:
+      - pmb-network
+
 
   auth-service:
     build:
@@ -143,6 +188,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
 
 networks:
   pmb-network:

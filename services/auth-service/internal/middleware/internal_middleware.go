@@ -1,24 +1,13 @@
 package middleware
 
 import (
-	"crypto/subtle"
-	"net/http"
-
 	"github.com/gin-gonic/gin"
-	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
 )
 
-const HeaderInternalToken = "X-Internal-Token"
+const HeaderInternalToken = internalauth.HeaderInternalToken
 
 // InternalAuthMiddleware memastikan request internal membawa token rahasia yang sah
 func InternalAuthMiddleware(secretToken string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		token := c.GetHeader(HeaderInternalToken)
-		if secretToken == "" || token == "" || subtle.ConstantTimeCompare([]byte(token), []byte(secretToken)) != 1 {
-			response.Error(c, http.StatusForbidden, response.ErrCodeForbidden, "Akses internal ditolak: token tidak valid", nil)
-			c.Abort()
-			return
-		}
-		c.Next()
-	}
+	return internalauth.Middleware(secretToken)
 }

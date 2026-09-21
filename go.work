@@ -2,6 +2,8 @@ go 1.25.0
 
 use (
 	./pkg
+	./scripts/infra
+	./services/_template
 	./services/api-gateway
 	./services/auth-service
 )
