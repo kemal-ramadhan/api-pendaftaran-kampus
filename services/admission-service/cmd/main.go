@@ -129,6 +129,7 @@ func main() {
 	publicCtrl := controller.NewPublicController(admissionSvc)
 	appCtrl := controller.NewApplicationController(admissionSvc)
 	adminCtrl := controller.NewAdminController(admissionSvc)
+	internalCtrl := controller.NewInternalController(admissionSvc)
 
 	// 10. Setup Router Gin
 	r := route.SetupRouter(
@@ -140,6 +141,7 @@ func main() {
 		publicCtrl,
 		appCtrl,
 		adminCtrl,
+		internalCtrl,
 	)
 
 	// 11. Jalankan HTTP Server

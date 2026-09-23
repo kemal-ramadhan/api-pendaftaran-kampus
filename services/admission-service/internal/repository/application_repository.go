@@ -35,6 +35,7 @@ type ApplicationRepository interface {
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
 	Update(ctx context.Context, app *model.Application) error
 	UpdateChoices(ctx context.Context, id uuid.UUID, choice1ID uuid.UUID, choice2ID *uuid.UUID) error
+	UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error
 	GenerateRegistrationNo(ctx context.Context, tx *gorm.DB, periodID uint, academicYear string) (string, error)
 	ListApplications(ctx context.Context, filter ApplicationFilter) ([]model.Application, int64, error)
 	CreateStatusLog(tx *gorm.DB, log *model.ApplicationStatusLog) error
@@ -131,6 +132,28 @@ func (r *applicationRepository) UpdateChoices(ctx context.Context, id uuid.UUID,
 		"updated_at":  time.Now(),
 	}
 	return r.db.WithContext(ctx).Model(&model.Application{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *applicationRepository) UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.Application{}).Where("id = ?", id).Updates(map[string]interface{}{
+			"status":     toStatus,
+			"updated_at": time.Now(),
+		}).Error; err != nil {
+			return err
+		}
+
+		statusLog := &model.ApplicationStatusLog{
+			ID:            uuid.New(),
+			ApplicationID: id,
+			FromStatus:    fromStatus,
+			ToStatus:      toStatus,
+			ChangedBy:     changedBy,
+			Notes:         notes,
+			CreatedAt:     time.Now(),
+		}
+		return tx.Create(statusLog).Error
+	})
 }
 
 func (r *applicationRepository) GenerateRegistrationNo(ctx context.Context, tx *gorm.DB, periodID uint, academicYear string) (string, error) {

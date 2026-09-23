@@ -10,5 +10,6 @@ use (
 	./services/identity-service
 	./services/notification-service
 	./services/admission-service
+	./services/finance-service
 )
 

@@ -188,4 +188,33 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - **Isolasi Akses Role Prodi**: Staf program studi yang mengakses `/api/v1/admission/admin/applications` hanya diperbolehkan melihat pendaftar yang memilih prodinya sebagai pilihan 1 atau pilihan 2 berdasarkan scope prodi yang melekat pada token/claim pengguna.
 - **Rasional**: Memisahkan antrean notifikasi dari dependensi pihak ketiga, menjamin konsistensi data pendaftaran dan penagihan dengan jaminan eventual consistency outbox pattern, serta menjaga isolasi data antar prodi sesuai prinsip least privilege.
 
+---
+
+## 21. Fase 2: Finance Service Bagian 1 (F2-M5)
+- **Status**: Diputuskan pada Tahap 4, 23 Sep 2026
+- **Keputusan**:
+  - **Arsitektur Finance Service**: Dibangun sebagai microservice mandiri pada port 8085 (`services/finance-service`) dengan basis data Postgres `pmb_finance`.
+  - **Integritas Nominal Integer Rupiah**: Semua nilai nominal uang (`amount`, `paid_amount`) wajib menggunakan tipe `int64` di Go dan `BIGINT` di Postgres untuk mengeliminasi potensi distorsi pembulatan bilangan desimal/float.
+  - **Eventual Consistency Outbox Admission -> Finance**:
+    - Saat pendaftaran dibuat di Admission Service, event outbox `invoice.create` dikirimkan oleh background outbox worker ke endpoint Finance `POST /internal/invoices`.
+    - Finance Service membentuk invoice resmi dengan format nomor `INV-YYYYMMDD-XXXXX` berstatus `unpaid`.
+  - **Penyelarasan Status Pendaftaran (form_open)**:
+    - Ketika tagihan pendaftaran dinyatakan lunas (baik via Virtual Account maupun transfer manual yang disetujui), Finance Service memanggil Admission Service melalui `POST /internal/applications/:id/status` dengan payload `{ "status": "form_open" }`.
+    - Sekaligus mengirim notifikasi konfirmasi pembayaran lunas ke Notification Service via `POST /internal/notifications`.
+  - **Payment Provider & Dev Simulate**:
+    - Komunikasi gateway pembayaran diisolasi melalui antarmuka `PaymentProvider`. Pada tahap ini diimplementasikan `MockProvider` yang menerbitkan nomor Virtual Account sintetis.
+    - Untuk mempermudah otomasi pengujian dan e2e tanpa payment gateway eksternal, disediakan endpoint `POST /dev/payments/:id/simulate-paid` yang dijaga ketat dengan guard `cfg.IsDevelopment()`. Pada environment staging/production, endpoint ini otomatis dinonaktifkan (HTTP 403/404).
+  - **Idempotensi Webhook Provider**:
+    - Webhook provider diproses melalui `POST /webhooks/payments/:provider`.
+    - Setiap webhook dicatat pada tabel `payment_webhook_logs`. Jika event dengan `provider_ref` yang sama dikirim ulang, sistem mendeteksi duplikasi secara idempoten dan mengembalikan respons sukses tanpa memproses ulang pelunasan.
+    - Header `X-Provider-Signature` diverifikasi dengan HMAC SHA256; jika signature tidak valid, request langsung ditolak dengan HTTP 401.
+  - **Penerbitan Kwitansi Elektronik PDF**:
+    - Kwitansi resmi diterbitkan secara otomatis saat pembayaran berhasil diverifikasi dengan nomor kwitansi `KW-YYYYMMDD-XXXXX`.
+    - Berkas PDF kwitansi di-generate menggunakan generator PDF 1.4 murni standar library Go tanpa ketergantungan library CGO eksternal, lalu diunggah ke MinIO bucket `pmb-finance-receipts` dan dapat diunduh melalui `GET /api/v1/receipts/me/:payment_id`.
+  - **Alur Verifikasi Transfer Manual**:
+    - Calon mahasiswa dapat mengunggah bukti transfer manual (`multipart/form-data`) ke `POST /api/v1/invoices/me/:id/manual-transfer` yang disimpan di MinIO bucket `pmb-finance-proofs` dengan status awal `awaiting_verification`.
+    - Staf keuangan melihat antrean via `GET /api/v1/finance/admin/payments?status=awaiting_verification` dan melakukan tindakan `approve` (melunasi tagihan & menerbitkan kwitansi) atau `reject` (calon mahasiswa diizinkan mengunggah ulang bukti baru).
+- **Rasional**: Mencegah kesalahan kalkulasi uang melalui pembulatan, menjamin isolasi dan keamanan data finansial calon mahasiswa, memastikan idempotenitas transaksi, serta mengintegrasikan alur pendaftaran dan pembayaran secara otomatis dan reliabel.
+
+
 

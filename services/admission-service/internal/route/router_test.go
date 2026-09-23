@@ -63,8 +63,9 @@ func setupTestAdmissionRouter(gatewaySecret string) *gin.Engine {
 	publicCtrl := controller.NewPublicController(dummySvc)
 	appCtrl := controller.NewApplicationController(dummySvc)
 	adminCtrl := controller.NewAdminController(dummySvc)
+	internalCtrl := controller.NewInternalController(dummySvc)
 
-	return SetupRouter(cfg, healthCtrl, publicCtrl, appCtrl, adminCtrl)
+	return SetupRouter(cfg, healthCtrl, publicCtrl, appCtrl, adminCtrl, internalCtrl)
 }
 
 func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {

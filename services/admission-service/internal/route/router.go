@@ -3,6 +3,7 @@ package route
 import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
+	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/controller"
 )
 
@@ -17,6 +18,7 @@ func SetupRouter(
 	publicCtrl *controller.PublicController,
 	appCtrl *controller.ApplicationController,
 	adminCtrl *controller.AdminController,
+	internalCtrl *controller.InternalController,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -30,6 +32,15 @@ func SetupRouter(
 	{
 		publicGroup.GET("/periods/active", publicCtrl.GetActivePeriod)
 		publicGroup.GET("/paths", publicCtrl.GetAdmissionPaths)
+	}
+
+	// Internal inter-service endpoints
+	internalGroup := r.Group("/internal")
+	internalGroup.Use(internalauth.Middleware(cfg.InternalToken))
+	{
+		internalGroup.POST("/applications/:id/status", internalCtrl.UpdateStatus)
+		internalGroup.PUT("/applications/:id/status", internalCtrl.UpdateStatus)
+		internalGroup.GET("/applications/:id", internalCtrl.GetApplication)
 	}
 
 	// Gateway authenticated endpoints

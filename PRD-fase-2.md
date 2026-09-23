@@ -82,13 +82,13 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-06 | Isi Biodata | Identity | Selesai |
 | UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Selesai |
 | UC-07 | Upload Dokumen Persyaratan | Admission | Fase 2 |
-| UC-08 | Bayar Biaya Pendaftaran | Finance | Fase 2 |
+| UC-08 | Bayar Biaya Pendaftaran | Finance | Selesai (Tahap 4) |
 | UC-09 | Cetak Kartu Ujian | Exam | Fase 2 |
 | UC-10 | Lihat Pengumuman Hasil | Selection | Fase 2 |
 | UC-11 | Bayar Daftar Ulang | Finance | Fase 2 |
 | UC-12 | Daftar Ulang | Student | Fase 2 |
-| UC-13 | Proses Pembayaran | Finance | Fase 2 |
-| UC-14 | Upload Bukti Transfer | Finance | Fase 2 |
+| UC-13 | Proses Pembayaran | Finance | Selesai (Tahap 4) |
+| UC-14 | Upload Bukti Transfer | Finance | Selesai (Tahap 4) |
 | UC-15 | Ajukan Cicilan | Finance | Fase 2 |
 | UC-16 | Generate NIM | NIM | Fase 2 |
 | UC-17 | Kirim Notifikasi | Notification | Selesai (Tahap 3) |
@@ -97,7 +97,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-20 | Kelola Jadwal Seleksi | Exam | Fase 2 |
 | UC-21 | Assign Dosen Penguji | Exam | Fase 2 |
 | UC-22 | Publikasikan Pengumuman | Selection | Fase 2 |
-| UC-23 | Verifikasi Pembayaran | Finance | Fase 2 |
+| UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Fase 2 |
 | UC-25 | Lihat Laporan Keuangan | Finance | Fase 2 |
 | UC-26 | Export Laporan | Finance, Scoring, Admission | Fase 2 |

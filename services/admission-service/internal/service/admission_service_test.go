@@ -163,6 +163,14 @@ func (m *mockAppRepo) UpdateChoices(ctx context.Context, id uuid.UUID, choice1ID
 	return repository.ErrApplicationNotFound
 }
 
+func (m *mockAppRepo) UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error {
+	if app, ok := m.apps[id]; ok {
+		app.Status = toStatus
+		return nil
+	}
+	return repository.ErrApplicationNotFound
+}
+
 func (m *mockAppRepo) GenerateRegistrationNo(ctx context.Context, tx *gorm.DB, periodID uint, academicYear string) (string, error) {
 	m.seqCounter++
 	return fmt.Sprintf("PMB-2026-%d-%05d", periodID, m.seqCounter), nil

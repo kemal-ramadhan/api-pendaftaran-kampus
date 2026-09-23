@@ -153,6 +153,7 @@ services:
       ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization-service:8081}
       IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8082}
       ADMISSION_SERVICE_URL: ${ADMISSION_SERVICE_URL:-http://admission-service:8084}
+      FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
@@ -166,6 +167,8 @@ services:
       identity-service:
         condition: service_healthy
       admission-service:
+        condition: service_healthy
+      finance-service:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -243,6 +246,48 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8084/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  finance-service:
+    build:
+      context: ..
+      dockerfile: services/finance-service/Dockerfile
+    container_name: pmb-finance-service
+    restart: unless-stopped
+    ports:
+      - "8085:8085"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: 8085
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: pmb_finance
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      NOTIFICATION_SERVICE_URL: http://notification-service:8083
+      ADMISSION_SERVICE_URL: http://admission-service:8084
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_USE_SSL: "false"
+      WEBHOOK_SECRET_MOCK: mock-secret-key-123
+    depends_on:
+      postgres:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      admission-service:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8085/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5

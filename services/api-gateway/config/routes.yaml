@@ -17,8 +17,11 @@ services:
     url: ${ADMISSION_SERVICE_URL}
     timeout: 15s
     max_body: 10MB
+  finance:
+    url: ${FINANCE_SERVICE_URL}
+    timeout: 15s
+    max_body: 10MB
   # slot service berikutnya (biarkan ter-comment sampai service dibuat)
-  # finance:      { url: ${FINANCE_SERVICE_URL} }                      # /api/v1/finance
   # selection:    { url: ${SELECTION_SERVICE_URL} }                    # /api/v1/selection
   # exam:         { url: ${EXAM_SERVICE_URL} }                         # /api/v1/exam
   # scoring:      { url: ${SCORING_SERVICE_URL} }                      # /api/v1/scoring
@@ -85,5 +88,28 @@ routes:
     public_paths:
       - GET /periods/active
       - GET /paths
+    max_body: 10MB
+  - prefix: /api/v1/webhooks/payments
+    service: finance
+    rewrite: /webhooks/payments
+    auth: public
+  - prefix: /api/v1/dev/payments
+    service: finance
+    rewrite: /dev/payments
+    auth: public
+  - prefix: /api/v1/finance/admin
+    service: finance
+    rewrite: /finance/admin
+    auth: required
+    roles: [keuangan, superadmin, admin_pmb]
+    max_body: 10MB
+  - prefix: /api/v1/receipts
+    service: finance
+    rewrite: /receipts
+    auth: required
+  - prefix: /api/v1/invoices
+    service: finance
+    rewrite: /invoices
+    auth: required
     max_body: 10MB
 

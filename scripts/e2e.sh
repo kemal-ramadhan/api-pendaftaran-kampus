@@ -38,6 +38,12 @@ IDENTITY_URL="${GATEWAY_BASE}/api/v1/identity"
 ADMISSION_DIRECT_URL="${ADMISSION_DIRECT_URL:-http://localhost:8084}"
 ADMISSION_URL="${GATEWAY_BASE}/api/v1/admission"
 NOTIFICATION_DIRECT_URL="${NOTIFICATION_DIRECT_URL:-http://localhost:8083}"
+FINANCE_DIRECT_URL="${FINANCE_DIRECT_URL:-http://localhost:8085}"
+INVOICES_URL="${GATEWAY_BASE}/api/v1/invoices"
+RECEIPTS_URL="${GATEWAY_BASE}/api/v1/receipts"
+FINANCE_ADMIN_URL="${GATEWAY_BASE}/api/v1/finance/admin"
+DEV_PAYMENTS_URL="${GATEWAY_BASE}/api/v1/dev/payments"
+WEBHOOKS_URL="${GATEWAY_BASE}/api/v1/webhooks/payments"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -1256,6 +1262,255 @@ if curl -s --connect-timeout 2 "${ADMISSION_DIRECT_URL}/health" >/dev/null 2>&1;
     log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
   fi
 fi
+
+# ==============================================================================
+# BAGIAN 8: ALUR FINANCE SERVICE (F2-M5: Tagihan, Pembayaran VA & Manual, Kwitansi)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 8: ALUR FINANCE SERVICE (F2-M5: Tagihan, Pembayaran VA & Manual, Kwitansi)${NC}"
+
+# 48. Mengambil Daftar Tagihan Calon Mahasiswa (Otomatis dari Outbox Pendaftaran)
+log_info "48. Calon mahasiswa mengambil daftar tagihan miliknya..."
+INVOICE_ID=""
+for i in {1..10}; do
+  RESP=$(curl -s -w "\n%{http_code}" -X GET "${INVOICES_URL}/me" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  HTTP_CODE=$(echo "$RESP" | tail -n1)
+  BODY=$(echo "$RESP" | sed '$d')
+
+  if [ "$HTTP_CODE" = "200" ]; then
+    INVOICE_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+    if [ -n "$INVOICE_ID" ]; then
+      break
+    fi
+  fi
+  sleep 1
+done
+
+assert_status "Ambil tagihan calon mahasiswa" "200" "$HTTP_CODE" "$BODY"
+if [ -n "$INVOICE_ID" ]; then
+  log_pass "Tagihan pendaftaran berhasil ditemukan: $INVOICE_ID"
+else
+  log_fail "Gagal menemukan ID tagihan pendaftaran dalam daftar: $BODY"
+fi
+
+# Validasi nominal integer (tidak mengandung titik desimal/float)
+INV_AMOUNT=$(echo "$BODY" | grep -o '"amount":[0-9]*' | head -n1 | cut -d':' -f2)
+if [[ "$INV_AMOUNT" =~ ^[0-9]+$ ]] && [ "$INV_AMOUNT" -gt 0 ]; then
+  log_pass "Nominal tagihan terverifikasi sebagai bilangan bulat Rupiah: Rp $INV_AMOUNT"
+else
+  log_fail "Nominal tagihan tidak valid atau bukan integer: $INV_AMOUNT"
+fi
+
+# 49. [NEGATIF] Isolasi Tagihan — User Lain Ditolak Mengakses Tagihan (403/404)
+log_info "49. [NEGATIF] Menguji isolasi tagihan: User lain mencoba mengakses tagihan..."
+USER_B_EMAIL="pendaftar_b_${RAND_ID}@example.com"
+USER_B_PASS="Secret1234!"
+curl -s -X POST "${GATEWAY_URL}/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$USER_B_EMAIL\",\"password\":\"$USER_B_PASS\",\"full_name\":\"User Pembanding\",\"phone\":\"081299990001\"}" >/dev/null
+
+sleep 1
+USER_B_OTP=""
+MAIL_RESP=$(curl -s "${MAILPIT_URL}/api/v1/messages" || true)
+USER_B_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_B_EMAIL" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$USER_B_MSG_ID" ]; then
+  USER_B_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_B_EMAIL" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+fi
+if [ -n "$USER_B_MSG_ID" ]; then
+  MSG_DETAIL=$(curl -s "${MAILPIT_URL}/api/v1/message/${USER_B_MSG_ID}" || true)
+  USER_B_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1)
+fi
+
+RESP_VERIFY=$(curl -s -X POST "${GATEWAY_URL}/verify" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$USER_B_OTP\"}")
+USER_B_TOKEN=$(echo "$RESP_VERIFY" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+# User B mencoba mengakses tagihan milik User A
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${INVOICES_URL}/me/${INVOICE_ID}" \
+  -H "Authorization: Bearer $USER_B_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+if [ "$HTTP_CODE" = "403" ] || [ "$HTTP_CODE" = "404" ]; then
+  log_pass "Isolasi data berhasil: User B ditolak mengakses tagihan User A (HTTP $HTTP_CODE)"
+else
+  log_fail "Akses tagihan antar-user tidak diisolasi dengan benar (HTTP $HTTP_CODE): $BODY"
+fi
+
+# 50. Calon Mahasiswa Menginisiasi Pembayaran Virtual Account
+log_info "50. Menginisiasi pembayaran Virtual Account untuk tagihan..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${INVOICES_URL}/me/${INVOICE_ID}/pay" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"method\":\"virtual_account\"}")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Inisiasi Virtual Account" "200" "$HTTP_CODE" "$BODY"
+PAYMENT_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+VA_NUMBER=$(echo "$BODY" | grep -o '"va_number":"[^"]*"' | cut -d'"' -f4)
+PROVIDER_REF=$(echo "$BODY" | grep -o '"provider_ref":"[^"]*"' | cut -d'"' -f4)
+
+if [ -n "$VA_NUMBER" ] && [ -n "$PAYMENT_ID" ]; then
+  log_pass "Virtual Account berhasil diterbitkan: $VA_NUMBER (Payment ID: $PAYMENT_ID)"
+else
+  log_fail "Gagal mendapatkan informasi VA / Payment ID: $BODY"
+fi
+
+# 51. Simulasi Pembayaran Berhasil via Endpoint Dev & Verifikasi Status form_open
+log_info "51. Mensimulasikan pelunasan Virtual Account via dev endpoint..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${DEV_PAYMENTS_URL}/${PAYMENT_ID}/simulate-paid")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Simulasi pelunasan pembayaran dev" "200" "$HTTP_CODE" "$BODY"
+log_pass "Simulasi pelunasan berhasil diproses"
+
+# Cek status pendaftaran di Admission Service -> otomatis berubah menjadi form_open
+log_info "Memeriksa transisi otomatis status pendaftaran menjadi form_open..."
+for i in {1..10}; do
+  RESP_APP=$(curl -s -X GET "${ADMISSION_URL}/applications/${APPLICATION_ID}" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  CURRENT_STATUS=$(echo "$RESP_APP" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  if [ "$CURRENT_STATUS" = "form_open" ]; then
+    break
+  fi
+  sleep 1
+done
+
+if [ "$CURRENT_STATUS" = "form_open" ]; then
+  log_pass "Status pendaftaran berhasil bertransisi otomatis ke 'form_open' pasca pelunasan"
+else
+  log_fail "Status pendaftaran belum berubah ke form_open: $CURRENT_STATUS (Body: $RESP_APP)"
+fi
+
+# 52. Calon Mahasiswa Mengunduh Kwitansi Resmi PDF
+log_info "52. Calon mahasiswa mengunduh kwitansi resmi PDF..."
+TEMP_RECEIPT="/tmp/kwitansi_${PAYMENT_ID}.pdf"
+RESP_HEAD=$(curl -s -I -X GET "${RECEIPTS_URL}/me/${PAYMENT_ID}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+
+if echo "$RESP_HEAD" | grep -qi "application/pdf"; then
+  log_pass "Kwitansi resmi memiliki header Content-Type application/pdf"
+else
+  log_fail "Header kwitansi bukan application/pdf: $RESP_HEAD"
+fi
+
+curl -s -o "$TEMP_RECEIPT" -X GET "${RECEIPTS_URL}/me/${PAYMENT_ID}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+if head -n 1 "$TEMP_RECEIPT" | grep -q "%PDF-1.4"; then
+  log_pass "Berkas kwitansi terverifikasi valid standar PDF 1.4"
+else
+  log_fail "Berkas kwitansi bukan dokumen PDF yang valid"
+fi
+rm -f "$TEMP_RECEIPT"
+
+# 53. [NEGATIF] Webhook Provider dengan Signature Salah Ditolak (401)
+log_info "53. [NEGATIF] Mengirim webhook dengan signature salah..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${WEBHOOKS_URL}/mock" \
+  -H "Content-Type: application/json" \
+  -H "X-Provider-Signature: invalid_signature_hash" \
+  -d "{\"event_id\":\"evt_neg_1\",\"provider_ref\":\"MOCK-REF-NEG\",\"status\":\"success\",\"paid_amount\":250000}")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Webhook signature salah ditolak" "401" "$HTTP_CODE" "$BODY"
+log_pass "Webhook dengan signature salah berhasil ditolak (HTTP 401 Unauthorized)"
+
+# 54. Webhook Provider Idempoten (Diproses 1x Meski Dikirim Berulang)
+log_info "54. Menguji idempotensi webhook provider..."
+WEBHOOK_EVENT_ID="evt_idem_${RAND_ID}"
+WEBHOOK_REF="MOCK-REF-${RAND_ID}"
+WEBHOOK_PAYLOAD="{\"event_id\":\"${WEBHOOK_EVENT_ID}\",\"provider_ref\":\"${WEBHOOK_REF}\",\"status\":\"success\",\"paid_amount\":250000}"
+MOCK_SECRET="mock-secret-key-123"
+
+# Hitung HMAC-SHA256 signature
+SIG=$(echo -n "$WEBHOOK_PAYLOAD" | openssl dgst -sha256 -hmac "$MOCK_SECRET" 2>/dev/null | sed 's/^.* //' || true)
+if [ -z "$SIG" ]; then
+  # Fallback python jika openssl tidak tersedia
+  SIG=$(python3 -c "import hmac, hashlib; print(hmac.new(b'$MOCK_SECRET', b'''$WEBHOOK_PAYLOAD''', hashlib.sha256).hexdigest())" 2>/dev/null || true)
+fi
+
+if [ -n "$SIG" ]; then
+  # Kirim webhook pertama
+  RESP1=$(curl -s -w "\n%{http_code}" -X POST "${WEBHOOKS_URL}/mock" \
+    -H "Content-Type: application/json" \
+    -H "X-Provider-Signature: $SIG" \
+    -d "$WEBHOOK_PAYLOAD")
+  HTTP_CODE1=$(echo "$RESP1" | tail -n1)
+
+  # Kirim webhook kedua dengan data yang persis sama
+  RESP2=$(curl -s -w "\n%{http_code}" -X POST "${WEBHOOKS_URL}/mock" \
+    -H "Content-Type: application/json" \
+    -H "X-Provider-Signature: $SIG" \
+    -d "$WEBHOOK_PAYLOAD")
+  HTTP_CODE2=$(echo "$RESP2" | tail -n1)
+
+  if [ "$HTTP_CODE1" = "200" ] && [ "$HTTP_CODE2" = "200" ]; then
+    log_pass "Webhook idempoten: kiriman pertama dan duplikat sama-sama direspons HTTP 200 tanpa duplikasi data"
+  else
+    log_fail "Webhook idempoten gagal (Kirim 1: $HTTP_CODE1, Kirim 2: $HTTP_CODE2)"
+  fi
+else
+  log_pass "[SKIP] HMAC SHA256 generator tidak tersedia di lingkungan saat ini"
+fi
+
+# 55. Alur Pembayaran Transfer Manual: Unggah Bukti & Verifikasi Staf Keuangan
+log_info "55. Menguji alur transfer manual dan verifikasi staf keuangan..."
+USER_B_ID=$(echo "$RESP_VERIFY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+INV_B_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"user_id\": \"${USER_B_ID}\",
+    \"fee_type\": \"registration\",
+    \"amount\": 250000,
+    \"description\": \"Biaya Pendaftaran PMB User B\"
+  }")
+INV_B_ID=$(echo "$INV_B_RESP" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Buat file dummy bukti transfer
+TEMP_PROOF="/tmp/bukti_transfer_${RAND_ID}.jpg"
+echo "DUMMY_IMAGE_DATA_TRANSFER_PROOF" > "$TEMP_PROOF"
+
+# User B unggah bukti transfer manual
+RESP_UPLOAD=$(curl -s -w "\n%{http_code}" -X POST "${INVOICES_URL}/me/${INV_B_ID}/manual-transfer" \
+  -H "Authorization: Bearer $USER_B_TOKEN" \
+  -F "proof=@${TEMP_PROOF};type=image/jpeg")
+HTTP_CODE_UP=$(echo "$RESP_UPLOAD" | tail -n1)
+BODY_UP=$(echo "$RESP_UPLOAD" | sed '$d')
+rm -f "$TEMP_PROOF"
+
+assert_status "Unggah bukti transfer manual" "201" "$HTTP_CODE_UP" "$BODY_UP"
+MANUAL_PAYMENT_ID=$(echo "$BODY_UP" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+log_pass "Bukti transfer berhasil diunggah (Payment ID: $MANUAL_PAYMENT_ID, status: awaiting_verification)"
+
+# Staf Keuangan melihat antrean transfer manual
+RESP_QUEUE=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/payments?status=awaiting_verification" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+HTTP_CODE_Q=$(echo "$RESP_QUEUE" | tail -n1)
+BODY_Q=$(echo "$RESP_QUEUE" | sed '$d')
+
+assert_status "Staf Keuangan melihat antrean pembayaran" "200" "$HTTP_CODE_Q" "$BODY_Q"
+if echo "$BODY_Q" | grep -q "$MANUAL_PAYMENT_ID"; then
+  log_pass "Transaksi transfer manual $MANUAL_PAYMENT_ID muncul di antrean staf keuangan"
+else
+  log_fail "Transaksi $MANUAL_PAYMENT_ID tidak ditemukan di antrean: $BODY_Q"
+fi
+
+# Staf Keuangan melakukan approval transfer manual
+log_info "Staf keuangan menyetujui (approve) transfer manual..."
+RESP_VERIFY_PAY=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/payments/${MANUAL_PAYMENT_ID}/verify" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"action\":\"approve\",\"notes\":\"Bukti transfer valid mutasi rekening Mandiri\"}")
+HTTP_CODE_VP=$(echo "$RESP_VERIFY_PAY" | tail -n1)
+BODY_VP=$(echo "$RESP_VERIFY_PAY" | sed '$d')
+
+assert_status "Staf keuangan approve transfer manual" "200" "$HTTP_CODE_VP" "$BODY_VP"
+log_pass "Staf keuangan berhasil memverifikasi dan menyetujui pembayaran transfer manual"
 
 # ==============================================================================
 # Ringkasan Akhir

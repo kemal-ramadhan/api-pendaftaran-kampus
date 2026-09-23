@@ -46,6 +46,7 @@ type AdmissionService interface {
 	ListApplicationsAdmin(ctx context.Context, filter repository.ApplicationFilter) ([]model.Application, int64, error)
 	GetActivePeriod(ctx context.Context) (*model.Period, error)
 	GetAdmissionPaths(ctx context.Context) ([]model.AdmissionPath, error)
+	UpdateApplicationStatus(ctx context.Context, id uuid.UUID, newStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error
 }
 
 type admissionService struct {
@@ -252,6 +253,15 @@ func (s *admissionService) GetApplicationDetail(
 
 func (s *admissionService) ListApplicationsAdmin(ctx context.Context, filter repository.ApplicationFilter) ([]model.Application, int64, error) {
 	return s.appRepo.ListApplications(ctx, filter)
+}
+
+func (s *admissionService) UpdateApplicationStatus(ctx context.Context, id uuid.UUID, newStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error {
+	app, err := s.appRepo.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	fromStatus := app.Status
+	return s.appRepo.UpdateStatus(ctx, id, fromStatus, newStatus, notes, changedBy)
 }
 
 // OutboxDispatcher memproses event outbox ke Finance Service (POST /internal/invoices)

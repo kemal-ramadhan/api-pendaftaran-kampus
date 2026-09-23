@@ -1798,12 +1798,193 @@
           }
         }
       ]
+    },
+    {
+      "name": "9. FINANCE (Tagihan, Pembayaran VA & Manual, Kwitansi PDF)",
+      "item": [
+        {
+          "name": "9.1 Daftar Tagihan Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/invoices/me",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "me"]
+            }
+          }
+        },
+        {
+          "name": "9.2 Detail Tagihan",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/invoices/me/{{invoice_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "me", "{{invoice_id}}"]
+            }
+          }
+        },
+        {
+          "name": "9.3 Bayar via Virtual Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"method\": \"virtual_account\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/me/{{invoice_id}}/pay",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "me", "{{invoice_id}}", "pay"]
+            }
+          }
+        },
+        {
+          "name": "9.4 Unggah Bukti Transfer Manual",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "proof",
+                  "type": "file",
+                  "src": []
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/invoices/me/{{invoice_id}}/manual-transfer",
+              "host": ["{{base_url}}"],
+              "path": ["invoices", "me", "{{invoice_id}}", "manual-transfer"]
+            }
+          }
+        },
+        {
+          "name": "9.5 Download Kwitansi PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/receipts/me/{{payment_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["receipts", "me", "{{payment_id}}"]
+            }
+          }
+        },
+        {
+          "name": "9.6 [Dev Only] Simulasi Pembayaran Berhasil",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/dev/payments/{{payment_id}}/simulate-paid",
+              "host": ["{{base_url}}"],
+              "path": ["dev", "payments", "{{payment_id}}", "simulate-paid"]
+            }
+          }
+        },
+        {
+          "name": "9.7 Webhook Provider Callback",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Provider-Signature", "value": "{{webhook_signature}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_id\": \"evt_12345\",\n  \"provider_ref\": \"MOCK-REF-123\",\n  \"status\": \"success\",\n  \"paid_amount\": 250000,\n  \"paid_at\": \"2026-09-23T19:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/webhooks/payments/mock",
+              "host": ["{{base_url}}"],
+              "path": ["webhooks", "payments", "mock"]
+            }
+          }
+        },
+        {
+          "name": "9.8 [Admin Keuangan] Antrean Transfer Manual",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/finance/admin/payments?status=awaiting_verification",
+              "host": ["{{base_url}}"],
+              "path": ["finance", "admin", "payments"],
+              "query": [
+                { "key": "status", "value": "awaiting_verification" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "9.9 [Admin Keuangan] Verifikasi Transfer Manual",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"action\": \"approve\",\n  \"notes\": \"Bukti transfer telah dicek dan valid mutasi rekening\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/finance/admin/payments/{{payment_id}}/verify",
+              "host": ["{{base_url}}"],
+              "path": ["finance", "admin", "payments", "{{payment_id}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "9.10 [Internal] Buat Tagihan",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{target_user_id}}\",\n  \"application_id\": \"{{application_id}}\",\n  \"fee_type\": \"registration\",\n  \"amount\": 250000,\n  \"description\": \"Biaya Pendaftaran PMB Gelombang 1\"\n}"
+            },
+            "url": {
+              "raw": "{{finance_service_direct_url}}/internal/invoices",
+              "host": ["{{finance_service_direct_url}}"],
+              "path": ["internal", "invoices"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "finance_service_direct_url",
+      "value": "http://localhost:8085",
       "type": "string"
     },
     {

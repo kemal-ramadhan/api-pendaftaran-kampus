@@ -904,3 +904,167 @@ Mengambil daftar pendaftar dengan filter `period_id`, `path_id`, `status`, `sear
   - `superadmin` / `admin_pmb`: Mengakses seluruh pendaftar.
   - `prodi`: Hanya melihat pendaftar yang prodinya tercantum pada `choice_1_id` atau `choice_2_id`.
 
+---
+
+## 10. Finance Service (`/api/v1/invoices`, `/api/v1/receipts`, `/api/v1/finance/admin`)
+
+Finance Service mengelola skema tarif pendaftaran/daftar ulang, pencatatan invoice/tagihan resmi, integrasi pembayaran Virtual Account via Payment Provider, penerimaan transfer manual dengan verifikasi staf keuangan, penanganan webhook idempoten, dan penerbitan kwitansi elektronik resmi (PDF).
+
+### 10.1 Aturan & Karakteristik Data Keuangan
+1. **Nominal Selalu Integer Rupiah**: Semua nilai uang menggunakan bilangan bulat (`int64` / `BIGINT`), tanpa koma/pecahan sen, untuk mencegah floating point rounding error.
+2. **Isolasi Tagihan Pengguna**: Pengguna non-admin hanya berhak melihat dan membayar tagihan miliknya sendiri. Akses ke tagihan milik pengguna lain menghasilkan status `403 Forbidden` / `404 Not Found`.
+3. **Penyelarasan Status Pendaftaran**: Pelunasan tagihan pendaftaran otomatis mengubah status berkas pendaftaran di Admission Service menjadi `form_open` melalui outbox/internal HTTP callback.
+
+---
+
+### 10.2 Endpoint Tagihan Pengguna (`/api/v1/invoices/me`)
+
+#### `GET /api/v1/invoices/me`
+Mengambil daftar seluruh tagihan yang diterbitkan untuk akun yang sedang masuk.
+- **Akses**: Calon Mahasiswa (`applicant`)
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Daftar tagihan berhasil diambil",
+    "data": [
+      {
+        "id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+        "invoice_number": "INV-20260923-00001",
+        "fee_type": "registration",
+        "amount": 250000,
+        "paid_amount": 0,
+        "status": "unpaid",
+        "due_date": "2026-09-26T23:59:59Z",
+        "description": "Biaya Pendaftaran PMB Gelombang 1"
+      }
+    ]
+  }
+  ```
+
+#### `GET /api/v1/invoices/me/:id`
+Mengambil detail tagihan tertentu beserta riwayat pembayaran terkait.
+- **Akses**: Calon Mahasiswa (pemilik) atau staf `keuangan` / `superadmin`
+- **Error Responses**:
+  - `403 FORBIDDEN`: Anda tidak memiliki hak akses ke data tagihan ini.
+  - `404 NOT_FOUND`: Tagihan tidak ditemukan.
+
+---
+
+### 10.3 Endpoint Pembayaran Virtual Account
+
+#### `POST /api/v1/invoices/me/:id/pay`
+Membuat atau mengambil data transaksi pembayaran Virtual Account aktif untuk tagihan tersebut.
+- **Akses**: Calon Mahasiswa (pemilik)
+- **Request Body**:
+  ```json
+  {
+    "method": "virtual_account"
+  }
+  ```
+- **Respons (200 OK / 201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Instruksi pembayaran Virtual Account berhasil dibuat",
+    "data": {
+      "id": "4c5d6e7f-8a9b-0c1d-2e3f-4a5b6c7d8e9f",
+      "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+      "method": "virtual_account",
+      "provider": "mock",
+      "va_number": "8808123456789012",
+      "amount": 250000,
+      "status": "pending",
+      "provider_ref": "MOCK-VA-123456"
+    }
+  }
+  ```
+
+---
+
+### 10.4 Endpoint Pembayaran Transfer Manual
+
+#### `POST /api/v1/invoices/me/:id/manual-transfer`
+Mengunggah struk/bukti transfer bank manual untuk diverifikasi oleh staf keuangan kampus.
+- **Akses**: Calon Mahasiswa (pemilik)
+- **Content-Type**: `multipart/form-data`
+- **Form Data**:
+  - `proof`: File gambar bukti transfer (`image/jpeg`, `image/png`, maks 5 MB).
+- **Respons (201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Bukti transfer berhasil diunggah, menunggu verifikasi staf keuangan",
+    "data": {
+      "id": "5d6e7f8a-9b0c-1d2e-3f4a-5b6c7d8e9f0a",
+      "method": "manual_transfer",
+      "status": "awaiting_verification",
+      "amount": 250000,
+      "proof_url": "http://localhost:9000/pmb-finance-proofs/proofs/..."
+    }
+  }
+  ```
+
+---
+
+### 10.5 Endpoint Kwitansi Resmi PDF
+
+#### `GET /api/v1/receipts/me/:payment_id`
+Mengunduh dokumen kwitansi pembayaran resmi berformat PDF asli.
+- **Akses**: Calon Mahasiswa (pemilik pembayaran lunas) atau staf `keuangan`
+- **Respons**: Binary stream dengan header:
+  - `Content-Type: application/pdf`
+  - `Content-Disposition: attachment; filename="Kwitansi-KW-YYYYMMDD-XXXXX.pdf"`
+
+---
+
+### 10.6 Endpoint Simulasi Development (`/api/v1/dev/payments/:id/simulate-paid`)
+
+#### `POST /api/v1/dev/payments/:id/simulate-paid`
+Mensimulasikan pelunasan pembayaran secara instan pada lingkungan pengujian/development.
+- **Akses**: Khusus lingkungan development (`APP_ENV=development`). Pada lingkungan production akan menghasilkan `403 Forbidden` / `404 Not Found`.
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Simulasi pembayaran berhasil, tagihan lunas dan kwitansi diterbitkan",
+    "data": {
+      "payment_id": "4c5d6e7f-8a9b-0c1d-2e3f-4a5b6c7d8e9f",
+      "status": "success",
+      "paid_at": "2026-09-23T19:00:00Z"
+    }
+  }
+  ```
+
+---
+
+### 10.7 Endpoint Webhook Provider (`/api/v1/webhooks/payments/:provider`)
+
+#### `POST /api/v1/webhooks/payments/:provider`
+Menerima callback status pembayaran dari payment gateway (misal `mock`, `midtrans`, `xendit`).
+- **Akses**: Publik (diverifikasi menggunakan HMAC SHA256 signature pada header `X-Provider-Signature`)
+- **Header**:
+  - `X-Provider-Signature`: Signature HMAC SHA256 dari payload JSON mentah.
+- **Sifat**: **Idempoten**. Payload dengan `provider_ref` yang sama yang dikirim berulang kali hanya akan diproses satu kali tanpa menghasilkan duplikasi pencatatan.
+
+---
+
+### 10.8 Endpoint Staf Keuangan (`/api/v1/finance/admin/...`)
+
+#### `GET /api/v1/finance/admin/payments?status=awaiting_verification`
+Mengambil antrean transaksi transfer manual yang menunggu verifikasi staf.
+- **Akses**: Staf `keuangan` dan `superadmin`
+
+#### `POST /api/v1/finance/admin/payments/:id/verify`
+Menyetujui atau menolak bukti transfer bank.
+- **Akses**: Staf `keuangan` dan `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "action": "approve", // atau "reject"
+    "notes": "Bukti transfer valid dari Bank Mandiri an Budi Prakoso"
+  }
+  ```
+- **Catatan**: Jika ditolak (`reject`), status pembayaran menjadi `rejected` dan calon mahasiswa dapat mengunggah bukti baru. Jika disetujui (`approve`), tagihan lunas dan kwitansi terbit.
+
+
