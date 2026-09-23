@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -50,6 +51,7 @@ func (e *Error) Error() string {
 type Client interface {
 	Get(ctx context.Context, path string, query map[string]string, dest interface{}) error
 	Post(ctx context.Context, path string, body interface{}, dest interface{}) error
+	PostMultipart(ctx context.Context, path string, fieldName, fileName string, fileReader io.Reader, extraFields map[string]string, dest interface{}) error
 	Put(ctx context.Context, path string, body interface{}, dest interface{}) error
 	Patch(ctx context.Context, path string, body interface{}, dest interface{}) error
 	Delete(ctx context.Context, path string, dest interface{}) error
@@ -240,6 +242,103 @@ func (c *httpClient) Get(ctx context.Context, path string, query map[string]stri
 
 func (c *httpClient) Post(ctx context.Context, path string, body interface{}, dest interface{}) error {
 	return c.doRequest(ctx, http.MethodPost, path, nil, body, dest)
+}
+
+func (c *httpClient) PostMultipart(ctx context.Context, path string, fieldName, fileName string, fileReader io.Reader, extraFields map[string]string, dest interface{}) error {
+	reqURL, err := c.buildURL(path, nil)
+	if err != nil {
+		return fmt.Errorf("gagal membangun URL request: %w", err)
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+
+	for k, v := range extraFields {
+		if err := writer.WriteField(k, v); err != nil {
+			return fmt.Errorf("gagal menulis field multipart %s: %w", k, err)
+		}
+	}
+
+	if fileName == "" {
+		fileName = "upload.bin"
+	}
+	part, err := writer.CreateFormFile(fieldName, fileName)
+	if err != nil {
+		return fmt.Errorf("gagal membuat form file %s: %w", fieldName, err)
+	}
+
+	if _, err := io.Copy(part, fileReader); err != nil {
+		return fmt.Errorf("gagal menyalin isi file ke multipart part: %w", err)
+	}
+
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("gagal menutup multipart writer: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, body)
+	if err != nil {
+		return fmt.Errorf("gagal membuat HTTP request multipart: %w", err)
+	}
+
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if c.cfg.InternalToken != "" {
+		req.Header.Set(HeaderInternalToken, c.cfg.InternalToken)
+	}
+	reqID := requestid.FromContext(ctx)
+	if reqID != "" {
+		req.Header.Set(HeaderRequestID, reqID)
+	}
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("request multipart ke %s gagal: %w", reqURL, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("gagal membaca respons body multipart: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var errResp response.ErrorResponse
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.ErrorCode != "" {
+			return &Error{
+				StatusCode: resp.StatusCode,
+				ErrorCode:  errResp.ErrorCode,
+				Message:    errResp.Message,
+				Errors:     errResp.Errors,
+				RequestID:  errResp.RequestID,
+			}
+		}
+		return &Error{
+			StatusCode: resp.StatusCode,
+			Message:    string(respBody),
+		}
+	}
+
+	if dest != nil && len(respBody) > 0 {
+		if successResp, ok := dest.(*response.SuccessResponse); ok {
+			return json.Unmarshal(respBody, successResp)
+		}
+
+		var env struct {
+			Success bool            `json:"success"`
+			Message string          `json:"message"`
+			Data    json.RawMessage `json:"data"`
+		}
+
+		if err := json.Unmarshal(respBody, &env); err == nil && env.Data != nil && len(env.Data) > 0 {
+			if err := json.Unmarshal(env.Data, dest); err == nil {
+				return nil
+			}
+		}
+
+		return json.Unmarshal(respBody, dest)
+	}
+
+	return nil
 }
 
 func (c *httpClient) Put(ctx context.Context, path string, body interface{}, dest interface{}) error {

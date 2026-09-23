@@ -33,6 +33,8 @@ MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
 AUTH_DIRECT_URL="${AUTH_DIRECT_URL:-http://localhost:8080}"
 ORG_DIRECT_URL="${ORG_DIRECT_URL:-http://localhost:8081}"
 ORG_URL="${GATEWAY_BASE}/api/v1/organization"
+IDENTITY_DIRECT_URL="${IDENTITY_DIRECT_URL:-http://localhost:8082}"
+IDENTITY_URL="${GATEWAY_BASE}/api/v1/identity"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -836,9 +838,224 @@ else
 fi
 
 # ==============================================================================
+# BAGIAN 5: TAHAP 2 - IDENTITY SERVICE & OCR KTP (F2-M2 & F2-M2b)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 5: TAHAP 2 - IDENTITY SERVICE & OCR KTP (F2-M2 & F2-M2b)${NC}"
+
+# Ambil user_id calon mahasiswa dari profile /auth/me
+RESP_ME=$(curl -s -X GET "${GATEWAY_URL}/me" -H "Authorization: Bearer $ACCESS_TOKEN")
+MHS_USER_ID=$(echo "$RESP_ME" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# 29. Cek Kelengkapan Awal Biodata (Harus complete: false)
+log_info "29. Memeriksa kelengkapan awal biodata calon mahasiswa..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/me/completeness" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Cek kelengkapan awal" "200" "$HTTP_CODE" "$BODY"
+
+if echo "$BODY" | grep -q '"complete":false'; then
+  log_pass "Kelengkapan awal biodata berstatus complete: false (belum diisi)"
+else
+  log_fail "Kelengkapan awal harus false: $BODY"
+fi
+
+# 30. Pengisian Biodata Calon Mahasiswa (Profil, Alamat, Wali, Pendidikan)
+log_info "30. Mengisi biodata lengkap calon mahasiswa..."
+
+# 30a. Update Profile
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${IDENTITY_URL}/me/profile" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "full_name": "Ahmad Syafiq E2E",
+    "nik": "3201015505050002",
+    "birth_place": "Bandung",
+    "birth_date": "2005-05-15",
+    "gender": "L",
+    "religion": "Islam",
+    "nationality": "WNI",
+    "phone": "081234567890"
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Update profil biodata" "200" "$HTTP_CODE" "$BODY"
+
+# 30b. Simpan Alamat KTP
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${IDENTITY_URL}/me/addresses" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "type": "ktp",
+    "street": "Jl. Sukajadi No. 12",
+    "rt": "02",
+    "rw": "03",
+    "village": "Sukagalih",
+    "district": "Sukajadi",
+    "city": "Bandung",
+    "province": "Jawa Barat",
+    "postal_code": "40163"
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Simpan alamat KTP" "200" "$HTTP_CODE" "$BODY"
+
+# 30c. Simpan Data Orang Tua / Wali
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${IDENTITY_URL}/me/guardians" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "relation": "ayah",
+    "name": "Bambang Sudarsono",
+    "occupation": "Wiraswasta",
+    "income_range": "5.000.000 - 10.000.000",
+    "phone": "081299887766"
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Simpan data wali" "200" "$HTTP_CODE" "$BODY"
+
+# 30d. Simpan Riwayat Pendidikan
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${IDENTITY_URL}/me/education" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "level": "SMA",
+    "school_name": "SMA Negeri 1 Bandung",
+    "npsn": "20219485",
+    "major": "IPA",
+    "graduation_year": 2024
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Simpan riwayat pendidikan" "200" "$HTTP_CODE" "$BODY"
+log_pass "Seluruh berkas biodata berhasil diisi lengkap"
+
+# 31. Cek Ulang Kelengkapan Biodata (Harus complete: true)
+log_info "31. Memeriksa ulang kelengkapan biodata setelah diisi..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/me/completeness" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Cek kelengkapan pasca pengisian" "200" "$HTTP_CODE" "$BODY"
+
+if echo "$BODY" | grep -q '"complete":true'; then
+  log_pass "Status kelengkapan biodata berhasil menjadi complete: true"
+else
+  log_fail "Status kelengkapan harus true setelah pengisian lengkap: $BODY"
+fi
+
+# 32. Isolasi Data Pengguna (User A vs User B)
+log_info "32. [ISOLASI DATA] Menguji bahwa data biodata terisolasi per user..."
+# Registrasi & Verifikasi User B
+USER_B_EMAIL="mhs_b_$RANDOM@example.com"
+USER_B_PASS="PasswordUserB123!"
+
+curl -s -X POST "${GATEWAY_URL}/register" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$USER_B_EMAIL\",
+    \"password\": \"$USER_B_PASS\",
+    \"password_confirmation\": \"$USER_B_PASS\",
+    \"full_name\": \"Calon Mahasiswa B\",
+    \"phone\": \"089876543210\"
+  }" >/dev/null
+
+sleep 1
+OTP_B=$(curl -s "${MAILPIT_URL}/api/v1/messages" | grep -o 'kode OTP pendaftaran Anda: [0-9]\{6\}' | head -n1 | grep -o '[0-9]\{6\}')
+RESP_VERIFY_B=$(curl -s -X POST "${GATEWAY_URL}/verify" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$OTP_B\"}")
+USER_B_TOKEN=$(echo "$RESP_VERIFY_B" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+# User B cek /me/completeness -> harus false (tidak terpengaruh User A)
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/me/completeness" \
+  -H "Authorization: Bearer $USER_B_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Cek kelengkapan User B" "200" "$HTTP_CODE" "$BODY"
+
+if echo "$BODY" | grep -q '"complete":false'; then
+  log_pass "Data User B bersih dan terisolasi dari User A"
+else
+  log_fail "Isolasi data gagal! User B membaca data User A: $BODY"
+fi
+
+# 33. Superadmin Membaca Detail Biodata Lengkap Calon Mahasiswa (NIK Unmasked)
+log_info "33. Superadmin membaca detail biodata User A..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/admin/persons/${MHS_USER_ID}" \
+  -H "Authorization: Bearer $SUPERADMIN_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Superadmin membaca detail person" "200" "$HTTP_CODE" "$BODY"
+
+if echo "$BODY" | grep -q "3201015505050002" && echo "$BODY" | grep -q "Ahmad Syafiq E2E"; then
+  log_pass "Superadmin berhasil melihat detail biodata lengkap dengan NIK utuh (unmasked)"
+else
+  log_fail "NIK tidak ditemukan secara unmasked untuk superadmin: $BODY"
+fi
+
+# 34. Inisiasi Scan KTP (Multipart)
+log_info "34. Calon mahasiswa mengunggah scan KTP sintetis..."
+# Buat mock file JPG
+TMP_KTP="/tmp/e2e_ktp_synthetic_$$.jpg"
+printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xFF\xDB\x00C\x00mock-synthetic-ktp-image-bytes-padding-for-e2e-testing-purposes-1234567890\xFF\xD9' > "$TMP_KTP"
+
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${IDENTITY_URL}/me/ktp-scan" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@$TMP_KTP;type=image/jpeg")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+rm -f "$TMP_KTP"
+
+assert_status "Inisiasi scan KTP" "202" "$HTTP_CODE" "$BODY"
+SCAN_ID=$(echo "$BODY" | grep -o '"scan_id":"[^"]*"' | cut -d'"' -f4)
+if [ -n "$SCAN_ID" ]; then
+  log_pass "Scan KTP berhasil diinisiasi dengan scan_id: $SCAN_ID"
+else
+  log_fail "Gagal mendapatkan scan_id: $BODY"
+fi
+
+# 35. [NEGATIF] Unggah Berkas KTP dengan Tipe Tidak Diizinkan (Misal file teks)
+log_info "35. [NEGATIF] Mengunggah file berkas teks sebagai KTP..."
+TMP_BAD="/tmp/bad_ktp_$$.txt"
+echo "Bukan gambar KTP" > "$TMP_BAD"
+
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${IDENTITY_URL}/me/ktp-scan" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "file=@$TMP_BAD;type=text/plain")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+rm -f "$TMP_BAD"
+
+assert_status "Unggahan berkas bukan gambar ditolak" "422" "$HTTP_CODE" "$BODY"
+log_pass "Sistem berhasil menolak unggahan berkas non-gambar dengan HTTP 422"
+
+# 36. [KEAMANAN] Proteksi Bypass Gateway: Request Langsung ke Identity-Service
+log_info "36. [KEAMANAN] Menguji proteksi bypass gateway: Request langsung ke identity-service..."
+if ! curl -s --connect-timeout 2 "${IDENTITY_DIRECT_URL}/health" >/dev/null 2>&1; then
+  echo -e "${YELLOW}[SKIP]${NC} Port identity-service langsung (${IDENTITY_DIRECT_URL}) tidak terbuka / tidak dapat diakses"
+else
+  DIRECT_RES=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_DIRECT_URL}/identity/me/profile" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  DIRECT_STATUS=$(echo "$DIRECT_RES" | tail -n1)
+  DIRECT_BODY=$(echo "$DIRECT_RES" | sed '$d')
+
+  assert_status "Request langsung ke identity-service tanpa gateway signature ditolak" "401" "$DIRECT_STATUS" "$DIRECT_BODY"
+
+  DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
+  if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
+    log_pass "Identity-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
+  else
+    log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
+  fi
+fi
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 echo "------------------------------------------------------------------------------"
 echo -e "${GREEN}SELURUH PENGUJIAN END-TO-END BERHASIL! (Total PASS: $pass_count, FAIL: $fail_count)${NC}"
 echo "=============================================================================="
 exit 0
+

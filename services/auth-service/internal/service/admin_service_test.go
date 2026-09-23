@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"io"
 	"testing"
 	"time"
 
@@ -341,6 +342,7 @@ func (m *mockInternalClient) Get(ctx context.Context, path string, query map[str
 	return nil
 }
 func (m *mockInternalClient) Post(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
+func (m *mockInternalClient) PostMultipart(ctx context.Context, path string, fieldName, fileName string, fileReader io.Reader, extraFields map[string]string, dest interface{}) error { return nil }
 func (m *mockInternalClient) Put(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
 func (m *mockInternalClient) Patch(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
 func (m *mockInternalClient) Delete(ctx context.Context, path string, dest interface{}) error { return nil }

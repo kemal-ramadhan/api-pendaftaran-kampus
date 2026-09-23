@@ -79,8 +79,8 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-03 | Verifikasi Email / OTP | Auth | Selesai |
 | UC-04 | Pilih Gelombang & Jalur | Admission | Fase 2 |
 | UC-05 | Pilih Program Studi | Admission (+ Organization) | Fase 2 |
-| UC-06 | Isi Biodata | Identity | Fase 2 |
-| UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Fase 2 |
+| UC-06 | Isi Biodata | Identity | Selesai |
+| UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Selesai |
 | UC-07 | Upload Dokumen Persyaratan | Admission | Fase 2 |
 | UC-08 | Bayar Biaya Pendaftaran | Finance | Fase 2 |
 | UC-09 | Cetak Kartu Ujian | Exam | Fase 2 |

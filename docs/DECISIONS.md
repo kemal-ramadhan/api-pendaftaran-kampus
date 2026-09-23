@@ -158,3 +158,21 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - Sesuai PRD Bagian 4.10, Auth Service memanfaatkan `pkg/internalclient` untuk memvalidasi `scope_id` saat superadmin menetapkan peran `prodi` (`CreateUser` dan `UpdateUserRoles`). Jika kode prodi tidak ada di Organization Service, permintaan ditolak dengan HTTP 422 (`VALIDATION_ERROR`). Jika Organization Service tidak dapat dijangkau, permintaan ditolak dengan HTTP 502 (`UPSTREAM_UNAVAILABLE`).
 - **Rasional**: Mencegah pendaftaran role prodi dengan scope fiktif di basis data Auth, menjaga konsistensi master data kampus, dan memberikan proteksi kegagalan jaringan yang transparan ke klien.
 
+---
+
+## 19. Fase 2: Identity Service & Integrasi Asinkron OCR KTP (F2-M2 & F2-M2b)
+- **Status**: Diputuskan pada Tahap 2, 23 Sep 2026
+- **Keputusan**:
+  - Identity Service dibangun sebagai pengelola tunggal data personal calon mahasiswa (`services/identity-service`) pada basis data `pmb_identity`.
+  - **Enkripsi NIK At-Rest**: NIK 16 digit wajib disimpan terenkripsi menggunakan AES-256-GCM dengan kunci simetris dari environment `IDENTITY_ENCRYPTION_KEY`. Kolom `nik_hash` (SHA-256) berindeks UNIQUE digunakan untuk validasi keunikan tanpa mendekripsi tabel secara massal.
+  - **Masking NIK Berbasis Hak Akses**: NIK hanya dikembalikan utuh ke pemilik data (`user_id`), role `admin_pmb`/`superadmin`, dan pemanggilan internal service (`/internal/*`). Untuk pihak lain, NIK otomatis dimasking (`3205********0001`).
+  - **Alur Pemindaian OCR KTP**:
+    1. Pengguna mengunggah gambar KTP ke `POST /api/v1/identity/me/ktp-scan`.
+    2. Gambar asli disimpan ke MinIO bucket privat `pmb-identity-ktp` dan diteruskan ke OCR Service via `POST /internal/ocr/ktp`.
+    3. Status dipantau secara asinkron via `GET /api/v1/identity/me/ktp-scan/:scan_id`.
+    4. Pengguna wajib mengonfirmasi data hasil pembacaan via `POST /api/v1/identity/me/ktp-scan/:scan_id/confirm`. Seluruh modifikasi field yang dilakukan user dicatat di `fields_edited_by_user` untuk audit verifikator admin. Data mentah OCR tidak disimpan permanen di database.
+  - **Penyimpanan Berkas**: Foto profil disimpan di bucket `pmb-identity-photos` dan gambar KTP disimpan di `pmb-identity-ktp` (akses publik langsung ditutup, hanya lewat presigned URL berumur terbatas).
+  - **Evaluasi Kelengkapan Biodata**: Endpoint `/me/completeness` dan `/internal/persons/:user_id/completeness` mengevaluasi 4 domain wajib (profil, alamat KTP, minimal 1 orang tua/wali, dan riwayat pendidikan terakhir) sebelum pendaftaran dapat di-submit ke Admission Service.
+- **Rasional**: Menjamin kepatuhan UU Pelindungan Data Pribadi (UU No. 27/2022), mencegah kebocoran NIK/foto, mengotomasi pengisian form calon mahasiswa tanpa risiko salah baca dari AI, serta menyediakan data yang terverifikasi bagi tahapan admission.
+
+

@@ -1399,6 +1399,282 @@
           }
         }
       ]
+    },
+    {
+      "name": "6. IDENTITY (Biodata & OCR KTP)",
+      "item": [
+        {
+          "name": "6.1 Get My Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/profile",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "profile"]
+            }
+          }
+        },
+        {
+          "name": "6.2 Update My Profile",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Ahmad Syafiq\",\n  \"nik\": \"3201015505050002\",\n  \"birth_place\": \"Bandung\",\n  \"birth_date\": \"2005-05-15\",\n  \"gender\": \"L\",\n  \"religion\": \"Islam\",\n  \"nationality\": \"WNI\",\n  \"phone\": \"081234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/profile",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "profile"]
+            }
+          }
+        },
+        {
+          "name": "6.3 Get My Addresses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "6.4 Save Address KTP",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"type\": \"ktp\",\n  \"street\": \"Jl. Sukajadi No. 12\",\n  \"rt\": \"02\",\n  \"rw\": \"03\",\n  \"village\": \"Sukagalih\",\n  \"district\": \"Sukajadi\",\n  \"city\": \"Bandung\",\n  \"province\": \"Jawa Barat\",\n  \"postal_code\": \"40163\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/addresses",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "addresses"]
+            }
+          }
+        },
+        {
+          "name": "6.5 Get My Guardians",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/guardians",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "guardians"]
+            }
+          }
+        },
+        {
+          "name": "6.6 Save Guardian (Ayah/Ibu/Wali)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"relation\": \"ayah\",\n  \"name\": \"Bambang Sudarsono\",\n  \"occupation\": \"Wiraswasta\",\n  \"income_range\": \"5.000.000 - 10.000.000\",\n  \"phone\": \"081299887766\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/guardians",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "guardians"]
+            }
+          }
+        },
+        {
+          "name": "6.7 Get My Education",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/education",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "education"]
+            }
+          }
+        },
+        {
+          "name": "6.8 Save Education",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"level\": \"SMA\",\n  \"school_name\": \"SMA Negeri 1 Bandung\",\n  \"npsn\": \"20219485\",\n  \"major\": \"IPA\",\n  \"graduation_year\": 2024\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/education",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "education"]
+            }
+          }
+        },
+        {
+          "name": "6.9 Check Completeness",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/completeness",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "completeness"]
+            }
+          }
+        },
+        {
+          "name": "6.10 Initiate KTP Scan (Multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": ""
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/ktp-scan",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "ktp-scan"]
+            }
+          }
+        },
+        {
+          "name": "6.11 Get KTP Scan Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/me/ktp-scan/{{scan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "ktp-scan", "{{scan_id}}"]
+            }
+          }
+        },
+        {
+          "name": "6.12 Confirm KTP Scan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{token_access}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Ahmad Syafiq\",\n  \"nik\": \"3201015505050002\",\n  \"birth_place\": \"Bandung\",\n  \"birth_date\": \"2005-05-15\",\n  \"gender\": \"L\",\n  \"religion\": \"Islam\",\n  \"nationality\": \"WNI\",\n  \"phone\": \"081234567890\",\n  \"address\": {\n    \"type\": \"ktp\",\n    \"street\": \"Jl. Sukajadi No. 12\",\n    \"rt\": \"02\",\n    \"rw\": \"03\",\n    \"village\": \"Sukagalih\",\n    \"district\": \"Sukajadi\",\n    \"city\": \"Bandung\",\n    \"province\": \"Jawa Barat\",\n    \"postal_code\": \"40163\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/identity/me/ktp-scan/{{scan_id}}/confirm",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "me", "ktp-scan", "{{scan_id}}", "confirm"]
+            }
+          }
+        },
+        {
+          "name": "6.13 Admin Get Person Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/identity/admin/persons/{{target_user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["identity", "admin", "persons", "{{target_user_id}}"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [

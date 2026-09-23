@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -169,3 +170,72 @@ func TestInternalClient_ErrorsAndRetry(t *testing.T) {
 		t.Fatalf("Status atau ErrorCode tidak sesuai: %+v", apiErr)
 	}
 }
+
+func TestInternalClient_PostMultipart(t *testing.T) {
+	secretToken := "secret-multipart-token"
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get(HeaderInternalToken) != secretToken {
+			http.Error(w, "Forbidden", http.StatusForbidden)
+			return
+		}
+		if r.Method != http.MethodPost || r.URL.Path != "/internal/upload" {
+			http.NotFound(w, r)
+			return
+		}
+
+		err := r.ParseMultipartForm(10 << 20)
+		if err != nil {
+			http.Error(w, "Bad Form", http.StatusBadRequest)
+			return
+		}
+
+		file, header, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, "Missing file", http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		extra := r.FormValue("note")
+
+		_ = response.WriteJSON(w, http.StatusOK, response.SuccessResponse{
+			Success: true,
+			Message: "File diunggah",
+			Data: map[string]interface{}{
+				"filename": header.Filename,
+				"note":     extra,
+			},
+		})
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{
+		BaseURL:       server.URL,
+		InternalToken: secretToken,
+	})
+
+	content := "sample-image-bytes"
+	var res struct {
+		Filename string `json:"filename"`
+		Note     string `json:"note"`
+	}
+
+	err := client.PostMultipart(
+		context.Background(),
+		"/internal/upload",
+		"file",
+		"ktp.jpg",
+		strings.NewReader(content),
+		map[string]string{"note": "test-note"},
+		&res,
+	)
+	if err != nil {
+		t.Fatalf("PostMultipart gagal: %v", err)
+	}
+
+	if res.Filename != "ktp.jpg" || res.Note != "test-note" {
+		t.Fatalf("Hasil PostMultipart tidak cocok: %+v", res)
+	}
+}
+

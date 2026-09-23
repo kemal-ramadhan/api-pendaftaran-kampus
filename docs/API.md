@@ -554,3 +554,221 @@ Layanan master data kampus untuk mengelola fakultas dan program studi. Digunakan
 Dilindungi header `X-Internal-Token`, tidak diekspos melalui API Gateway:
 - `GET /internal/study-programs/:code` $\rightarrow$ Mengambil detail prodi untuk validasi scope role di Auth Service dan kuota pendaftaran di Admission.
 - `POST /internal/study-programs/batch` $\rightarrow$ Mengambil detail beberapa prodi sekaligus dengan body `{ "codes": ["TI", "SI"] }`.
+
+---
+
+## 7. Identity Service & OCR KTP (F2-M2 & F2-M2b)
+
+Layanan Identity Service mengelola data pribadi (*person identity*), alamat, data orang tua/wali, riwayat pendidikan, dan integrasi pemindaian kartu tanda penduduk (KTP) melalui OCR Service.
+
+### 7.1 Keamanan & Privasi NIK (UU No. 27/2022)
+- **At-Rest Encryption**: NIK 16 digit disimpan terenkripsi dengan algoritma **AES-GCM 256-bit** menggunakan kunci aman dari environment `IDENTITY_ENCRYPTION_KEY`.
+- **Searchable Index**: Keunikan NIK dijaga melalui kolom `nik_hash` (SHA-256 hexdigest).
+- **Masking NIK**: NIK hanya ditampilkan utuh (16 digit) kepada:
+  - Pemilik data itu sendiri (`/me/...`)
+  - Role `admin_pmb` dan `superadmin` (`/admin/...`)
+  - Pemanggilan internal service (`/internal/...`)
+  Untuk pihak lain, NIK otomatis dimasking: `3205********0001`.
+- **Tanpa Model Generatif**: Peningkatan citra OCR hanya menggunakan algoritma pelestarian isi (*content-preserving*) seperti CLAHE, Unsharp Masking, Bilateral Filter, dan Lanczos Scaling. Tidak ada huruf/angka yang dikarang oleh model AI.
+- **Konfirmasi Wajib**: Hasil OCR hanya berupa saran (*suggestions*) dan tidak pernah disimpan otomatis sebelum dikonfirmasi oleh pengguna.
+
+---
+
+### 7.2 Endpoint Calon Mahasiswa (`/api/v1/identity/me/...`)
+Seluruh endpoint di bawah memerlukan token JWT calon mahasiswa yang valid (`auth: required`).
+
+#### 1. `GET /api/v1/identity/me/profile`
+Mengambil data profil pengguna yang login.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Data profil berhasil diambil",
+    "data": {
+      "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      "full_name": "Ahmad Syafiq",
+      "nik": "3201015505050002",
+      "birth_place": "Bandung",
+      "birth_date": "2005-05-15",
+      "gender": "L",
+      "religion": "Islam",
+      "nationality": "WNI",
+      "phone": "081234567890",
+      "photo_url": "https://..."
+    }
+  }
+  ```
+
+#### 2. `PUT /api/v1/identity/me/profile`
+Memperbarui data profil pengguna.
+- **Request Body**:
+  ```json
+  {
+    "full_name": "Ahmad Syafiq",
+    "nik": "3201015505050002",
+    "birth_place": "Bandung",
+    "birth_date": "2005-05-15",
+    "gender": "L",
+    "religion": "Islam",
+    "nationality": "WNI",
+    "phone": "081234567890"
+  }
+  ```
+
+#### 3. `GET /api/v1/identity/me/addresses` & `PUT /api/v1/identity/me/addresses`
+Mengambil dan memperbarui data alamat (tipe `ktp` atau `domisili`).
+- **Request Body (PUT)**:
+  ```json
+  {
+    "type": "ktp",
+    "street": "Jl. Sukajadi No. 12",
+    "rt": "02",
+    "rw": "03",
+    "village": "Sukagalih",
+    "district": "Sukajadi",
+    "city": "Bandung",
+    "province": "Jawa Barat",
+    "postal_code": "40163"
+  }
+  ```
+
+#### 4. `GET /api/v1/identity/me/guardians` & `PUT /api/v1/identity/me/guardians`
+Mengelola data orang tua atau wali (`relation`: `ayah`, `ibu`, `wali`).
+- **Request Body (PUT)**:
+  ```json
+  {
+    "relation": "ayah",
+    "name": "Bambang Sudarsono",
+    "occupation": "Wiraswasta",
+    "income_range": "5.000.000 - 10.000.000",
+    "phone": "081299887766"
+  }
+  ```
+
+#### 5. `GET /api/v1/identity/me/education` & `PUT /api/v1/identity/me/education`
+Mengelola riwayat pendidikan formal terakhir calon mahasiswa.
+- **Request Body (PUT)**:
+  ```json
+  {
+    "level": "SMA",
+    "school_name": "SMA Negeri 1 Bandung",
+    "npsn": "20219485",
+    "major": "IPA",
+    "graduation_year": 2024
+  }
+  ```
+
+#### 6. `PUT /api/v1/identity/me/photo`
+Mengunggah pasfoto profil calon mahasiswa (maksimal 2 MB, format JPG/PNG). Disimpan di MinIO bucket `pmb-identity-photos`.
+- **Form Data**: `photo` (file gambar).
+
+#### 7. `GET /api/v1/identity/me/completeness`
+Memeriksa status kelengkapan biodata.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Status kelengkapan biodata berhasil diperiksa",
+    "data": {
+      "complete": true,
+      "missing": []
+    }
+  }
+  ```
+  *(Jika belum lengkap, `complete: false` dan `missing` memuat daftar field yang belum diisi).*
+
+---
+
+### 7.3 Pemindaian & Konfirmasi OCR KTP
+
+#### 1. Inisiasi Scan KTP: `POST /api/v1/identity/me/ktp-scan`
+- **Headers**: `Authorization: Bearer <token>`, `Content-Type: multipart/form-data`
+- **Form Data**: `file` (gambar scan KTP, maks 5 MB).
+- **Response `202 Accepted`**:
+  ```json
+  {
+    "success": true,
+    "message": "Proses pembacaan KTP sedang berjalan di latar belakang",
+    "data": {
+      "scan_id": "7fa6b73a-4422-48df-b452-19e4871987d6",
+      "status": "processing"
+    }
+  }
+  ```
+
+#### 2. Polling Status Scan: `GET /api/v1/identity/me/ktp-scan/:scan_id`
+- **Response `200 OK` (Selesai)**:
+  ```json
+  {
+    "success": true,
+    "message": "Status pemindaian KTP berhasil diambil",
+    "data": {
+      "scan_id": "7fa6b73a-4422-48df-b452-19e4871987d6",
+      "status": "completed",
+      "quality_score": 88.5,
+      "enhanced": true,
+      "fields": {
+        "nik": { "value": "3201015505050002", "confidence": 0.98, "needs_review": false },
+        "nama": { "value": "AHMAD SYAFIQ", "confidence": 0.95, "needs_review": false },
+        "tanggal_lahir": { "value": "2005-05-15", "confidence": 0.99, "needs_review": false }
+      }
+    }
+  }
+  ```
+- **Response `200 OK` (Foto Terlalu Buram)**:
+  ```json
+  {
+    "success": true,
+    "message": "Status pemindaian KTP berhasil diambil",
+    "data": {
+      "scan_id": "...",
+      "status": "retake_required",
+      "reason": "BLURRY",
+      "reason_message": "Foto buram, pegang HP lebih stabil dan pastikan pencahayaan cukup"
+    }
+  }
+  ```
+
+#### 3. Konfirmasi Hasil OCR: `POST /api/v1/identity/me/ktp-scan/:scan_id/confirm`
+Calon mahasiswa memeriksa/mengoreksi data sebelum menyimpannya ke biodata.
+- **Request Body**:
+  ```json
+  {
+    "full_name": "Ahmad Syafiq",
+    "nik": "3201015505050002",
+    "birth_place": "Bandung",
+    "birth_date": "2005-05-15",
+    "gender": "L",
+    "religion": "Islam",
+    "nationality": "WNI",
+    "phone": "081234567890",
+    "address": {
+      "type": "ktp",
+      "street": "Jl. Sukajadi No. 12",
+      "rt": "02",
+      "rw": "03",
+      "village": "Sukagalih",
+      "district": "Sukajadi",
+      "city": "Bandung",
+      "province": "Jawa Barat",
+      "postal_code": "40163"
+    }
+  }
+  ```
+
+---
+
+### 7.4 Endpoint Admin (`/api/v1/identity/admin/...`)
+Hanya dapat diakses oleh role `admin_pmb` dan `superadmin`. NIK disajikan secara utuh (*unmasked*).
+
+#### `GET /api/v1/identity/admin/persons/:user_id`
+Mengambil detail lengkap identitas calon mahasiswa (profil, daftar alamat, orang tua/wali, riwayat pendidikan, dan status kelengkapan).
+
+---
+
+### 7.5 Endpoint Internal Antar-Service (`/internal/persons/...`)
+Dilindungi oleh `X-Internal-Token`:
+- `GET /internal/persons/:user_id` $\rightarrow$ Detail identitas lengkap untuk service hilir (Admission, Finance, NIM).
+- `GET /internal/persons/:user_id/completeness` $\rightarrow$ Evaluasi kelengkapan berkas untuk validasi sebelum submit pendaftaran di Admission Service.
+- `POST /internal/persons/batch` $\rightarrow$ Mengambil sekumpulan identitas pengguna dengan body `{ "user_ids": ["uuid1", "uuid2"] }`.
+
