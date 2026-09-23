@@ -156,6 +156,7 @@ services:
       FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
       EXAM_SERVICE_URL: ${EXAM_SERVICE_URL:-http://exam-service:8087}
       SCORING_SERVICE_URL: ${SCORING_SERVICE_URL:-http://scoring-service:8089}
+      SELECTION_SERVICE_URL: ${SELECTION_SERVICE_URL:-http://selection-service:8090}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
@@ -175,6 +176,8 @@ services:
       exam-service:
         condition: service_healthy
       scoring-service:
+        condition: service_healthy
+      selection-service:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -386,6 +389,45 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8089/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  selection-service:
+    build:
+      context: ..
+      dockerfile: services/selection-service/Dockerfile
+    container_name: pmb-selection-service
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 8090
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: pmb_selection
+      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      SCORING_SERVICE_URL: http://scoring-service:8089
+      ADMISSION_SERVICE_URL: http://admission-service:8084
+      FINANCE_SERVICE_URL: http://finance-service:8085
+      NOTIFICATION_SERVICE_URL: http://notification-service:8083
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+      ORGANIZATION_SERVICE_URL: http://organization-service:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scoring-service:
+        condition: service_healthy
+      admission-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8090/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5

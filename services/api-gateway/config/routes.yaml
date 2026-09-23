@@ -29,8 +29,11 @@ services:
     url: ${SCORING_SERVICE_URL}
     timeout: 15s
     max_body: 5MB
+  selection:
+    url: ${SELECTION_SERVICE_URL}
+    timeout: 15s
+    max_body: 5MB
   # slot service berikutnya (biarkan ter-comment sampai service dibuat)
-  # selection:    { url: ${SELECTION_SERVICE_URL} }                    # /api/v1/selection
   # student:      { url: ${STUDENT_SERVICE_URL} }                      # /api/v1/student
   # nim:          { url: ${NIM_SERVICE_URL} }                          # /api/v1/nim
 
@@ -153,5 +156,29 @@ routes:
     auth: required
     roles: [prodi, admin_pmb, superadmin, pimpinan]
     max_body: 5MB
+  - prefix: /api/v1/selection/program
+    service: selection
+    rewrite: /selection/program
+    auth: required
+    roles: [prodi, admin_pmb, superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/selection/approval
+    service: selection
+    rewrite: /selection/approval
+    auth: required
+    roles: [pimpinan, superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/selection/admin
+    service: selection
+    rewrite: /selection/admin
+    auth: required
+    roles: [admin_pmb, superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/selection/me
+    service: selection
+    rewrite: /selection/me
+    auth: required
+    roles: [calon_mahasiswa, admin_pmb, superadmin]
+
 
 

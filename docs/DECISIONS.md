@@ -295,6 +295,37 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Endpoint internal `GET /internal/summaries?period_id=&program=` dan `POST /internal/locks` disediakan khusus untuk dikonsumsi oleh Selection Service pada tahap perumusan rekomendasi kelulusan.
 - **Rasional**: Menjamin keakuratan matematis dan transparansi penilaian seleksi penerimaan mahasiswa baru, melindungi integritas skor dari perubahan tanpa izin setelah masa seleksi berakhir, mengamankan hak akses antar dosen penguji dan program studi, serta mempermudah sidang pleno kelulusan panitia PMB melalui berkas rekapitulasi Excel berstandar tinggi.
 
+---
+
+## 25. Fase 2: Selection Service — Validasi Kuota Mutlak, Penguncian Nilai Transaksional, Persetujuan Pimpinan Dua Arah (Approve/Return), dan Efek Samping Publikasi Pengumuman Terintegrasi (F2-M9)
+- **Status**: Diputuskan pada Tahap 8, 24 Sep 2026
+- **Keputusan**:
+  - **Arsitektur Selection Service Mandiri**:
+    - Layanan Selection Service (`pmb-selection-service`) beroperasi sebagai microservice independen pada port `8090` dengan basis data terisolasi `pmb_selection`.
+    - Mengikuti standar keamanan ketat `docs/AGENT_RULES.md`: verifikasi signature HMAC API Gateway (`pkg/gatewayauth`), autentikasi token internal (`pkg/internalauth`), migrasi skema SQL versi terstruktur, dan format respons JSON terstandarisasi.
+  - **Validasi Kuota Program Studi Mutlak (QUOTA_EXCEEDED)**:
+    - Selama perumusan usulan rekomendasi oleh program studi (`POST/PUT /api/v1/selection/program/recommendations`), kuota kapasitas prodi divalidasi langsung dari Admission Service (`GET /internal/quotas`).
+    - Jika jumlah pendaftar yang ditetapkan berstatus `pass` melebihi kuota kapasitas yang tersedia, sistem secara mutlak menolak penyimpanan maupun pengajuan dengan status HTTP `422 Unprocessable Entity` dan kode error `QUOTA_EXCEEDED`.
+  - **Siklus Penguncian Nilai Transaksional (SCORES_LOCKED)**:
+    - Saat program studi mengajukan usulan kelulusan (`POST /api/v1/selection/program/recommendations/:id/submit`), Selection Service memanggil Scoring Service (`POST /internal/locks` dengan `is_locked = true`). Sejak titik ini, dosen penguji tidak lagi diizinkan mengubah skor komponen peserta (`SCORES_LOCKED`).
+    - Jika pimpinan mengembalikan berkas usulan untuk ditinjau ulang (`return`), kunci nilai di Scoring Service dibuka kembali (`is_locked = false`) sehingga pihak program studi atau penguji dapat melakukan revisi nilai maupun keputusan kelulusan peserta.
+  - **Alur Persetujuan Pimpinan Dua Arah**:
+    - Pimpinan universitas memiliki endpoint khusus `GET /api/v1/selection/approval/recommendations` untuk meninjau seluruh usulan prodi yang berstatus `submitted`.
+    - Pimpinan dapat menyetujui rekomendasi (`POST /.../approve`) sehingga status berubah menjadi `approved`, atau mengembalikan rekomendasi (`POST /.../return`) disertai catatan telaah tertulis (`note`).
+  - **Publikasi Pengumuman Terpusat oleh Admin PMB**:
+    - Admin PMB mempublikasikan hasil resmi melalui `POST /api/v1/selection/admin/announcements`.
+    - Sistem memastikan seluruh usulan rekomendasi pada periode/gelombang terkait telah disetujui pimpinan sebelum pengumuman dapat diterbitkan.
+    - Pada saat pengumuman diterbitkan:
+      1. Seluruh penetapan peserta disimpan secara batch ke tabel `results`.
+      2. Status pendaftaran di Admission Service diperbarui via internal API menjadi `passed` (lulus) atau `failed` (tidak lulus).
+      3. Finance Service dipanggil melalui internal API (`POST /internal/invoices`) untuk membuat invoice tagihan daftar ulang (`reregistration`) bagi setiap calon mahasiswa yang dinyatakan lulus.
+      4. Notifikasi kelulusan resmi dikirimkan kepada calon mahasiswa melalui Notification Service (`POST /internal/notifications`).
+  - **Perlindungan Akses Hasil Calon Mahasiswa (RESULT_NOT_PUBLISHED)**:
+    - Endpoint calon mahasiswa `GET /api/v1/selection/me/result` memproteksi kerahasiaan hasil seleksi. Jika pengumuman belum dirilis resmi oleh Admin PMB, setiap permintaan langsung ditolak dengan HTTP `422 Unprocessable Entity` dan kode error `RESULT_NOT_PUBLISHED`.
+    - Setelah rilis resmi, calon mahasiswa dapat melihat keputusan kelulusan, program studi yang menerima, serta rincian invoice tagihan daftar ulang yang telah terbentuk secara otomatis.
+- **Rasional**: Menjamin integritas keputusan penerimaan mahasiswa baru agar tidak melebihi daya tampung institusi, menciptakan alur pengawasan berjenjang yang akuntabel antara program studi dan pimpinan universitas, menjaga kerahasiaan hasil sebelum waktu rilis resmi, serta mengotomatisasi side-effects lintas layanan (akademik, keuangan, dan notifikasi) tanpa intervensi manual yang rentan kesalahan.
+
+
 
 
 

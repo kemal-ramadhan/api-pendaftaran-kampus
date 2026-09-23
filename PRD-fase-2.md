@@ -84,7 +84,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-07 | Upload Dokumen Persyaratan | Admission | Selesai (Tahap 5) |
 | UC-08 | Bayar Biaya Pendaftaran | Finance | Selesai (Tahap 4) |
 | UC-09 | Cetak Kartu Ujian | Exam | Selesai (Tahap 6) |
-| UC-10 | Lihat Pengumuman Hasil | Selection | Fase 2 |
+| UC-10 | Lihat Pengumuman Hasil | Selection | Selesai (Tahap 8) |
 | UC-11 | Bayar Daftar Ulang | Finance | Fase 2 |
 | UC-12 | Daftar Ulang | Student | Fase 2 |
 | UC-13 | Proses Pembayaran | Finance | Selesai (Tahap 4) |
@@ -96,15 +96,15 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-19 | Verifikasi Dokumen | Admission | Selesai (Tahap 5) |
 | UC-20 | Kelola Jadwal Seleksi | Exam | Selesai (Tahap 6) |
 | UC-21 | Assign Dosen Penguji | Exam | Selesai (Tahap 6) |
-| UC-22 | Publikasikan Pengumuman | Selection | Fase 2 |
+| UC-22 | Publikasikan Pengumuman | Selection | Selesai (Tahap 8) |
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Fase 2 |
 | UC-25 | Lihat Laporan Keuangan | Finance | Fase 2 |
 | UC-26 | Export Laporan | Finance, Scoring, Admission | Sebagian (Admission & Scoring export selesai di Tahap 5 & 7) |
 | UC-27 | Input Nilai Seleksi | Scoring | Selesai (Tahap 7) |
 | UC-28 | Lihat Rekap & Ranking | Scoring | Selesai (Tahap 7) |
-| UC-29 | Rekomendasi Kelulusan | Selection | Fase 2 |
-| UC-30 | Setujui Kelulusan | Selection | Fase 2 |
+| UC-29 | Rekomendasi Kelulusan | Selection | Selesai (Tahap 8) |
+| UC-30 | Setujui Kelulusan | Selection | Selesai (Tahap 8) |
 | UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Sebagian (Admission stats selesai di Tahap 5) |
 | UC-32 | Kelola Master Data | Organization (prodi selesai), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya) | Sebagian (prodi selesai) |
 | UC-33 | Kelola User & Role | Auth | Selesai |
@@ -462,7 +462,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M6** Admission bagian 2 | Upload dokumen, submit, verifikasi & revisi, export, statistik | **Selesai** (alur upload dokumen, validasi magic bytes, submit, verifikasi admin, revisi, presigned URL 5 menit, export xlsx, statistik selesai) |
 | **F2-M7** Exam | 4.6 | **Selesai** (jadwal sesi, dosen penguji, peserta verified, kartu PDF + QR, presensi selesai) |
 | **F2-M8** Scoring | 4.7 | dosen input nilai, rekap & ranking prodi |
-| **F2-M9** Selection | 4.8 | rekomendasi → persetujuan → pengumuman → tagihan daftar ulang |
+| **F2-M9** Selection | 4.8 | **Selesai** (rekomendasi prodi divalidasi kuota mutlak QUOTA_EXCEEDED, submit mengunci nilai di Scoring SCORES_LOCKED, persetujuan pimpinan approve/return, publikasi pengumuman oleh admin memutasi status Admission passed/failed, invoice daftar ulang Finance, notifikasi kelulusan, dan me result terproteksi RESULT_NOT_PUBLISHED) |
 | **F2-M10** Finance bagian 2 | Cicilan, reminder, laporan & export | ajukan & setujui cicilan, bayar termin |
 | **F2-M11** Student + NIM | 4.9 | daftar ulang → NIM unik → role `mahasiswa` |
 | **F2-M12** Integrasi akhir | e2e flowchart 1 penuh, dashboard statistik pimpinan, Postman & dokumentasi lengkap | `e2e.sh` seluruh alur PASS dari database kosong |

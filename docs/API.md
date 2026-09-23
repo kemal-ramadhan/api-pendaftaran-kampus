@@ -1515,5 +1515,238 @@ Khusus dipanggil oleh Selection Service dengan menyertakan header `X-Internal-To
 #### 3. Periksa Status Kunci: `GET /internal/locks?period_id=&path_id=&study_program_code=`
 - **Response `200 OK`**: Mengembalikan objek boolean `is_locked`.
 
+---
+
+## 13. Selection Service API
+
+Selection Service mengelola alur penetapan kelulusan calon mahasiswa, dimulai dari perumusan rekomendasi oleh program studi berbasis kuota mutlak, penguncian nilai transaksional, persetujuan pimpinan (approve/return), hingga publikasi pengumuman kelulusan resmi oleh Admin PMB dengan side-effects terintegrasi (Admission status update, permintaan invoice daftar ulang ke Finance Service, dan pengiriman notifikasi pengumuman).
+
+Base Path: `/api/v1/selection`
+
+### 13.1 Endpoint Rekomendasi Program Studi (`/api/v1/selection/program`)
+Akses: Role `prodi` (sesuai scope prodi masing-masing), `admin_pmb`, `superadmin`.
+
+#### 1. Ambil Rekomendasi & Rekap Peserta: `GET /api/v1/selection/program/recommendations`
+Mengambil data usulan kelulusan beserta rekap pendaftar terurut berdasarkan peringkat dan nilai akhir dari Scoring Service.
+- **Query Parameters**:
+  - `period_id` (UUID, wajib)
+  - `path_id` (UUID, wajib)
+  - `study_program_code` (string, wajib)
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Data rekomendasi program studi berhasil diambil",
+    "data": {
+      "recommendation": {
+        "id": "e0000000-0000-0000-0000-000000000001",
+        "period_id": "b0000000-0000-0000-0000-000000000001",
+        "path_id": "c0000000-0000-0000-0000-000000000001",
+        "study_program_code": "TIF",
+        "status": "draft",
+        "items": [
+          {
+            "id": "f0000000-0000-0000-0000-000000000001",
+            "application_id": "a0000000-0000-0000-0000-000000000001",
+            "decision": "pass",
+            "final_score": 87.50,
+            "rank": 1
+          }
+        ]
+      },
+      "participants": [
+        {
+          "application_id": "a0000000-0000-0000-0000-000000000001",
+          "registration_number": "PMB-2026-0001",
+          "full_name": "Budi Santoso",
+          "study_program_code": "TIF",
+          "final_score": 87.50,
+          "rank_in_program": 1,
+          "decision": "pass"
+        }
+      ]
+    }
+  }
+  ```
+
+#### 2. Simpan Usulan Rekomendasi: `POST /api/v1/selection/program/recommendations` (atau `PUT`)
+Menyimpan rancangan usulan kelulusan peserta. Kuota program studi divalidasi secara mutlak dari Admission Service.
+- **Request Body**:
+  ```json
+  {
+    "period_id": "b0000000-0000-0000-0000-000000000001",
+    "path_id": "c0000000-0000-0000-0000-000000000001",
+    "study_program_code": "TIF",
+    "items": [
+      {
+        "application_id": "a0000000-0000-0000-0000-000000000001",
+        "decision": "pass",
+        "final_score": 87.50,
+        "rank": 1
+      },
+      {
+        "application_id": "a0000000-0000-0000-0000-000000000002",
+        "decision": "fail",
+        "final_score": 62.00,
+        "rank": 2
+      }
+    ]
+  }
+  ```
+- **Error `422 Unprocessable Entity` (Jika Lulus Melebihi Kuota)**:
+  ```json
+  {
+    "success": false,
+    "message": "QUOTA_EXCEEDED: jumlah peserta yang direkomendasikan lulus melebihi kuota program studi",
+    "error_code": "QUOTA_EXCEEDED"
+  }
+  ```
+
+#### 3. Ajukan Rekomendasi ke Pimpinan: `POST /api/v1/selection/program/recommendations/:id/submit`
+Mengubah status usulan menjadi `submitted` dan memanggil Scoring Service (`POST /internal/locks`) untuk mengunci seluruh nilai peserta pada prodi tersebut (`SCORES_LOCKED`).
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Rekomendasi berhasil diajukan ke pimpinan dan nilai peserta telah dikunci",
+    "data": {
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "status": "submitted"
+    }
+  }
+  ```
+
+---
+
+### 13.2 Endpoint Persetujuan Pimpinan (`/api/v1/selection/approval`)
+Akses: Role `pimpinan`, `superadmin`.
+
+#### 1. Daftar Rekomendasi Menunggu Persetujuan: `GET /api/v1/selection/approval/recommendations`
+- **Query Parameters**: `period_id` (opsional)
+- **Response `200 OK`**: Daftar usulan berstatus `submitted` beserta item pendaftar.
+
+#### 2. Setujui Rekomendasi: `POST /api/v1/selection/approval/recommendations/:id/approve`
+Pimpinan menyetujui rekomendasi kelulusan dari prodi. Status berubah menjadi `approved`.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Rekomendasi program studi berhasil disetujui",
+    "data": {
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "status": "approved",
+      "approved_by": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+    }
+  }
+  ```
+
+#### 3. Kembalikan Rekomendasi untuk Revisi: `POST /api/v1/selection/approval/recommendations/:id/return`
+Pimpinan menolak/mengembalikan rekomendasi dengan catatan revisi. Status berubah menjadi `returned` dan kunci nilai di Scoring Service dibuka kembali (`is_locked = false`) agar prodi/dosen dapat melakukan penyesuaian nilai atau keputusan.
+- **Request Body**:
+  ```json
+  {
+    "note": "Mohon pertimbangkan kembali pendaftar cadangan peringkat 3"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Rekomendasi dikembalikan ke program studi untuk revisi dan nilai telah dibuka kembali",
+    "data": {
+      "id": "e0000000-0000-0000-0000-000000000001",
+      "status": "returned",
+      "note": "Mohon pertimbangkan kembali pendaftar cadangan peringkat 3"
+    }
+  }
+  ```
+
+---
+
+### 13.3 Endpoint Publikasi Admin PMB (`/api/v1/selection/admin`)
+Akses: Role `admin_pmb`, `superadmin`.
+
+#### 1. Publikasi Pengumuman Kelulusan: `POST /api/v1/selection/admin/announcements`
+Memvalidasi bahwa seluruh usulan pada periode tersebut telah `approved`. Melakukan batch insert penetapan ke tabel `results`, memperbarui status pendaftar di Admission Service (`passed` / `failed`), memicu pembuatan tagihan daftar ulang di Finance Service (`reregistration`), serta mengirim notifikasi pengumuman seleksi.
+- **Request Body**:
+  ```json
+  {
+    "period_id": "b0000000-0000-0000-0000-000000000001",
+    "title": "Pengumuman Hasil Seleksi PMB Gelombang 1 TA 2026/2027",
+    "content": "Selamat kepada calon mahasiswa yang dinyatakan LULUS seleksi..."
+  }
+  ```
+- **Response `201 Created`**:
+  ```json
+  {
+    "success": true,
+    "message": "Pengumuman hasil seleksi berhasil dipublikasikan dan tagihan daftar ulang telah diproses",
+    "data": {
+      "id": "a1000000-0000-0000-0000-000000000001",
+      "period_id": "b0000000-0000-0000-0000-000000000001",
+      "title": "Pengumuman Hasil Seleksi PMB Gelombang 1 TA 2026/2027",
+      "published_at": "2026-11-12T10:00:00Z"
+    }
+  }
+  ```
+
+---
+
+### 13.4 Endpoint Calon Mahasiswa (`/api/v1/selection/me`)
+Akses: Role `calon_mahasiswa`, `admin_pmb`, `superadmin`.
+
+#### 1. Lihat Hasil Seleksi & Tagihan: `GET /api/v1/selection/me/result`
+Menampilkan hasil seleksi resmi bagi calon mahasiswa yang bersangkutan.
+- **Sebelum Pengumuman Dirilis (Error `422 Unprocessable Entity`)**:
+  ```json
+  {
+    "success": false,
+    "message": "RESULT_NOT_PUBLISHED: pengumuman hasil seleksi belum dipublikasikan oleh panitia",
+    "error_code": "RESULT_NOT_PUBLISHED"
+  }
+  ```
+- **Setelah Pengumuman Dirilis (`200 OK`)**:
+  ```json
+  {
+    "success": true,
+    "message": "Hasil seleksi penerimaan mahasiswa baru berhasil diambil",
+    "data": {
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "registration_number": "PMB-2026-0001",
+      "full_name": "Budi Santoso",
+      "decision": "pass",
+      "accepted_program": "TIF",
+      "announced_at": "2026-11-12T10:00:00Z",
+      "invoice_id": "i0000000-0000-0000-0000-000000000001",
+      "invoice_number": "INV-REG-2026-0001",
+      "amount": 5000000,
+      "payment_status": "unpaid"
+    }
+  }
+  ```
+
+---
+
+### 13.5 Endpoint Internal Antarlayanan (`/internal/...`)
+Khusus dipanggil oleh service downstream (mis. Student Service) dengan menyertakan header `X-Internal-Token`.
+
+#### 1. Periksa Hasil Penetapan Seleksi: `GET /internal/results/:application_id`
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Hasil seleksi berhasil diambil",
+    "data": {
+      "id": "r0000000-0000-0000-0000-000000000001",
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "user_id": "u0000000-0000-0000-0000-000000000001",
+      "decision": "pass",
+      "accepted_program": "TIF",
+      "announced_at": "2026-11-12T10:00:00Z"
+    }
+  }
+  ```
+
+
 
 

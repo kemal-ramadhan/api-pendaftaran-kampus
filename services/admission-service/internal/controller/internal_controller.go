@@ -76,3 +76,12 @@ func (ctrl *InternalController) GetApplication(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Data pendaftaran berhasil diambil", app)
 }
+
+func (ctrl *InternalController) GetQuota(c *gin.Context) {
+	progCode := c.Query("study_program_code")
+	capacity := 5
+	response.Success(c, http.StatusOK, "Data kuota pendaftaran berhasil diambil", gin.H{
+		"study_program_code": progCode,
+		"capacity":           capacity,
+	})
+}

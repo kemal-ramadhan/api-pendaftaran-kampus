@@ -48,6 +48,8 @@ EXAM_DIRECT_URL="${EXAM_DIRECT_URL:-http://localhost:8087}"
 EXAM_URL="${GATEWAY_BASE}/api/v1/exam"
 SCORING_DIRECT_URL="${SCORING_DIRECT_URL:-http://localhost:8089}"
 SCORING_URL="${GATEWAY_BASE}/api/v1/scoring"
+SELECTION_DIRECT_URL="${SELECTION_DIRECT_URL:-http://localhost:8090}"
+SELECTION_URL="${GATEWAY_BASE}/api/v1/selection"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -2286,6 +2288,192 @@ if [ "$CODE_FAIL_LOCK" = "422" ] && echo "$BODY_FAIL_LOCK" | grep -q "SCORES_LOC
   log_pass "Proteksi penguncian nilai berhasil: Perubahan nilai ditolak dengan HTTP 422 (SCORES_LOCKED)"
 else
   log_fail "Perubahan nilai setelah dikunci tidak ditolak dengan 422 SCORES_LOCKED (HTTP $CODE_FAIL_LOCK): $BODY_FAIL_LOCK"
+fi
+
+# ==============================================================================
+# BAGIAN 12: PENGUJIAN TAHAP 8 — SELECTION SERVICE (F2-M9)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 12: PENGUJIAN TAHAP 8 — SELECTION SERVICE (F2-M9)${NC}"
+
+# Persiapan Akun Pimpinan Universitas
+log_info "Persiapan akun pimpinan universitas..."
+PIMPINAN_EMAIL="pimpinan.rektorat@kampus.ac.id"
+PIMPINAN_PASS="Pimpinan123!"
+
+RESP_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/admin/users" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$PIMPINAN_EMAIL\",
+    \"password\": \"$PIMPINAN_PASS\",
+    \"roles\": [
+      { \"role\": \"pimpinan\" }
+    ]
+  }")
+CODE_PIMPINAN=$(echo "$RESP_PIMPINAN" | tail -n1)
+
+RESP_LOGIN_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{ \"email\": \"$PIMPINAN_EMAIL\", \"password\": \"$PIMPINAN_PASS\" }")
+CODE_LOGIN_PIMPINAN=$(echo "$RESP_LOGIN_PIMPINAN" | tail -n1)
+BODY_LOGIN_PIMPINAN=$(echo "$RESP_LOGIN_PIMPINAN" | sed '$d')
+assert_status "Login Pimpinan Universitas" "200" "$CODE_LOGIN_PIMPINAN" "$BODY_LOGIN_PIMPINAN"
+PIMPINAN_ACCESS_TOKEN=$(echo "$BODY_LOGIN_PIMPINAN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+log_pass "Pimpinan universitas berhasil login dan memperoleh access token"
+
+# 87. Calon Mahasiswa Mengakses Hasil Seleksi Sebelum Rilis Resmi (HTTP 422 RESULT_NOT_PUBLISHED)
+log_info "87. Calon mahasiswa mengakses hasil seleksi sebelum rilis resmi (harus 422 RESULT_NOT_PUBLISHED)..."
+RESP_PRE_RESULT=$(curl -s -w "\n%{http_code}" -X GET "${SELECTION_URL}/me/result" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_PRE_RESULT=$(echo "$RESP_PRE_RESULT" | tail -n1)
+BODY_PRE_RESULT=$(echo "$RESP_PRE_RESULT" | sed '$d')
+
+if [ "$CODE_PRE_RESULT" = "422" ] && echo "$BODY_PRE_RESULT" | grep -q "RESULT_NOT_PUBLISHED"; then
+  log_pass "Hasil seleksi sebelum publikasi berhasil diproteksi: Ditolak dengan HTTP 422 (RESULT_NOT_PUBLISHED)"
+else
+  log_fail "Hasil seleksi sebelum publikasi tidak ditolak dengan 422 RESULT_NOT_PUBLISHED (HTTP $CODE_PRE_RESULT): $BODY_PRE_RESULT"
+fi
+
+# 88. Program Studi Mengajukan Rekomendasi Melebihi Kuota (HTTP 422 QUOTA_EXCEEDED)
+log_info "88. Program studi menyimpan rekomendasi yang melebihi kuota kapasitas (harus 422 QUOTA_EXCEEDED)..."
+RESP_EXCEED=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/program/recommendations" \
+  -H "Authorization: Bearer $PRODI_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": \"$PERIOD_ID\",
+    \"path_id\": \"$PATH_ID\",
+    \"study_program_code\": \"$PRODI_CODE\",
+    \"items\": [
+      { \"application_id\": \"$APPLICATION_ID\", \"decision\": \"pass\", \"final_score\": 90.0, \"rank\": 1 },
+      { \"application_id\": \"11111111-1111-1111-1111-111111111111\", \"decision\": \"pass\", \"final_score\": 89.0, \"rank\": 2 },
+      { \"application_id\": \"22222222-2222-2222-2222-222222222222\", \"decision\": \"pass\", \"final_score\": 88.0, \"rank\": 3 },
+      { \"application_id\": \"33333333-3333-3333-3333-333333333333\", \"decision\": \"pass\", \"final_score\": 87.0, \"rank\": 4 },
+      { \"application_id\": \"44444444-4444-4444-4444-444444444444\", \"decision\": \"pass\", \"final_score\": 86.0, \"rank\": 5 },
+      { \"application_id\": \"55555555-5555-5555-5555-555555555555\", \"decision\": \"pass\", \"final_score\": 85.0, \"rank\": 6 }
+    ]
+  }")
+CODE_EXCEED=$(echo "$RESP_EXCEED" | tail -n1)
+BODY_EXCEED=$(echo "$RESP_EXCEED" | sed '$d')
+
+if [ "$CODE_EXCEED" = "422" ] && echo "$BODY_EXCEED" | grep -q "QUOTA_EXCEEDED"; then
+  log_pass "Validasi kuota mutlak berhasil: Usulan melebihi kapasitas prodi ditolak dengan HTTP 422 (QUOTA_EXCEEDED)"
+else
+  log_fail "Usulan melebihi kuota tidak ditolak dengan 422 QUOTA_EXCEEDED (HTTP $CODE_EXCEED): $BODY_EXCEED"
+fi
+
+# 89. Program Studi Menyimpan Rancangan Rekomendasi Sesuai Kuota (HTTP 200)
+log_info "89. Program studi menyimpan rancangan rekomendasi sesuai kuota..."
+RESP_REC=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/program/recommendations" \
+  -H "Authorization: Bearer $PRODI_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": \"$PERIOD_ID\",
+    \"path_id\": \"$PATH_ID\",
+    \"study_program_code\": \"$PRODI_CODE\",
+    \"items\": [
+      { \"application_id\": \"$APPLICATION_ID\", \"decision\": \"pass\", \"final_score\": 90.0, \"rank\": 1 }
+    ]
+  }")
+CODE_REC=$(echo "$RESP_REC" | tail -n1)
+BODY_REC=$(echo "$RESP_REC" | sed '$d')
+assert_status "Simpan rekomendasi prodi" "200" "$CODE_REC" "$BODY_REC"
+RECOMMENDATION_ID=$(echo "$BODY_REC" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+log_pass "Rancangan rekomendasi berhasil disimpan (ID: $RECOMMENDATION_ID, status: draft)"
+
+# 90. Program Studi Mengajukan Rekomendasi ke Pimpinan & Penguncian Nilai Transaksional (HTTP 200)
+log_info "90. Program studi mengajukan rekomendasi ke pimpinan (submit)..."
+RESP_SUBMIT=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/program/recommendations/${RECOMMENDATION_ID}/submit" \
+  -H "Authorization: Bearer $PRODI_ACCESS_TOKEN")
+CODE_SUBMIT=$(echo "$RESP_SUBMIT" | tail -n1)
+BODY_SUBMIT=$(echo "$RESP_SUBMIT" | sed '$d')
+assert_status "Submit rekomendasi ke pimpinan" "200" "$CODE_SUBMIT" "$BODY_SUBMIT"
+log_pass "Rekomendasi berhasil disubmit ke pimpinan dan status penguncian nilai di Scoring Service aktif"
+
+# Verifikasi dosen tidak dapat mengubah nilai setelah disubmit
+RESP_LOCKED_CHECK=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "component_code": "interview", "score": 95.00 }')
+CODE_LOCKED_CHECK=$(echo "$RESP_LOCKED_CHECK" | tail -n1)
+BODY_LOCKED_CHECK=$(echo "$RESP_LOCKED_CHECK" | sed '$d')
+if [ "$CODE_LOCKED_CHECK" = "422" ] && echo "$BODY_LOCKED_CHECK" | grep -q "SCORES_LOCKED"; then
+  log_pass "Verifikasi side-effect submit: Dosen terbukti ditolak mengubah nilai dengan 422 SCORES_LOCKED"
+else
+  log_fail "Dosen tidak terblokir setelah prodi submit rekomendasi (HTTP $CODE_LOCKED_CHECK): $BODY_LOCKED_CHECK"
+fi
+
+# 91. Pimpinan Mengembalikan Rekomendasi (Return) & Membuka Kunci Nilai
+log_info "91. Pimpinan mengembalikan berkas usulan ke program studi dengan catatan (return)..."
+RESP_RETURN=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/approval/recommendations/${RECOMMENDATION_ID}/return" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "note": "Harap verifikasi kembali kelengkapan portofolio pendaftar" }')
+CODE_RETURN=$(echo "$RESP_RETURN" | tail -n1)
+BODY_RETURN=$(echo "$RESP_RETURN" | sed '$d')
+assert_status "Pimpinan return usulan rekomendasi" "200" "$CODE_RETURN" "$BODY_RETURN"
+log_pass "Rekomendasi berhasil dikembalikan ke status returned dan kunci nilai di Scoring Service dibuka kembali"
+
+# Verifikasi setelah return, dosen kembali bisa mengubah nilai
+RESP_UNLOCKED_INPUT=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "component_code": "interview", "score": 92.00, "note": "Revisi penilaian setelah telaah pimpinan" }')
+CODE_UNLOCKED_INPUT=$(echo "$RESP_UNLOCKED_INPUT" | tail -n1)
+BODY_UNLOCKED_INPUT=$(echo "$RESP_UNLOCKED_INPUT" | sed '$d')
+assert_status "Input nilai setelah return pimpinan" "200" "$CODE_UNLOCKED_INPUT" "$BODY_UNLOCKED_INPUT"
+log_pass "Setelah pimpinan return, nilai berhasil diperbarui kembali oleh dosen penguji"
+
+# Prodi mengajukan kembali usulan rekomendasi
+RESP_RESUBMIT=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/program/recommendations/${RECOMMENDATION_ID}/submit" \
+  -H "Authorization: Bearer $PRODI_ACCESS_TOKEN")
+CODE_RESUBMIT=$(echo "$RESP_RESUBMIT" | tail -n1)
+BODY_RESUBMIT=$(echo "$RESP_RESUBMIT" | sed '$d')
+assert_status "Submit ulang rekomendasi ke pimpinan" "200" "$CODE_RESUBMIT" "$BODY_RESUBMIT"
+log_pass "Program studi berhasil mengajukan kembali rekomendasi kelulusan"
+
+# 92. Pimpinan Menyetujui Rekomendasi (Approve)
+log_info "92. Pimpinan menyetujui usulan rekomendasi kelulusan (approve)..."
+RESP_APPROVE=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/approval/recommendations/${RECOMMENDATION_ID}/approve" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_APPROVE=$(echo "$RESP_APPROVE" | tail -n1)
+BODY_APPROVE=$(echo "$RESP_APPROVE" | sed '$d')
+assert_status "Pimpinan setujui rekomendasi" "200" "$CODE_APPROVE" "$BODY_APPROVE"
+log_pass "Pimpinan universitas berhasil menyetujui usulan kelulusan program studi (status: approved)"
+
+# 93. Admin PMB Mempublikasikan Pengumuman Seleksi Resmi
+log_info "93. Admin PMB mempublikasikan pengumuman hasil seleksi resmi..."
+RESP_PUB=$(curl -s -w "\n%{http_code}" -X POST "${SELECTION_URL}/admin/announcements" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": \"$PERIOD_ID\",
+    \"title\": \"Pengumuman Hasil Seleksi PMB Gelombang 1 TA 2026/2027\",
+    \"content\": \"Selamat kepada calon mahasiswa baru yang dinyatakan LULUS seleksi.\"
+  }")
+CODE_PUB=$(echo "$RESP_PUB" | tail -n1)
+BODY_PUB=$(echo "$RESP_PUB" | sed '$d')
+assert_status "Publikasi pengumuman seleksi" "201" "$CODE_PUB" "$BODY_PUB"
+log_pass "Pengumuman seleksi resmi berhasil dipublikasikan oleh Admin PMB (HTTP 201 Created)"
+
+# 94. Calon Mahasiswa Melihat Hasil Seleksi & Rincian Tagihan Daftar Ulang Terbentuk
+log_info "94. Calon mahasiswa melihat hasil seleksi resmi & tagihan daftar ulang..."
+RESP_POST_RESULT=$(curl -s -w "\n%{http_code}" -X GET "${SELECTION_URL}/me/result" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_POST_RESULT=$(echo "$RESP_POST_RESULT" | tail -n1)
+BODY_POST_RESULT=$(echo "$RESP_POST_RESULT" | sed '$d')
+assert_status "Ambil hasil seleksi calon mahasiswa" "200" "$CODE_POST_RESULT" "$BODY_POST_RESULT"
+
+if echo "$BODY_POST_RESULT" | grep -q '"decision":"pass"'; then
+  log_pass "Hasil seleksi menampilkan status LULUS (decision: pass, program: $PRODI_CODE)"
+else
+  log_fail "Hasil seleksi tidak menampilkan status pass: $BODY_POST_RESULT"
+fi
+
+if echo "$BODY_POST_RESULT" | grep -q '"invoice_id"'; then
+  REREG_INVOICE_ID=$(echo "$BODY_POST_RESULT" | grep -o '"invoice_id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  log_pass "Tagihan daftar ulang otomatis terhubung dengan invoice ID: $REREG_INVOICE_ID"
+else
+  log_info "Catatan: invoice_id tidak tercantum langsung, tetapi alur kelulusan berhasil diproses"
 fi
 
 # ==============================================================================

@@ -2487,12 +2487,176 @@
           }
         }
       ]
+    },
+    {
+      "name": "12. SELECTION",
+      "item": [
+        {
+          "name": "1. Ambil Rekomendasi & Rekap Peserta (Prodi)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/selection/program/recommendations?period_id={{period_id}}&path_id={{admission_path_id}}&study_program_code=TIF",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "program", "recommendations"],
+              "query": [
+                { "key": "period_id", "value": "{{period_id}}" },
+                { "key": "path_id", "value": "{{admission_path_id}}" },
+                { "key": "study_program_code", "value": "TIF" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "2. Simpan Rancangan Rekomendasi (Prodi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period_id\": \"{{period_id}}\",\n  \"path_id\": \"{{admission_path_id}}\",\n  \"study_program_code\": \"TIF\",\n  \"items\": [\n    {\n      \"application_id\": \"{{application_id}}\",\n      \"decision\": \"pass\",\n      \"final_score\": 87.50,\n      \"rank\": 1\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/selection/program/recommendations",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "program", "recommendations"]
+            }
+          }
+        },
+        {
+          "name": "3. Ajukan Rekomendasi ke Pimpinan & Kunci Nilai (Prodi)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/selection/program/recommendations/{{recommendation_id}}/submit",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "program", "recommendations", "{{recommendation_id}}", "submit"]
+            }
+          }
+        },
+        {
+          "name": "4. Daftar Usulan Menunggu Persetujuan (Pimpinan)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/selection/approval/recommendations?period_id={{period_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "approval", "recommendations"],
+              "query": [
+                { "key": "period_id", "value": "{{period_id}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "5. Setujui Usulan Rekomendasi (Pimpinan)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/selection/approval/recommendations/{{recommendation_id}}/approve",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "approval", "recommendations", "{{recommendation_id}}", "approve"]
+            }
+          }
+        },
+        {
+          "name": "6. Kembalikan Usulan Rekomendasi (Pimpinan)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"Mohon pertimbangkan kembali calon cadangan peringkat 3\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/selection/approval/recommendations/{{recommendation_id}}/return",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "approval", "recommendations", "{{recommendation_id}}", "return"]
+            }
+          }
+        },
+        {
+          "name": "7. Publikasi Pengumuman Kelulusan Resmi (Admin PMB)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period_id\": \"{{period_id}}\",\n  \"title\": \"Pengumuman Hasil Seleksi PMB Gelombang 1 TA 2026/2027\",\n  \"content\": \"Selamat kepada seluruh peserta yang dinyatakan lulus seleksi penerimaan mahasiswa baru!\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/selection/admin/announcements",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "admin", "announcements"]
+            }
+          }
+        },
+        {
+          "name": "8. Lihat Pengumuman Hasil Seleksi & Tagihan (Calon Mahasiswa)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/selection/me/result",
+              "host": ["{{base_url}}"],
+              "path": ["selection", "me", "result"]
+            }
+          }
+        },
+        {
+          "name": "9. Internal - Ambil Hasil Seleksi by Application ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" }
+            ],
+            "url": {
+              "raw": "{{selection_service_direct_url}}/internal/results/{{application_id}}",
+              "host": ["{{selection_service_direct_url}}"],
+              "path": ["internal", "results", "{{application_id}}"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "selection_service_direct_url",
+      "value": "http://localhost:8090",
+      "type": "string"
+    },
+    {
+      "key": "recommendation_id",
+      "value": "",
       "type": "string"
     },
     {

@@ -41,6 +41,7 @@ func SetupRouter(
 		internalGroup.POST("/applications/:id/status", internalCtrl.UpdateStatus)
 		internalGroup.PUT("/applications/:id/status", internalCtrl.UpdateStatus)
 		internalGroup.GET("/applications/:id", internalCtrl.GetApplication)
+		internalGroup.GET("/quotas", internalCtrl.GetQuota)
 	}
 
 	// 4. Gateway authenticated endpoints
