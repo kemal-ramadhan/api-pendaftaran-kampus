@@ -772,3 +772,135 @@ Dilindungi oleh `X-Internal-Token`:
 - `GET /internal/persons/:user_id/completeness` $\rightarrow$ Evaluasi kelengkapan berkas untuk validasi sebelum submit pendaftaran di Admission Service.
 - `POST /internal/persons/batch` $\rightarrow$ Mengambil sekumpulan identitas pengguna dengan body `{ "user_ids": ["uuid1", "uuid2"] }`.
 
+---
+
+## 8. Rincian Endpoint — Notification Service (Internal Service)
+
+Notification Service (`pmb-notification-service:8083`) melayani pengiriman email dan WhatsApp terpusat. Endpoint dilindungi oleh header `X-Internal-Token`.
+
+### 8.1 Antrean Notifikasi Baru: `POST /internal/notifications`
+- **Headers**: `X-Internal-Token: <token>`
+- **Request Body**:
+  ```json
+  {
+    "idempotency_key": "app-reg-12345",
+    "user_id": "8ca67290-951b-4179-8809-77ea1dfcfae7",
+    "channel": "email",
+    "email": "pendaftar@example.com",
+    "template": "application_registered",
+    "data": {
+      "name": "Budi Santoso",
+      "registration_no": "PMB-2026-1-00001",
+      "path_name": "Reguler",
+      "period_name": "Gelombang 1 2026/2027",
+      "bill_amount": "250000",
+      "va_number": "988123456",
+      "payment_deadline": "3 hari setelah pendaftaran"
+    }
+  }
+  ```
+- **Respons (202 Accepted)**:
+  ```json
+  {
+    "success": true,
+    "message": "Notifikasi berhasil dimasukkan ke antrean",
+    "data": {
+      "id": "c138db53-d144-4866-932f-a2e60cefd48f",
+      "status": "queued",
+      "channel": "email",
+      "template": "application_registered"
+    }
+  }
+  ```
+
+### 8.2 Cek Status Notifikasi: `GET /internal/notifications/:id`
+Mengambil status pengiriman, retries, dan pesan kesalahan.
+
+---
+
+## 9. Rincian Endpoint — Admission Service (Pendaftaran Bagian 1)
+
+Admission Service (`pmb-admission-service:8084`) menangani master periode/jalur masuk, kuota, persyaratan berkas, formulir pendaftaran calon mahasiswa, dan integrasi penagihan via Transactional Outbox.
+
+### 9.1 Endpoint Publik / Informasi Pendaftaran
+
+#### `GET /api/v1/admission/periods/active`
+Mengambil data gelombang pendaftaran yang sedang dibuka saat ini.
+- **Autentikasi**: Publik
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Data periode pendaftaran aktif berhasil diambil",
+    "data": {
+      "id": 1,
+      "name": "Gelombang 1 PMB 2026/2027",
+      "academic_year": "2026/2027",
+      "start_date": "2026-08-01T00:00:00Z",
+      "end_date": "2026-10-31T23:59:59Z",
+      "is_active": true
+    }
+  }
+  ```
+
+#### `GET /api/v1/admission/paths`
+Mengambil daftar jalur masuk aktif beserta rincian biaya pendaftaran dan dokumen persyaratan.
+- **Autentikasi**: Publik
+
+---
+
+### 9.2 Endpoint Pendaftar (`/api/v1/admission/applications/...`)
+
+#### `POST /api/v1/admission/applications`
+Membuat formulir pendaftaran baru. Pendaftaran langsung berstatus `awaiting_payment` dan event outbox tagihan pendaftaran dibuat secara transactional.
+- **Autentikasi**: Wajib (`user` / calon mahasiswa)
+- **Request Body**:
+  ```json
+  {
+    "period_id": 1,
+    "admission_path_id": 1,
+    "choice_1_id": "b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11",
+    "choice_2_id": "d2b3c4e5-1111-4444-8888-abcdef123456"
+  }
+  ```
+- **Respons (201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Pendaftaran berhasil dibuat, silakan lakukan pembayaran",
+    "data": {
+      "id": "7fa6b73a-4422-48df-b452-19e4871987d6",
+      "registration_no": "PMB-2026-1-00001",
+      "status": "awaiting_payment",
+      "period_id": 1,
+      "admission_path_id": 1,
+      "choice_1_id": "b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11",
+      "choice_2_id": "d2b3c4e5-1111-4444-8888-abcdef123456"
+    }
+  }
+  ```
+- **Error Responses**:
+  - `400 PERIOD_CLOSED`: Periode pendaftaran sedang ditutup atau belum dibuka.
+  - `409 DUPLICATE_APPLICATION`: Pengguna sudah memiliki pendaftaran pada periode ini.
+
+#### `GET /api/v1/admission/applications/me`
+Mengambil riwayat pendaftaran milik akun yang sedang masuk.
+
+#### `GET /api/v1/admission/applications/:id`
+Mengambil detail formulir pendaftaran tertentu (hanya milik user bersangkutan).
+
+#### `PUT /api/v1/admission/applications/:id/choices`
+Mengubah pilihan program studi 1 & 2.
+- **Batasan**: Hanya diizinkan bila status pendaftaran masih `draft` atau `awaiting_payment`.
+- **Error `400 INVALID_STATE`**: Muncul bila status sudah `payment_verified` atau lebih lanjut.
+
+---
+
+### 9.3 Endpoint Admin & Program Studi (`/api/v1/admission/admin/...`)
+
+#### `GET /api/v1/admission/admin/applications`
+Mengambil daftar pendaftar dengan filter `period_id`, `path_id`, `status`, `search`, serta pagination.
+- **Hak Akses**:
+  - `superadmin` / `admin_pmb`: Mengakses seluruh pendaftar.
+  - `prodi`: Hanya melihat pendaftar yang prodinya tercantum pada `choice_1_id` atau `choice_2_id`.
+

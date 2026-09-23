@@ -1675,12 +1675,145 @@
           }
         }
       ]
+    },
+    {
+      "name": "7. ADMISSION (Pendaftaran & Master Data)",
+      "item": [
+        {
+          "name": "7.1 Periode Pendaftaran Aktif (Publik)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admission/periods/active",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "periods", "active"]
+            }
+          }
+        },
+        {
+          "name": "7.2 Jalur Pendaftaran (Publik)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/admission/paths",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "paths"]
+            }
+          }
+        },
+        {
+          "name": "7.3 Buat Pendaftaran Baru (Calon Mahasiswa)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period_id\": 1,\n  \"admission_path_id\": 1,\n  \"choice_1_id\": \"b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11\",\n  \"choice_2_id\": \"d2b3c4e5-1111-4444-8888-abcdef123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admission/applications",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications"]
+            }
+          }
+        },
+        {
+          "name": "7.4 Daftar Pendaftaran Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/applications/me",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "me"]
+            }
+          }
+        },
+        {
+          "name": "7.5 Ubah Pilihan Prodi saat Awaiting Payment",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"choice_1_id\": \"d2b3c4e5-1111-4444-8888-abcdef123456\",\n  \"choice_2_id\": \"b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admission/applications/{{target_application_id}}/choices",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "{{target_application_id}}", "choices"]
+            }
+          }
+        },
+        {
+          "name": "7.6 Admin / Prodi Daftar Pendaftar",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/admin/applications?limit=10&page=1",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "applications"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "page", "value": "1" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. NOTIFICATION (Internal Service)",
+      "item": [
+        {
+          "name": "8.1 Kirim Notifikasi Email / WhatsApp (Internal)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"email\",\n  \"email\": \"pendaftar@example.com\",\n  \"template\": \"application_registered\",\n  \"data\": {\n    \"name\": \"Budi Santoso\",\n    \"registration_no\": \"PMB-2026-1-00001\",\n    \"path_name\": \"Reguler\",\n    \"period_name\": \"Gelombang 1 2026/2027\",\n    \"bill_amount\": \"250000\",\n    \"va_number\": \"988123456\",\n    \"payment_deadline\": \"3 hari\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{notification_service_direct_url}}/internal/notifications",
+              "host": ["{{notification_service_direct_url}}"],
+              "path": ["internal", "notifications"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "admission_service_direct_url",
+      "value": "http://localhost:8084",
+      "type": "string"
+    },
+    {
+      "key": "notification_service_direct_url",
+      "value": "http://localhost:8083",
       "type": "string"
     },
     {

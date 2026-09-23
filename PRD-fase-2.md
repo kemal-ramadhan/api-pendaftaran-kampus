@@ -77,8 +77,8 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-01 | Login | Auth | Selesai (fase 1) |
 | UC-02 | Registrasi Akun | Auth | Selesai |
 | UC-03 | Verifikasi Email / OTP | Auth | Selesai |
-| UC-04 | Pilih Gelombang & Jalur | Admission | Fase 2 |
-| UC-05 | Pilih Program Studi | Admission (+ Organization) | Fase 2 |
+| UC-04 | Pilih Gelombang & Jalur | Admission | Selesai (Tahap 3) |
+| UC-05 | Pilih Program Studi | Admission (+ Organization) | Selesai (Tahap 3) |
 | UC-06 | Isi Biodata | Identity | Selesai |
 | UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Selesai |
 | UC-07 | Upload Dokumen Persyaratan | Admission | Fase 2 |
@@ -91,8 +91,8 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-14 | Upload Bukti Transfer | Finance | Fase 2 |
 | UC-15 | Ajukan Cicilan | Finance | Fase 2 |
 | UC-16 | Generate NIM | NIM | Fase 2 |
-| UC-17 | Kirim Notifikasi | Notification | Fase 2 |
-| UC-18 | Kelola Data Pendaftar | Admission | Fase 2 |
+| UC-17 | Kirim Notifikasi | Notification | Selesai (Tahap 3) |
+| UC-18 | Kelola Data Pendaftar | Admission | Selesai (Tahap 3) |
 | UC-19 | Verifikasi Dokumen | Admission | Fase 2 |
 | UC-20 | Kelola Jadwal Seleksi | Exam | Fase 2 |
 | UC-21 | Assign Dosen Penguji | Exam | Fase 2 |

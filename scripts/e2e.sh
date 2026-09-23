@@ -35,6 +35,9 @@ ORG_DIRECT_URL="${ORG_DIRECT_URL:-http://localhost:8081}"
 ORG_URL="${GATEWAY_BASE}/api/v1/organization"
 IDENTITY_DIRECT_URL="${IDENTITY_DIRECT_URL:-http://localhost:8082}"
 IDENTITY_URL="${GATEWAY_BASE}/api/v1/identity"
+ADMISSION_DIRECT_URL="${ADMISSION_DIRECT_URL:-http://localhost:8084}"
+ADMISSION_URL="${GATEWAY_BASE}/api/v1/admission"
+NOTIFICATION_DIRECT_URL="${NOTIFICATION_DIRECT_URL:-http://localhost:8083}"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -1046,6 +1049,209 @@ else
   DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
   if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
     log_pass "Identity-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
+  else
+    log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
+  fi
+fi
+
+# ==============================================================================
+# BAGIAN 7: TAHAP 3 — NOTIFICATION & ADMISSION SERVICE (F2-M3 & F2-M4)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 7: TAHAP 3 — NOTIFICATION & ADMISSION SERVICE (F2-M3 & F2-M4)${NC}"
+
+# 37. Ambil Periode Pendaftaran Aktif (Publik)
+log_info "37. Mengambil data periode pendaftaran aktif (publik)..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/periods/active")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Ambil periode aktif" "200" "$HTTP_CODE" "$BODY"
+ACTIVE_PERIOD_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n1 | cut -d':' -f2)
+if [ -n "$ACTIVE_PERIOD_ID" ]; then
+  log_pass "Periode aktif berhasil diambil (ID: $ACTIVE_PERIOD_ID)"
+else
+  log_fail "Gagal mendapatkan ID periode aktif: $BODY"
+fi
+
+# 38. Ambil Daftar Jalur Pendaftaran (Publik)
+log_info "38. Mengambil daftar jalur pendaftaran aktif (publik)..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/paths")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Ambil jalur pendaftaran" "200" "$HTTP_CODE" "$BODY"
+REG_PATH_ID=$(echo "$BODY" | grep -o '"id":[0-9]*' | head -n1 | cut -d':' -f2)
+if [ -n "$REG_PATH_ID" ]; then
+  log_pass "Jalur pendaftaran berhasil diambil (ID Jalur: $REG_PATH_ID)"
+else
+  log_fail "Gagal mendapatkan ID jalur: $BODY"
+fi
+
+# 39. Buat Pendaftaran Baru oleh Calon Mahasiswa (Status: awaiting_payment)
+log_info "39. Membuat pendaftaran baru calon mahasiswa..."
+DUMMY_PRODI_1="b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11"
+DUMMY_PRODI_2="d2b3c4e5-1111-4444-8888-abcdef123456"
+
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": $REG_PATH_ID,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Buat pendaftaran baru" "201" "$HTTP_CODE" "$BODY"
+APPLICATION_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+REG_NO=$(echo "$BODY" | grep -o '"registration_no":"[^"]*"' | cut -d'"' -f4)
+APP_STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
+
+if [ "$APP_STATUS" = "awaiting_payment" ] && [[ "$REG_NO" =~ ^PMB- ]]; then
+  log_pass "Pendaftaran berhasil dibuat dengan No: $REG_NO dan status: $APP_STATUS (Outbox invoice tertahan)"
+else
+  log_fail "Pendaftaran tidak sesuai ekspektasi (Status: $APP_STATUS, No: $REG_NO)"
+fi
+
+# 40. Calon Mahasiswa Melihat Daftar Pendaftarannya
+log_info "40. Mengambil daftar pendaftaran milik akun saat ini..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Ambil daftar pendaftaran saya" "200" "$HTTP_CODE" "$BODY"
+if echo "$BODY" | grep -q "$REG_NO"; then
+  log_pass "Pendaftaran $REG_NO tercantum dalam riwayat pendaftaran saya"
+else
+  log_fail "Nomor registrasi $REG_NO tidak ditemukan di riwayat: $BODY"
+fi
+
+# 41. Ubah Pilihan Prodi saat Awaiting Payment
+log_info "41. Mengubah pilihan program studi saat awaiting_payment..."
+NEW_CHOICE_1="$DUMMY_PRODI_2"
+NEW_CHOICE_2="$DUMMY_PRODI_1"
+
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${ADMISSION_URL}/applications/${APPLICATION_ID}/choices" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"choice_1_id\": \"$NEW_CHOICE_1\",
+    \"choice_2_id\": \"$NEW_CHOICE_2\"
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Ubah pilihan prodi saat awaiting_payment" "200" "$HTTP_CODE" "$BODY"
+log_pass "Pilihan program studi berhasil diperbarui saat awaiting_payment"
+
+# 42. [NEGATIF] Pendaftaran Ganda pada Periode yang Sama (DUPLICATE_APPLICATION)
+log_info "42. [NEGATIF] Mencoba mendaftar kembali pada periode yang sama..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": $REG_PATH_ID,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\"
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Pendaftaran ganda ditolak" "409" "$HTTP_CODE" "$BODY"
+if echo "$BODY" | grep -q "DUPLICATE_APPLICATION"; then
+  log_pass "Sistem menolak pendaftaran ganda dengan error_code DUPLICATE_APPLICATION"
+else
+  log_fail "Error code bukan DUPLICATE_APPLICATION: $BODY"
+fi
+
+# 43. [NEGATIF] Pendaftaran pada Periode Tidak Valid / Tutup (PERIOD_CLOSED)
+log_info "43. [NEGATIF] Mencoba mendaftar pada ID periode yang tidak aktif/tutup..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": 99999,
+    \"admission_path_id\": $REG_PATH_ID,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\"
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Pendaftaran periode tutup ditolak" "400" "$HTTP_CODE" "$BODY"
+if echo "$BODY" | grep -q "PERIOD_CLOSED"; then
+  log_pass "Sistem menolak pendaftaran periode tertutup dengan error_code PERIOD_CLOSED"
+else
+  log_fail "Error code bukan PERIOD_CLOSED: $BODY"
+fi
+
+# 44. Admin PMB Melihat Daftar Pendaftar
+log_info "44. Admin PMB melihat daftar pendaftar di portal admin..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/applications?limit=5" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+
+assert_status "Admin melihat daftar pendaftar" "200" "$HTTP_CODE" "$BODY"
+log_pass "Admin PMB berhasil mengambil daftar pendaftar dengan pagination"
+
+# 45. Internal Notification Service: Kirim Notifikasi
+log_info "45. Menguji pengiriman notifikasi terpusat (Internal Service)..."
+if ! curl -s --connect-timeout 2 "${NOTIFICATION_DIRECT_URL}/health" >/dev/null 2>&1; then
+  echo -e "${YELLOW}[SKIP]${NC} Port notification-service langsung (${NOTIFICATION_DIRECT_URL}) tidak dapat diakses"
+else
+  RESP=$(curl -s -w "\n%{http_code}" -X POST "${NOTIFICATION_DIRECT_URL}/internal/notifications" \
+    -H "X-Internal-Token: secret-internal-token" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"channel\": \"email\",
+      \"email\": \"test_pendaftar@example.com\",
+      \"template\": \"application_registered\",
+      \"data\": {
+        \"name\": \"Test Pendaftar\",
+        \"registration_no\": \"$REG_NO\",
+        \"path_name\": \"Reguler\",
+        \"period_name\": \"Gelombang 1\",
+        \"bill_amount\": \"250000\",
+        \"va_number\": \"988123456\",
+        \"payment_deadline\": \"3 hari\"
+      }
+    }")
+  HTTP_CODE=$(echo "$RESP" | tail -n1)
+  BODY=$(echo "$RESP" | sed '$d')
+
+  assert_status "Kirim notifikasi internal" "202" "$HTTP_CODE" "$BODY"
+  log_pass "Notifikasi berhasil diantrekan oleh Notification Service"
+fi
+
+# 46. [KEAMANAN] Proteksi Endpoint Internal Notification Tanpa Token
+log_info "46. [KEAMANAN] Mengakses endpoint internal notification tanpa token..."
+if curl -s --connect-timeout 2 "${NOTIFICATION_DIRECT_URL}/health" >/dev/null 2>&1; then
+  RESP=$(curl -s -w "\n%{http_code}" -X POST "${NOTIFICATION_DIRECT_URL}/internal/notifications" \
+    -H "Content-Type: application/json" \
+    -d "{}")
+  HTTP_CODE=$(echo "$RESP" | tail -n1)
+  BODY=$(echo "$RESP" | sed '$d')
+
+  assert_status "Endpoint internal tanpa token ditolak" "403" "$HTTP_CODE" "$BODY"
+  log_pass "Akses internal tanpa token ditolak dengan HTTP 403 Forbidden"
+fi
+
+# 47. [KEAMANAN] Proteksi Bypass Gateway: Request Langsung ke Admission-Service
+log_info "47. [KEAMANAN] Menguji proteksi bypass gateway: Request langsung ke admission-service..."
+if curl -s --connect-timeout 2 "${ADMISSION_DIRECT_URL}/health" >/dev/null 2>&1; then
+  DIRECT_RES=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_DIRECT_URL}/admission/applications/me" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  DIRECT_STATUS=$(echo "$DIRECT_RES" | tail -n1)
+  DIRECT_BODY=$(echo "$DIRECT_RES" | sed '$d')
+
+  assert_status "Request langsung ke admission-service tanpa gateway signature ditolak" "401" "$DIRECT_STATUS" "$DIRECT_BODY"
+  DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
+  if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
+    log_pass "Admission-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
   else
     log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
   fi

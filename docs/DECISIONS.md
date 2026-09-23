@@ -175,4 +175,17 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - **Evaluasi Kelengkapan Biodata**: Endpoint `/me/completeness` dan `/internal/persons/:user_id/completeness` mengevaluasi 4 domain wajib (profil, alamat KTP, minimal 1 orang tua/wali, dan riwayat pendidikan terakhir) sebelum pendaftaran dapat di-submit ke Admission Service.
 - **Rasional**: Menjamin kepatuhan UU Pelindungan Data Pribadi (UU No. 27/2022), mencegah kebocoran NIK/foto, mengotomasi pengisian form calon mahasiswa tanpa risiko salah baca dari AI, serta menyediakan data yang terverifikasi bagi tahapan admission.
 
+---
+
+## 20. Fase 2: Notification Service & Admission Service Bagian 1 (F2-M3 & F2-M4)
+- **Status**: Diputuskan pada Tahap 3, 23 Sep 2026
+- **Keputusan**:
+  - **Notification Service Terpusat (Internal Service)**: Dibangun sebagai layanan internal murni di port 8083 (`services/notification-service`) dan basis data `pmb_notification`. Tidak diekspos melalui API Gateway publik melainkan dipanggil oleh service lain via `POST /internal/notifications` dilindungi `pkg/internalauth`.
+  - **Driver & Antrean Worker**: Driver email menggunakan SMTP standard library (default Mailpit port 1025). Driver WhatsApp menggunakan driver terstruktur `log`. Antrean worker latar belakang berjalan periodik untuk me-retry pengiriman yang gagal hingga maksimal 3 kali.
+  - **Format Nomor Registrasi**: Nomor registrasi pendaftaran dirancang dengan pola `PMB-{YYYY}-{period_id}-{urut 5 digit}` (contoh `PMB-2026-1-00001`), unik per periode.
+  - **State Machine Pendaftaran Bagian 1**: Pendaftaran baru otomatis masuk ke status `awaiting_payment`. Pilihan program studi (choice_1, choice_2) hanya dapat diubah saat berstatus `draft` atau `awaiting_payment`; upaya perubahan pada status setelah verifikasi pembayaran ditolak dengan error `INVALID_STATE`. Pendaftaran di luar rentang periode ditolak dengan `PERIOD_CLOSED`, dan pendaftaran berulang user pada periode yang sama ditolak dengan `DUPLICATE_APPLICATION`.
+  - **Transactional Outbox ke Finance**: Sesuai PRD Bagian 4.4, pembuatan tagihan pendaftaran menggunakan pola Transactional Outbox (`pkg/outbox`) ke endpoint Finance `POST /internal/invoices`. Karena Finance Service baru dibuat pada Tahap 4, event outbox tersimpan secara andal dalam transaksi database `pmb_admission` dan dibiarkan tertahan (retry) oleh worker outbox tanpa menggagalkan proses pembuatan formulir pendaftar.
+  - **Isolasi Akses Role Prodi**: Staf program studi yang mengakses `/api/v1/admission/admin/applications` hanya diperbolehkan melihat pendaftar yang memilih prodinya sebagai pilihan 1 atau pilihan 2 berdasarkan scope prodi yang melekat pada token/claim pengguna.
+- **Rasional**: Memisahkan antrean notifikasi dari dependensi pihak ketiga, menjamin konsistensi data pendaftaran dan penagihan dengan jaminan eventual consistency outbox pattern, serta menjaga isolasi data antar prodi sesuai prinsip least privilege.
+
 

@@ -8,5 +8,7 @@ use (
 	./services/auth-service
 	./services/organization-service
 	./services/identity-service
+	./services/notification-service
+	./services/admission-service
 )
 
