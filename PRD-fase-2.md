@@ -106,7 +106,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-29 | Rekomendasi Kelulusan | Selection | Fase 2 |
 | UC-30 | Setujui Kelulusan | Selection | Fase 2 |
 | UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Fase 2 |
-| UC-32 | Kelola Master Data | Organization (prodi), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya) | Fase 2 |
+| UC-32 | Kelola Master Data | Organization (prodi selesai), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya) | Sebagian (prodi selesai) |
 | UC-33 | Kelola User & Role | Auth | Selesai |
 
 ---
@@ -452,8 +452,8 @@ Setiap milestone wajib menghasilkan:
 
 | Milestone | Isi | Bukti selesai |
 |---|---|---|
-| **F2-M0** Fondasi bersama | `pkg/internalclient`, `pkg/storage` (MinIO), `pkg/pagination`, `pkg/outbox`, template service baru, MinIO & init DB di compose | build/test lulus, MinIO bisa upload/download lewat test |
-| **F2-M1** Organization | 4.1 + validasi scope di Auth (4.10) | superadmin membuat prodi; atur role prodi dengan scope tak dikenal ditolak |
+| **F2-M0** Fondasi bersama | `pkg/internalclient`, `pkg/storage` (MinIO), `pkg/pagination`, `pkg/outbox`, template service baru, MinIO & init DB di compose | **Selesai** (paket bersama lulus test, MinIO & basis data siap di compose) |
+| **F2-M1** Organization | 4.1 + validasi scope di Auth (4.10) | **Selesai** (Organization Service selesai, superadmin membuat prodi, validasi scope prodi di Auth aktif, e2e terintegrasi) |
 | **F2-M2** Identity | 4.2 | calon mahasiswa mengisi biodata; `completeness` benar; NIK terenkripsi di DB |
 | **F2-M2b** OCR KTP *(v2)* | 4.11: OCR Service (Python) + endpoint scan di Identity | KTP sintetis terbaca otomatis, gambar buram diperbaiki atau diminta foto ulang, benchmark akurasi memenuhi target |
 | **F2-M3** Notification | 4.3 | notifikasi masuk Mailpit, retry saat SMTP mati |

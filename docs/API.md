@@ -436,3 +436,121 @@ Layanan pengenalan teks KTP otomatis dan peningkatan kualitas citra berbasis *co
     }
   }
   ```
+
+---
+
+## 6. Rincian Endpoint — Organization Service
+
+Layanan master data kampus untuk mengelola fakultas dan program studi. Digunakan oleh formulir pendaftaran calon mahasiswa, pengaturan scope prodi di Auth, dan downstream services (Admission, NIM, Selection).
+
+### 6.1 Daftar Fakultas (Publik)
+- **Method / URL**: `GET /api/v1/organization/faculties`
+- **Autentikasi**: Publik (tanpa token)
+- **Query Parameter**: `is_active` (opsional, boolean: `true`/`false`)
+- **Respons Sukses (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Berhasil mengambil daftar fakultas",
+    "data": [
+      {
+        "id": 1,
+        "code": "FT",
+        "name": "Fakultas Teknik",
+        "is_active": true,
+        "created_at": "2026-09-23T10:00:00Z",
+        "updated_at": "2026-09-23T10:00:00Z"
+      }
+    ]
+  }
+  ```
+
+### 6.2 Daftar Program Studi (Publik)
+- **Method / URL**: `GET /api/v1/organization/study-programs`
+- **Autentikasi**: Publik
+- **Query Parameter**:
+  - `faculty_code` (opsional, string misal `FT`)
+  - `is_active` (opsional, boolean: `true`/`false`)
+- **Respons Sukses (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Berhasil mengambil daftar program studi",
+    "data": [
+      {
+        "id": 1,
+        "faculty_id": 1,
+        "faculty_code": "FT",
+        "faculty_name": "Fakultas Teknik",
+        "code": "TI",
+        "nim_code": "55",
+        "name": "Teknik Informatika",
+        "degree": "S1",
+        "accreditation": "Unggul",
+        "is_active": true,
+        "created_at": "2026-09-23T10:00:00Z",
+        "updated_at": "2026-09-23T10:00:00Z"
+      }
+    ]
+  }
+  ```
+
+### 6.3 Detail Program Studi (Publik)
+- **Method / URL**: `GET /api/v1/organization/study-programs/:code`
+- **Autentikasi**: Publik
+- **Respons Sukses (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Berhasil mengambil detail program studi",
+    "data": {
+      "id": 1,
+      "faculty_id": 1,
+      "faculty_code": "FT",
+      "faculty_name": "Fakultas Teknik",
+      "code": "TI",
+      "nim_code": "55",
+      "name": "Teknik Informatika",
+      "degree": "S1",
+      "accreditation": "Unggul",
+      "is_active": true
+    }
+  }
+  ```
+
+### 6.4 Tambah Program Studi Baru (Admin)
+- **Method / URL**: `POST /api/v1/organization/admin/study-programs`
+- **Autentikasi**: Wajib Bearer Token (Role: `superadmin`)
+- **Request Body**:
+  ```json
+  {
+    "faculty_id": 1,
+    "code": "TE",
+    "nim_code": "58",
+    "name": "Teknik Elektro",
+    "degree": "S1",
+    "accreditation": "Unggul",
+    "is_active": true
+  }
+  ```
+- **Respons Sukses (201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Program studi berhasil dibuat",
+    "data": {
+      "id": 5,
+      "code": "TE",
+      "nim_code": "58",
+      "name": "Teknik Elektro",
+      "degree": "S1",
+      "accreditation": "Unggul",
+      "is_active": true
+    }
+  }
+  ```
+
+### 6.5 Endpoint Internal (Inter-Service)
+Dilindungi header `X-Internal-Token`, tidak diekspos melalui API Gateway:
+- `GET /internal/study-programs/:code` $\rightarrow$ Mengambil detail prodi untuk validasi scope role di Auth Service dan kuota pendaftaran di Admission.
+- `POST /internal/study-programs/batch` $\rightarrow$ Mengambil detail beberapa prodi sekaligus dengan body `{ "codes": ["TI", "SI"] }`.

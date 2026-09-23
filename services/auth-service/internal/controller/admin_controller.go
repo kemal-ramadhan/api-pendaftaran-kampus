@@ -109,6 +109,10 @@ func (ctl *AdminController) CreateUser(c *gin.Context) {
 			response.UnprocessableEntity(c, err.Error(), nil)
 			return
 		}
+		if errors.Is(err, service.ErrUpstreamUnavailable) {
+			response.Error(c, http.StatusBadGateway, response.ErrCodeUpstreamUnavailable, err.Error(), nil)
+			return
+		}
 		response.InternalServerError(c, "Gagal membuat pengguna baru")
 		return
 	}
@@ -229,6 +233,10 @@ func (ctl *AdminController) UpdateUserRoles(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrValidation) || errors.Is(err, service.ErrRoleNotFound) {
 			response.UnprocessableEntity(c, err.Error(), nil)
+			return
+		}
+		if errors.Is(err, service.ErrUpstreamUnavailable) {
+			response.Error(c, http.StatusBadGateway, response.ErrCodeUpstreamUnavailable, err.Error(), nil)
 			return
 		}
 		response.InternalServerError(c, "Gagal memperbarui role pengguna")

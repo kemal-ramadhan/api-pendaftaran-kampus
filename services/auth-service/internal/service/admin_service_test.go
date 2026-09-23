@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/dto"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/model"
@@ -44,6 +45,7 @@ func setupTestAdminService(t *testing.T) (
 		auditRepo,
 		sessionStore,
 		mailer,
+		nil,
 		logger,
 	)
 
@@ -246,7 +248,7 @@ func TestAdminService_M2_AcceptanceCriteria_CreatedUsersCanLoginWithRolesAndScop
 		t.Fatalf("NewTokenManager error: %v", err)
 	}
 
-	adminSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, logger)
+	adminSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, nil, logger)
 	authSvc := NewAuthService(cfg, userRepo, roleRepo, otpRepo, resetRepo, auditRepo, tm, sessionStore, rateLimiter, mailer, logger)
 
 	ctx := context.Background()
@@ -325,6 +327,96 @@ func TestAdminService_M2_AcceptanceCriteria_CreatedUsersCanLoginWithRolesAndScop
 	}
 	if len(claimsProdi.Scopes) != 1 || claimsProdi.Scopes[0].ID != "TI" {
 		t.Fatalf("Claim scopes token prodi salah: %v; expected scope ID 'TI'", claimsProdi.Scopes)
+	}
+}
+
+type mockInternalClient struct {
+	getFunc func(ctx context.Context, path string, query map[string]string, dest interface{}) error
+}
+
+func (m *mockInternalClient) Get(ctx context.Context, path string, query map[string]string, dest interface{}) error {
+	if m.getFunc != nil {
+		return m.getFunc(ctx, path, query, dest)
+	}
+	return nil
+}
+func (m *mockInternalClient) Post(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
+func (m *mockInternalClient) Put(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
+func (m *mockInternalClient) Patch(ctx context.Context, path string, body interface{}, dest interface{}) error { return nil }
+func (m *mockInternalClient) Delete(ctx context.Context, path string, dest interface{}) error { return nil }
+
+func TestUpdateUserRoles_ProdiScopeValidation(t *testing.T) {
+	ctx := context.Background()
+	userRepo := newFakeUserRepo()
+	roleRepo := newFakeRoleRepo()
+	resetRepo := newFakePasswordResetRepo()
+	auditRepo := newFakeAuditRepo()
+	sessionStore := newFakeSessionStore()
+	mailer := newFakeMailer()
+	logger := zap.NewNop()
+
+	cfg := &config.Config{AppEnv: "test"}
+
+	// Target user
+	targetID := uuid.New()
+	userRepo.users[targetID] = &model.User{
+		ID:       targetID,
+		Email:    "dosen@kampus.ac.id",
+		FullName: "Dosen Penguji",
+		Status:   model.UserStatusActive,
+	}
+
+	superadminID := uuid.New()
+
+	// 1. Kasus Scope Valid (Organization Service return 200 OK)
+	mockClient := &mockInternalClient{
+		getFunc: func(ctx context.Context, path string, query map[string]string, dest interface{}) error {
+			if path == "/internal/study-programs/TI" {
+				return nil
+			}
+			return &internalclient.Error{StatusCode: 404, Message: "not found"}
+		},
+	}
+
+	svc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, mockClient, logger)
+
+	res, err := svc.UpdateUserRoles(ctx, targetID, dto.AdminUpdateRolesRequest{
+		Roles: []dto.RoleAssignmentDTO{
+			{Code: model.RoleProdi, ScopeType: "prodi", ScopeID: "TI"},
+		},
+	}, superadminID)
+	if err != nil {
+		t.Fatalf("expected success for valid scope TI, got: %v", err)
+	}
+	if len(res.Roles) != 1 || res.Roles[0] != model.RoleProdi {
+		t.Errorf("expected role prodi, got: %v", res.Roles)
+	}
+
+	// 2. Kasus Scope Tidak Ditemukan di Organization Service (404 -> ErrValidation)
+	_, err = svc.UpdateUserRoles(ctx, targetID, dto.AdminUpdateRolesRequest{
+		Roles: []dto.RoleAssignmentDTO{
+			{Code: model.RoleProdi, ScopeType: "prodi", ScopeID: "INVALID_PRODI"},
+		},
+	}, superadminID)
+	if err == nil || !errors.Is(err, ErrValidation) {
+		t.Fatalf("expected ErrValidation for nonexistent prodi, got: %v", err)
+	}
+
+	// 3. Kasus Organization Service Down (Network error -> ErrUpstreamUnavailable)
+	downClient := &mockInternalClient{
+		getFunc: func(ctx context.Context, path string, query map[string]string, dest interface{}) error {
+			return errors.New("connection refused")
+		},
+	}
+	downSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, downClient, logger)
+
+	_, err = downSvc.UpdateUserRoles(ctx, targetID, dto.AdminUpdateRolesRequest{
+		Roles: []dto.RoleAssignmentDTO{
+			{Code: model.RoleProdi, ScopeType: "prodi", ScopeID: "TI"},
+		},
+	}, superadminID)
+	if err == nil || !errors.Is(err, ErrUpstreamUnavailable) {
+		t.Fatalf("expected ErrUpstreamUnavailable when org service down, got: %v", err)
 	}
 }
 

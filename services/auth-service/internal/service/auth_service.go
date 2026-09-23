@@ -41,6 +41,7 @@ var (
 	ErrLastSuperadmin          = errors.New("sistem harus memiliki minimal satu superadmin aktif")
 	ErrSelfDemoteSuperadmin    = errors.New("superadmin tidak boleh mencabut role superadmin dari dirinya sendiri")
 	ErrSelfDeactivateSuperadmin = errors.New("superadmin tidak boleh menonaktifkan akun miliknya sendiri")
+	ErrUpstreamUnavailable      = errors.New("layanan upstream tidak dapat dihubungi")
 )
 
 type AuthService interface {

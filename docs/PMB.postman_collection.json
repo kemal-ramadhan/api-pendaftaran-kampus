@@ -1333,6 +1333,72 @@
           ]
         }
       ]
+    },
+    {
+      "name": "5. ORGANIZATION (Fakultas & Program Studi)",
+      "item": [
+        {
+          "name": "5.1 Daftar Fakultas (Publik)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organization/faculties",
+              "host": ["{{base_url}}"],
+              "path": ["organization", "faculties"]
+            }
+          }
+        },
+        {
+          "name": "5.2 Daftar Program Studi (Publik)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organization/study-programs",
+              "host": ["{{base_url}}"],
+              "path": ["organization", "study-programs"]
+            }
+          }
+        },
+        {
+          "name": "5.3 Detail Program Studi (Publik)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/organization/study-programs/TI",
+              "host": ["{{base_url}}"],
+              "path": ["organization", "study-programs", "TI"]
+            }
+          }
+        },
+        {
+          "name": "5.4 Tambah Program Studi (Admin)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{admin_token_access}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"faculty_id\": 1,\n  \"code\": \"TE\",\n  \"nim_code\": \"58\",\n  \"name\": \"Teknik Elektro\",\n  \"degree\": \"S1\",\n  \"accreditation\": \"Unggul\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/organization/admin/study-programs",
+              "host": ["{{base_url}}"],
+              "path": ["organization", "admin", "study-programs"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
@@ -1344,6 +1410,11 @@
     {
       "key": "auth_service_direct_url",
       "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "organization_service_direct_url",
+      "value": "http://localhost:8081",
       "type": "string"
     },
     {

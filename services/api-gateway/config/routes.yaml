@@ -6,9 +6,11 @@ services:
     url: ${OCR_SERVICE_URL}
     timeout: 30s
     max_body: 10MB
+  organization:
+    url: ${ORGANIZATION_SERVICE_URL}
+    timeout: 10s
   # slot service berikutnya (biarkan ter-comment sampai service dibuat)
   # identity:     { url: ${IDENTITY_SERVICE_URL}, max_body: 5MB }      # /api/v1/identity
-  # organization: { url: ${ORGANIZATION_SERVICE_URL} }                 # /api/v1/organization
   # admission:    { url: ${ADMISSION_SERVICE_URL}, max_body: 10MB }    # /api/v1/admission (pendaftaran + dokumen)
   # finance:      { url: ${FINANCE_SERVICE_URL} }                      # /api/v1/finance
   # selection:    { url: ${SELECTION_SERVICE_URL} }                    # /api/v1/selection
@@ -46,3 +48,12 @@ routes:
     rewrite: /internal/ocr
     auth: required
     max_body: 10MB
+  - prefix: /api/v1/organization/admin
+    service: organization
+    rewrite: /organization/admin
+    auth: required
+    roles: [superadmin]
+  - prefix: /api/v1/organization
+    service: organization
+    rewrite: /organization
+    auth: public

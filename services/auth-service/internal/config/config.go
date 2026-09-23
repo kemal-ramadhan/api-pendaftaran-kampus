@@ -48,8 +48,9 @@ type Config struct {
 	SeedSuperadminEmail  string
 	SeedSuperadminPass   string
 	GoogleLoginEnabled   bool
-	RateLimitEnabled     bool
-	OTelExporterEndpoint string
+	RateLimitEnabled       bool
+	OTelExporterEndpoint   string
+	OrganizationServiceURL string
 }
 
 func getEnv(key, fallback string) string {
@@ -120,8 +121,9 @@ func LoadConfig() *Config {
 		SeedSuperadminEmail:  getEnv("SEED_SUPERADMIN_EMAIL", "superadmin@kampus.ac.id"),
 		SeedSuperadminPass:   getEnv("SEED_SUPERADMIN_PASSWORD", "Superadmin123!"),
 		GoogleLoginEnabled:   getBoolEnv("GOOGLE_LOGIN_ENABLED", false),
-		RateLimitEnabled:     getBoolEnv("RATE_LIMIT_ENABLED", true),
-		OTelExporterEndpoint: getEnv("OTEL_EXPORTER_ENDPOINT", ""),
+		RateLimitEnabled:       getBoolEnv("RATE_LIMIT_ENABLED", true),
+		OTelExporterEndpoint:   getEnv("OTEL_EXPORTER_ENDPOINT", ""),
+		OrganizationServiceURL: getEnv("ORGANIZATION_SERVICE_URL", "http://localhost:8081"),
 	}
 }
 

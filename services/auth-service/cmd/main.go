@@ -11,6 +11,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/pkg/logger"
 	"github.com/pkm-asia/pmb-backend/pkg/requestid"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/config"
@@ -127,6 +128,13 @@ func main() {
 		appLog,
 	)
 
+	// Inisialisasi HTTP Client ke Organization Service untuk validasi scope
+	orgClient := internalclient.NewClient(internalclient.Config{
+		BaseURL:       cfg.OrganizationServiceURL,
+		InternalToken: cfg.InternalToken,
+		Timeout:       5 * time.Second,
+	})
+
 	adminService := service.NewAdminService(
 		cfg,
 		userRepo,
@@ -135,6 +143,7 @@ func main() {
 		auditRepo,
 		sessionStore,
 		mailService,
+		orgClient,
 		appLog,
 	)
 

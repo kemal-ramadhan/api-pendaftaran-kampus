@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/dto"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/mailer"
@@ -41,6 +43,7 @@ type adminService struct {
 	auditRepo    repository.AuditLogRepository
 	sessionStore token.SessionStore
 	mailer       mailer.Mailer
+	orgClient    internalclient.Client
 	logger       *zap.Logger
 }
 
@@ -52,6 +55,7 @@ func NewAdminService(
 	auditRepo repository.AuditLogRepository,
 	sessionStore token.SessionStore,
 	mailer mailer.Mailer,
+	orgClient internalclient.Client,
 	logger *zap.Logger,
 ) AdminService {
 	return &adminService{
@@ -62,6 +66,7 @@ func NewAdminService(
 		auditRepo:    auditRepo,
 		sessionStore: sessionStore,
 		mailer:       mailer,
+		orgClient:    orgClient,
 		logger:       logger,
 	}
 }
@@ -153,12 +158,12 @@ func (s *adminService) CreateUser(ctx context.Context, req dto.AdminCreateUserRe
 		cleanScopeID := strings.TrimSpace(rDTO.ScopeID)
 
 		if roleRecord.Code == model.RoleProdi {
-			if cleanScopeType == "" {
-				cleanScopeType = "prodi"
+			st, si, err := s.validateProdiScope(ctx, cleanScopeType, cleanScopeID)
+			if err != nil {
+				return nil, err
 			}
-			if !validateScopeID(cleanScopeID) {
-				return nil, fmt.Errorf("%w: role prodi wajib memiliki scope_id valid (2-20 karakter alfanumerik/underscore kapital)", ErrValidation)
-			}
+			cleanScopeType = st
+			cleanScopeID = si
 		}
 
 		userRoles = append(userRoles, model.UserRole{
@@ -325,12 +330,12 @@ func (s *adminService) UpdateUserRoles(ctx context.Context, id uuid.UUID, req dt
 		cleanScopeType := strings.TrimSpace(rDTO.ScopeType)
 		cleanScopeID := strings.TrimSpace(rDTO.ScopeID)
 		if roleRecord.Code == model.RoleProdi {
-			if cleanScopeType == "" {
-				cleanScopeType = "prodi"
+			st, si, err := s.validateProdiScope(ctx, cleanScopeType, cleanScopeID)
+			if err != nil {
+				return nil, err
 			}
-			if !validateScopeID(cleanScopeID) {
-				return nil, fmt.Errorf("%w: role prodi wajib memiliki scope_id valid (2-20 karakter alfanumerik/underscore kapital)", ErrValidation)
-			}
+			cleanScopeType = st
+			cleanScopeID = si
 		}
 
 		newRoles = append(newRoles, model.UserRole{
@@ -543,4 +548,29 @@ func validateScopeID(scopeID string) bool {
 		}
 	}
 	return true
+}
+
+func (s *adminService) validateProdiScope(ctx context.Context, scopeType, scopeID string) (string, string, error) {
+	cleanScopeType := strings.TrimSpace(scopeType)
+	if cleanScopeType == "" {
+		cleanScopeType = "prodi"
+	}
+	cleanScopeID := strings.ToUpper(strings.TrimSpace(scopeID))
+	if !validateScopeID(cleanScopeID) {
+		return "", "", fmt.Errorf("%w: role prodi wajib memiliki scope_id valid (2-20 karakter alfanumerik/underscore kapital)", ErrValidation)
+	}
+
+	if s.orgClient != nil {
+		var orgResp any
+		if err := s.orgClient.Get(ctx, "/internal/study-programs/"+cleanScopeID, nil, &orgResp); err != nil {
+			var clientErr *internalclient.Error
+			if errors.As(err, &clientErr) && clientErr.StatusCode == 404 {
+				return "", "", fmt.Errorf("%w: program studi dengan kode '%s' tidak ditemukan", ErrValidation, cleanScopeID)
+			}
+			s.logger.Error("Gagal menghubungi organization service untuk validasi scope prodi", zap.Error(err), zap.String("scope_id", cleanScopeID))
+			return "", "", fmt.Errorf("%w: layanan organization tidak dapat dihubungi untuk validasi scope prodi", ErrUpstreamUnavailable)
+		}
+	}
+
+	return cleanScopeType, cleanScopeID, nil
 }

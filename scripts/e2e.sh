@@ -31,6 +31,8 @@ GATEWAY_URL="${GATEWAY_URL:-http://localhost:8000/api/v1/auth}"
 GATEWAY_BASE="${GATEWAY_BASE:-http://localhost:8000}"
 MAILPIT_URL="${MAILPIT_URL:-http://localhost:8025}"
 AUTH_DIRECT_URL="${AUTH_DIRECT_URL:-http://localhost:8080}"
+ORG_DIRECT_URL="${ORG_DIRECT_URL:-http://localhost:8081}"
+ORG_URL="${GATEWAY_BASE}/api/v1/organization"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -645,6 +647,189 @@ else
   DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
   if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
     log_pass "Auth-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
+  else
+    log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
+  fi
+fi
+
+# ==============================================================================
+# BAGIAN 4: PENGUJIAN TAHAP 1 — ORGANIZATION SERVICE & SCOPE VALIDATION
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 4: PENGUJIAN TAHAP 1 — ORGANIZATION SERVICE & SCOPE VALIDATION${NC}"
+
+# 21. Daftar Prodi Publik Tanpa Login
+log_info "21. Mengambil daftar program studi publik tanpa autentikasi..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ORG_URL}/study-programs")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Daftar prodi publik berhasil diakses tanpa login" "200" "$HTTP_CODE" "$BODY"
+if echo "$BODY" | grep -q '"code":"TI"'; then
+  log_pass "Daftar prodi memuat program studi TI"
+else
+  log_fail "Daftar prodi tidak memuat program studi TI"
+fi
+
+# 22. Detail Prodi Publik
+log_info "22. Mengambil detail prodi TI secara publik..."
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${ORG_URL}/study-programs/TI")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Detail prodi TI berhasil diakses" "200" "$HTTP_CODE" "$BODY"
+if echo "$BODY" | grep -q '"nim_code":"55"'; then
+  log_pass "Detail prodi TI memuat nim_code 55"
+else
+  log_fail "Detail prodi TI tidak memuat nim_code 55"
+fi
+
+# 23. Calon Mahasiswa Ditolak Membuat Prodi (403 Forbidden)
+log_info "23. Menguji RBAC: Calon mahasiswa mencoba membuat prodi..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${ORG_URL}/admin/study-programs" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "faculty_id": 1,
+    "code": "ILLEGAL",
+    "nim_code": "99",
+    "name": "Prodi Ilegal",
+    "degree": "S1",
+    "accreditation": "C"
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Calon mahasiswa ditolak membuat prodi" "403" "$HTTP_CODE" "$BODY"
+log_pass "Gateway/Organization berhasil memblokir non-superadmin dari /admin/study-programs dengan HTTP 403"
+
+# 24. Superadmin Membuat Prodi Baru
+NEW_PRODI_CODE="TE_${RAND_ID}"
+log_info "24. Superadmin membuat prodi baru ($NEW_PRODI_CODE)..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${ORG_URL}/admin/study-programs" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"faculty_id\": 1,
+    \"code\": \"$NEW_PRODI_CODE\",
+    \"nim_code\": \"58\",
+    \"name\": \"Teknik Elektro\",
+    \"degree\": \"S1\",
+    \"accreditation\": \"Unggul\"
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+if [ "$HTTP_CODE" = "201" ] || [ "$HTTP_CODE" = "200" ]; then
+  log_pass "Superadmin berhasil membuat prodi baru (HTTP $HTTP_CODE)"
+else
+  log_fail "Superadmin gagal membuat prodi baru (HTTP $HTTP_CODE)"
+  echo -e "${YELLOW}Response Body:${NC} $BODY"
+  exit 1
+fi
+
+# 25. Superadmin Memberi Role Prodi dengan Scope Tidak Valid (Harus Ditolak 422 VALIDATION_ERROR)
+PRODI_USER_EMAIL="kaprodi_${RAND_ID}@univ.ac.id"
+PRODI_USER_PASS="KaprodiPass123!"
+
+log_info "25. Superadmin membuat user baru untuk kaprodi..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$PRODI_USER_EMAIL\",
+    \"full_name\": \"Kaprodi Test\",
+    \"phone\": \"081211223344\",
+    \"password\": \"$PRODI_USER_PASS\",
+    \"roles\": [
+      {
+        \"code\": \"calon_mahasiswa\"
+      }
+    ]
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "User baru berhasil dibuat" "201" "$HTTP_CODE" "$BODY"
+PRODI_USER_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+log_info "25b. Superadmin memberi role prodi dengan scope yang TIDAK ADA di Organization Service..."
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${GATEWAY_URL}/admin/users/${PRODI_USER_ID}/roles" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "roles": [
+      {
+        "code": "prodi",
+        "scope_type": "prodi",
+        "scope_id": "KODE_TIDAK_ADA"
+      }
+    ]
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Scope prodi tidak valid ditolak" "422" "$HTTP_CODE" "$BODY"
+log_pass "Auth Service berhasil menolak scope prodi yang tidak ada di Organization Service (HTTP 422)"
+
+# 26. Superadmin Memberi Role Prodi dengan Scope Valid (TI)
+log_info "26. Superadmin memberi role prodi dengan scope valid (TI)..."
+RESP=$(curl -s -w "\n%{http_code}" -X PUT "${GATEWAY_URL}/admin/users/${PRODI_USER_ID}/roles" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "roles": [
+      {
+        "code": "prodi",
+        "scope_type": "prodi",
+        "scope_id": "TI"
+      }
+    ]
+  }')
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Scope prodi valid berhasil disimpan" "200" "$HTTP_CODE" "$BODY"
+log_pass "Auth Service berhasil menyimpan role prodi dengan scope TI"
+
+# 27. Login User Prodi & Verifikasi Token Memuat Scope
+log_info "27. Login sebagai user prodi ($PRODI_USER_EMAIL)..."
+RESP=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$PRODI_USER_EMAIL\",
+    \"password\": \"$PRODI_USER_PASS\"
+  }")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Login user prodi sukses" "200" "$HTTP_CODE" "$BODY"
+
+PRODI_TOKEN=$(echo "$BODY" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+if [ -z "$PRODI_TOKEN" ]; then
+  log_fail "Gagal mendapatkan access_token prodi"
+  exit 1
+fi
+
+# Cek klaim token via /auth/me
+RESP=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/me" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+HTTP_CODE=$(echo "$RESP" | tail -n1)
+BODY=$(echo "$RESP" | sed '$d')
+assert_status "Ambil profile user prodi" "200" "$HTTP_CODE" "$BODY"
+
+if echo "$BODY" | grep -q '"id":"TI"' && echo "$BODY" | grep -q '"role":"prodi"'; then
+  log_pass "Token dan profile user prodi berhasil memuat scope prodi TI"
+else
+  log_fail "Token user prodi tidak memuat scope TI: $BODY"
+fi
+
+# 28. [KEAMANAN] Menguji Proteksi Bypass Gateway: Request Langsung ke Organization-Service
+log_info "28. [KEAMANAN] Menguji proteksi bypass gateway: Request langsung ke organization-service..."
+if ! curl -s --connect-timeout 2 "${ORG_DIRECT_URL}/health" >/dev/null 2>&1; then
+  echo -e "${YELLOW}[SKIP]${NC} Port organization-service langsung (${ORG_DIRECT_URL}) tidak terbuka / tidak dapat diakses"
+else
+  DIRECT_RES=$(curl -s -w "\n%{http_code}" -X GET "${ORG_DIRECT_URL}/organization/study-programs" \
+    -H "Authorization: Bearer $ACCESS_TOKEN")
+  DIRECT_STATUS=$(echo "$DIRECT_RES" | tail -n1)
+  DIRECT_BODY=$(echo "$DIRECT_RES" | sed '$d')
+
+  assert_status "Request langsung ke organization-service tanpa gateway signature ditolak" "401" "$DIRECT_STATUS" "$DIRECT_BODY"
+
+  DIRECT_ERR_CODE=$(echo "$DIRECT_BODY" | grep -o '"error_code":"[^"]*"' | cut -d'"' -f4)
+  if [ "$DIRECT_ERR_CODE" = "GATEWAY_SIGNATURE_INVALID" ]; then
+    log_pass "Organization-service menolak bypass gateway dengan error_code GATEWAY_SIGNATURE_INVALID"
   else
     log_fail "Error code yang diharapkan GATEWAY_SIGNATURE_INVALID, didapat: '$DIRECT_ERR_CODE'"
   fi

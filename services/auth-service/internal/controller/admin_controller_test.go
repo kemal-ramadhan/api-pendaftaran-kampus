@@ -62,6 +62,7 @@ func setupM2Router(t *testing.T) (*gin.Engine, token.TokenManager, *mockUserRepo
 		auditRepo,
 		sessionStore,
 		mailer,
+		nil,
 		logger,
 	)
 

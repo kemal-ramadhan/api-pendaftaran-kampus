@@ -120,6 +120,7 @@ services:
       MAIL_FROM_NAME: ${MAIL_FROM_NAME:-PMB Universitas}
       SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}
       SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-Superadmin123!}
+      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization-service:8081}
     volumes:
       - ../certs:/certs:ro
     depends_on:
@@ -148,6 +149,7 @@ services:
       APP_PORT: 8000
       ROUTES_CONFIG: /app/config/routes.yaml
       AUTH_SERVICE_URL: http://auth-service:8080
+      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization-service:8081}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
@@ -156,10 +158,41 @@ services:
     depends_on:
       auth-service:
         condition: service_healthy
+      organization-service:
+        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8000/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  organization-service:
+    build:
+      context: ..
+      dockerfile: services/organization-service/Dockerfile
+    container_name: pmb-organization-service
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      APP_PORT: 8081
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: pmb_organization
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8081/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5

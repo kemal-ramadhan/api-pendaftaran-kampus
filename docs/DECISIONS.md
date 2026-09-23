@@ -146,3 +146,15 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - **Benchmark**: Dilengkapi perintah `make ocr-benchmark` yang mengeksekusi evaluasi performa dan akurasi terotomasi ke `docs/ocr-benchmark.md`.
 - **Rasional**: Menghadirkan kapabilitas OCR yang cepat (rata-rata 2.10 detik di CPU), akurat (NIK exact match 100% pada gambar jernih & buram ringan), aman dari risiko halusinasi AI generatif, dan patuh regulasi privasi data.
 
+---
+
+## 18. Fase 2: Organization Service & Validasi Scope Prodi di Auth Service (F2-M1)
+- **Status**: Diputuskan pada Tahap 1, 23 Sep 2026
+- **Keputusan**:
+  - Organization Service dibangun sebagai pemilik tunggal master data fakultas dan program studi di database `pmb_organization` (`services/organization-service`).
+  - Endpoint publik (`GET /organization/faculties`, `GET /organization/study-programs`, `GET /organization/study-programs/:code`) dilindungi middleware `pkg/gatewayauth` untuk memvalidasi tanda tangan HMAC API Gateway.
+  - Endpoint manajemen administratif (`/organization/admin/*`) dibatasi ketat hanya untuk peran `superadmin`.
+  - Endpoint internal `/internal/*` dilindungi middleware `pkg/internalauth` dengan header `X-Internal-Token`.
+  - Sesuai PRD Bagian 4.10, Auth Service memanfaatkan `pkg/internalclient` untuk memvalidasi `scope_id` saat superadmin menetapkan peran `prodi` (`CreateUser` dan `UpdateUserRoles`). Jika kode prodi tidak ada di Organization Service, permintaan ditolak dengan HTTP 422 (`VALIDATION_ERROR`). Jika Organization Service tidak dapat dijangkau, permintaan ditolak dengan HTTP 502 (`UPSTREAM_UNAVAILABLE`).
+- **Rasional**: Mencegah pendaftaran role prodi dengan scope fiktif di basis data Auth, menjaga konsistensi master data kampus, dan memberikan proteksi kegagalan jaringan yang transparan ke klien.
+
