@@ -15,6 +15,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/pkg/storage"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/controller"
+	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/exporter"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/provider"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/repository"
@@ -57,6 +58,8 @@ func main() {
 		&model.Payment{},
 		&model.Receipt{},
 		&model.PaymentWebhookLog{},
+		&model.InstallmentRequest{},
+		&model.Installment{},
 	)
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel finance", zap.Error(err))
@@ -111,14 +114,18 @@ func main() {
 		})
 	}
 
-	// 7. Inisialisasi Payment Provider
+	// 7. Inisialisasi Payment Provider & Exporter
 	mockProvider := provider.NewMockProvider()
+	reportExp := exporter.NewReportExporter()
 
 	// 8. Inisialisasi Repository
 	invRepo := repository.NewInvoiceRepository(db)
 	payRepo := repository.NewPaymentRepository(db)
 	rcRepo := repository.NewReceiptRepository(db)
 	webhookLogRepo := repository.NewWebhookLogRepository(db)
+	installmentRepo := repository.NewInstallmentRepository(db)
+	reportRepo := repository.NewReportRepository(db)
+	feeSchemeRepo := repository.NewFeeSchemeRepository(db)
 
 	// 9. Inisialisasi Service
 	invSvc := service.NewInvoiceService(invRepo)
@@ -133,6 +140,10 @@ func main() {
 		notifCli,
 		cfg,
 	)
+	paySvc.SetInstallmentRepo(installmentRepo)
+
+	installmentSvc := service.NewInstallmentService(installmentRepo, invRepo, feeSchemeRepo, notifCli)
+	reportSvc := service.NewReportService(reportRepo, reportExp)
 
 	// 10. Inisialisasi Controller
 	healthCtrl := controller.NewHealthController(db)
@@ -143,6 +154,8 @@ func main() {
 	devCtrl := controller.NewDevController(paySvc, cfg)
 	adminCtrl := controller.NewAdminController(paySvc)
 	internalCtrl := controller.NewInternalController(invSvc)
+	installmentCtrl := controller.NewInstallmentController(installmentSvc)
+	reportCtrl := controller.NewReportController(reportSvc, installmentSvc)
 
 	// 11. Setup Router Gin
 	r := route.SetupRouter(
@@ -159,6 +172,8 @@ func main() {
 		devCtrl,
 		adminCtrl,
 		internalCtrl,
+		installmentCtrl,
+		reportCtrl,
 	)
 
 	// 12. Jalankan HTTP Server

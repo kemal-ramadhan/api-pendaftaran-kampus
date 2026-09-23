@@ -26,6 +26,7 @@ var (
 )
 
 type PaymentService interface {
+	SetInstallmentRepo(repo repository.InstallmentRepository)
 	PayWithVirtualAccount(ctx context.Context, invoiceID, userID uuid.UUID) (*model.Payment, error)
 	PayWithManualTransfer(ctx context.Context, invoiceID, userID uuid.UUID, proofBytes []byte, fileName string) (*model.Payment, error)
 	ProcessWebhook(ctx context.Context, providerName string, signature string, payloadBytes []byte) error
@@ -37,15 +38,16 @@ type PaymentService interface {
 }
 
 type paymentService struct {
-	paymentRepo    repository.PaymentRepository
-	invoiceRepo    repository.InvoiceRepository
-	receiptRepo    repository.ReceiptRepository
-	webhookLogRepo repository.WebhookLogRepository
-	provider       provider.PaymentProvider
-	storageCli     storage.Client
-	admissionCli   internalclient.Client
-	notifCli       internalclient.Client
-	cfg            *config.Config
+	paymentRepo     repository.PaymentRepository
+	invoiceRepo     repository.InvoiceRepository
+	receiptRepo     repository.ReceiptRepository
+	webhookLogRepo  repository.WebhookLogRepository
+	installmentRepo repository.InstallmentRepository
+	provider        provider.PaymentProvider
+	storageCli      storage.Client
+	admissionCli    internalclient.Client
+	notifCli        internalclient.Client
+	cfg             *config.Config
 }
 
 func NewPaymentService(
@@ -72,6 +74,10 @@ func NewPaymentService(
 	}
 }
 
+func (s *paymentService) SetInstallmentRepo(repo repository.InstallmentRepository) {
+	s.installmentRepo = repo
+}
+
 func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, userID uuid.UUID) (*model.Payment, error) {
 	inv, err := s.invoiceRepo.FindByID(ctx, invoiceID)
 	if err != nil {
@@ -86,27 +92,55 @@ func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, u
 		return nil, ErrInvoiceAlreadyPaid
 	}
 
-	// Cek apakah sudah ada payment pending dengan VA
+	// Cek apakah invoice adalah skema cicilan
+	var targetInstallment *model.Installment
+	payAmount := inv.Amount
+	if inv.PaymentScheme == "installment" && s.installmentRepo != nil {
+		installments, err := s.installmentRepo.FindInstallmentsByInvoiceID(ctx, inv.ID)
+		if err == nil {
+			for _, inst := range installments {
+				if inst.Status == model.InstallmentStatusUnpaid {
+					targetInstallment = &inst
+					payAmount = inst.Amount
+					break
+				}
+			}
+		}
+	}
+
+	// Cek apakah sudah ada payment pending dengan VA untuk termin/invoice ini
 	for _, p := range inv.Payments {
 		if p.Method == model.PaymentMethodVirtualAccount && p.Status == model.PaymentStatusPending {
-			return &p, nil
+			if targetInstallment != nil {
+				if p.InstallmentID != nil && *p.InstallmentID == targetInstallment.ID {
+					return &p, nil
+				}
+			} else {
+				return &p, nil
+			}
 		}
 	}
 
 	// Inisiasi VA baru via Provider
-	vaResult, err := s.provider.CreateVA(ctx, invoiceID, inv.Amount)
+	vaResult, err := s.provider.CreateVA(ctx, invoiceID, payAmount)
 	if err != nil {
 		return nil, fmt.Errorf("gagal membuat Virtual Account: %w", err)
 	}
 
 	payment := &model.Payment{
-		ID:          uuid.New(),
-		InvoiceID:   inv.ID,
+		ID:        uuid.New(),
+		InvoiceID: inv.ID,
+		InstallmentID: func() *uuid.UUID {
+			if targetInstallment != nil {
+				return &targetInstallment.ID
+			}
+			return nil
+		}(),
 		Method:      model.PaymentMethodVirtualAccount,
 		Provider:    "mock",
 		ProviderRef: vaResult.ProviderRef,
 		VANumber:    vaResult.VANumber,
-		Amount:      inv.Amount,
+		Amount:      payAmount,
 		Status:      model.PaymentStatusPending,
 	}
 
@@ -131,6 +165,21 @@ func (s *paymentService) PayWithManualTransfer(ctx context.Context, invoiceID, u
 		return nil, ErrInvoiceAlreadyPaid
 	}
 
+	var targetInstallment *model.Installment
+	payAmount := inv.Amount
+	if inv.PaymentScheme == "installment" && s.installmentRepo != nil {
+		installments, err := s.installmentRepo.FindInstallmentsByInvoiceID(ctx, inv.ID)
+		if err == nil {
+			for _, inst := range installments {
+				if inst.Status == model.InstallmentStatusUnpaid {
+					targetInstallment = &inst
+					payAmount = inst.Amount
+					break
+				}
+			}
+		}
+	}
+
 	objectKey := fmt.Sprintf("proofs/%s-%s", uuid.New().String()[:8], fileName)
 	var proofURL string
 
@@ -147,12 +196,18 @@ func (s *paymentService) PayWithManualTransfer(ctx context.Context, invoiceID, u
 	providerRef := fmt.Sprintf("MANUAL-%s", uuid.New().String()[:8])
 
 	payment := &model.Payment{
-		ID:             uuid.New(),
-		InvoiceID:      inv.ID,
+		ID:        uuid.New(),
+		InvoiceID: inv.ID,
+		InstallmentID: func() *uuid.UUID {
+			if targetInstallment != nil {
+				return &targetInstallment.ID
+			}
+			return nil
+		}(),
 		Method:         model.PaymentMethodManualTransfer,
 		Provider:       "manual",
 		ProviderRef:    providerRef,
-		Amount:         inv.Amount,
+		Amount:         payAmount,
 		Status:         model.PaymentStatusAwaitingVerification,
 		ProofObjectKey: objectKey,
 		ProofURL:       proofURL,
@@ -299,8 +354,24 @@ func (s *paymentService) finalizePaymentSuccess(ctx context.Context, payment *mo
 			return err
 		}
 
-		// 2. Update Invoice Status
-		if err := s.invoiceRepo.UpdateStatus(ctx, inv.ID, model.InvoiceStatusPaid, inv.Amount); err != nil {
+		// Update Installment status jika pembayaran termin
+		if payment.InstallmentID != nil && s.installmentRepo != nil {
+			inst, err := s.installmentRepo.FindInstallmentByID(ctx, *payment.InstallmentID)
+			if err == nil && inst != nil {
+				inst.Status = model.InstallmentStatusPaid
+				inst.PaidAt = &now
+				_ = s.installmentRepo.UpdateInstallment(ctx, inst)
+			}
+		}
+
+		// 2. Update Invoice Status & Paid Amount
+		newPaidAmount := inv.PaidAmount + payment.Amount
+		newStatus := model.InvoiceStatusPaid
+		if newPaidAmount < inv.Amount {
+			newStatus = model.InvoiceStatusPartiallyPaid
+		}
+
+		if err := s.invoiceRepo.UpdateStatus(ctx, inv.ID, newStatus, newPaidAmount); err != nil {
 			return err
 		}
 
@@ -315,7 +386,7 @@ func (s *paymentService) finalizePaymentSuccess(ctx context.Context, payment *mo
 			ReceiptNumber: rcNo,
 			InvoiceNumber: inv.InvoiceNumber,
 			Description:   inv.Description,
-			Amount:        inv.Amount,
+			Amount:        payment.Amount,
 			PaidAt:        now,
 			Method:        string(payment.Method),
 		}
@@ -341,7 +412,7 @@ func (s *paymentService) finalizePaymentSuccess(ctx context.Context, payment *mo
 			ReceiptNumber: rcNo,
 			PDFObjectKey:  objectKey,
 			PDFURL:        pdfURL,
-			Amount:        inv.Amount,
+			Amount:        payment.Amount,
 			CreatedAt:     now,
 		}
 

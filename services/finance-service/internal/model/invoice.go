@@ -28,9 +28,11 @@ type Invoice struct {
 	PaidAmount    int64         `gorm:"type:bigint;not null;default:0" json:"paid_amount"`
 	Status        InvoiceStatus `gorm:"type:varchar(30);not null;default:'unpaid';index" json:"status"`
 	DueDate       time.Time     `gorm:"not null" json:"due_date"`
-	PaymentScheme string        `gorm:"type:varchar(20);not null;default:'full'" json:"payment_scheme"` // full, installment
-	Payments      []Payment     `gorm:"foreignKey:InvoiceID" json:"payments,omitempty"`
-	CreatedAt     time.Time     `json:"created_at"`
+	PaymentScheme       string               `gorm:"type:varchar(20);not null;default:'full'" json:"payment_scheme"` // full, installment
+	Payments            []Payment            `gorm:"foreignKey:InvoiceID" json:"payments,omitempty"`
+	InstallmentRequests []InstallmentRequest `gorm:"foreignKey:InvoiceID" json:"installment_requests,omitempty"`
+	Installments        []Installment        `gorm:"foreignKey:InvoiceID" json:"installments,omitempty"`
+	CreatedAt           time.Time            `json:"created_at"`
 	UpdatedAt     time.Time     `json:"updated_at"`
 }
 

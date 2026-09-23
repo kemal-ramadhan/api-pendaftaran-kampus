@@ -67,8 +67,10 @@ func setupTestFinanceRouter(gatewaySecret string, isDev bool) *gin.Engine {
 	devCtrl := controller.NewDevController(paySvc, appCfg)
 	adminCtrl := controller.NewAdminController(paySvc)
 	internalCtrl := controller.NewInternalController(invSvc)
+	installmentCtrl := controller.NewInstallmentController(nil)
+	reportCtrl := controller.NewReportController(nil, nil)
 
-	return SetupRouter(cfg, healthCtrl, invCtrl, payCtrl, rcCtrl, webhookCtrl, devCtrl, adminCtrl, internalCtrl)
+	return SetupRouter(cfg, healthCtrl, invCtrl, payCtrl, rcCtrl, webhookCtrl, devCtrl, adminCtrl, internalCtrl, installmentCtrl, reportCtrl)
 }
 
 func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {

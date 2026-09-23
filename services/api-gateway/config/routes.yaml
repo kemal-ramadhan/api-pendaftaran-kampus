@@ -110,7 +110,7 @@ routes:
     service: finance
     rewrite: /finance/admin
     auth: required
-    roles: [keuangan, superadmin, admin_pmb]
+    roles: [keuangan, superadmin, admin_pmb, pimpinan]
     max_body: 10MB
   - prefix: /api/v1/receipts
     service: finance

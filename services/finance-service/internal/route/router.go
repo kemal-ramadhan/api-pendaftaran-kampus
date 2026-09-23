@@ -23,6 +23,8 @@ func SetupRouter(
 	devCtrl *controller.DevController,
 	adminCtrl *controller.AdminController,
 	internalCtrl *controller.InternalController,
+	installmentCtrl *controller.InstallmentController,
+	reportCtrl *controller.ReportController,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -59,6 +61,8 @@ func SetupRouter(
 			invGroup.POST("/:id/pay", payCtrl.PayWithVirtualAccount)
 			invGroup.POST("/:id/manual-transfer", payCtrl.PayWithManualTransfer)
 			invGroup.GET("/:id/payments/:payment_id", payCtrl.GetPaymentDetail)
+			invGroup.POST("/:id/installment-request", installmentCtrl.RequestInstallment)
+			invGroup.GET("/:id/installments", installmentCtrl.GetInstallmentSchedule)
 		}
 
 		// Kwitansi resmi
@@ -67,13 +71,33 @@ func SetupRouter(
 			receiptGroup.GET("/:payment_id", rcCtrl.GetReceipt)
 		}
 
-		// Admin keuangan
-		adminGroup := authGroup.Group("/finance/admin")
-		adminGroup.Use(gatewayauth.RequireRole("keuangan", "superadmin"))
-		{
-			adminGroup.GET("/payments", adminCtrl.ListManualTransfers)
-			adminGroup.POST("/payments/:id/verify", adminCtrl.VerifyPayment)
+		// Helper pendaftaran route admin (mendukung prefix /finance/admin maupun /admin)
+		registerAdminRoutes := func(prefix string) {
+			adminGroup := authGroup.Group(prefix)
+			{
+				// Verifikasi transfer manual & kelola cicilan: role keuangan & superadmin
+				keuanganOnly := adminGroup.Group("")
+				keuanganOnly.Use(gatewayauth.RequireRole("keuangan", "superadmin", "admin_pmb"))
+				{
+					keuanganOnly.GET("/payments", adminCtrl.ListManualTransfers)
+					keuanganOnly.POST("/payments/:id/verify", adminCtrl.VerifyPayment)
+					keuanganOnly.GET("/installment-requests", installmentCtrl.ListInstallmentRequests)
+					keuanganOnly.POST("/installment-requests/:id/review", installmentCtrl.ReviewInstallmentRequest)
+					keuanganOnly.POST("/cron/process-due-dates", reportCtrl.ProcessDueDatesCron)
+				}
+
+				// Laporan ringkasan & ekspor excel: role keuangan, pimpinan, superadmin
+				reportGroup := adminGroup.Group("/reports")
+				reportGroup.Use(gatewayauth.RequireRole("keuangan", "pimpinan", "superadmin", "admin_pmb"))
+				{
+					reportGroup.GET("/summary", reportCtrl.GetSummary)
+					reportGroup.GET("/export", reportCtrl.ExportXLSX)
+				}
+			}
 		}
+
+		registerAdminRoutes("/finance/admin")
+		registerAdminRoutes("/admin")
 	}
 
 	return r

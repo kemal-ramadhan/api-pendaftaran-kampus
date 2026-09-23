@@ -37,6 +37,8 @@ type Payment struct {
 	ProofObjectKey string        `gorm:"type:varchar(255)" json:"proof_object_key,omitempty"`
 	ProofURL       string        `gorm:"type:varchar(500)" json:"proof_url,omitempty"`
 	Notes          string        `gorm:"type:text" json:"notes,omitempty"`
+	InstallmentID  *uuid.UUID    `gorm:"type:uuid;index" json:"installment_id,omitempty"`
+	Installment    *Installment  `gorm:"foreignKey:InstallmentID" json:"installment,omitempty"`
 	VerifiedBy     *uuid.UUID    `gorm:"type:uuid" json:"verified_by,omitempty"`
 	VerifiedAt     *time.Time    `json:"verified_at,omitempty"`
 	PaidAt         *time.Time    `json:"paid_at,omitempty"`

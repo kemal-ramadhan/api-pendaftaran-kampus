@@ -5,6 +5,9 @@ Dokumen ini memetakan relasi tabel-tabel pada basis data `pmb_finance`.
 ```mermaid
 erDiagram
     INVOICES ||--o{ PAYMENTS : "memiliki"
+    INVOICES ||--o{ INSTALLMENT_REQUESTS : "diajukan"
+    INVOICES ||--o{ INSTALLMENTS : "terbagi_menjadi"
+    INSTALLMENTS ||--o{ PAYMENTS : "dibayar_lewat"
     PAYMENTS ||--o| RECEIPTS : "menerbitkan"
     FEE_SCHEMES }o--|| PERIODS : "berlaku_pada"
 
@@ -38,9 +41,36 @@ erDiagram
         timestamptz updated_at "Waktu perubahan"
     }
 
+    INSTALLMENT_REQUESTS {
+        uuid id PK "UUID Pengajuan Cicilan"
+        uuid invoice_id FK "Relasi ke tagihan"
+        uuid user_id "ID Mahasiswa Pemohon"
+        int num_terms "Jumlah termin yang diajukan (2-4)"
+        text reason "Alasan permohonan cicilan"
+        varchar(30) status "pending, approved, rejected"
+        text notes "Catatan dari peninjau bagian keuangan"
+        uuid reviewed_by "ID Staf keuangan yang meninjau"
+        timestamptz reviewed_at "Waktu peninjauan"
+        timestamptz created_at "Waktu pengajuan"
+        timestamptz updated_at "Waktu perubahan"
+    }
+
+    INSTALLMENTS {
+        uuid id PK "UUID Termin Cicilan"
+        uuid invoice_id FK "Relasi ke tagihan"
+        int term_number "Nomor urut termin (1, 2, ...)"
+        bigint amount "Nominal termin dalam Rupiah integer"
+        timestamptz due_date "Batas akhir pembayaran termin (+30 hari per termin)"
+        varchar(30) status "unpaid, paid, expired"
+        timestamptz paid_at "Waktu pelunasan termin"
+        timestamptz created_at "Waktu pembentukan jadwal termin"
+        timestamptz updated_at "Waktu perubahan"
+    }
+
     PAYMENTS {
         uuid id PK "UUID Transaksi Pembayaran"
         uuid invoice_id FK "Relasi ke tagihan"
+        uuid installment_id FK "Relasi ke termin cicilan (opsional)"
         varchar(30) method "virtual_account / manual_transfer"
         varchar(50) provider "mock / midtrans / xendit / manual"
         varchar(100) provider_ref UK "ID referensi transaksi dari provider"
@@ -79,3 +109,4 @@ erDiagram
         timestamptz created_at "Waktu penerimaan webhook"
     }
 ```
+

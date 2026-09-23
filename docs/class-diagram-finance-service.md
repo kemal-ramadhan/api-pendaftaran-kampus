@@ -1,4 +1,4 @@
-# Class Diagram — Finance Service (Bagian 1: F2-M5)
+# Class Diagram — Finance Service (Bagian 1 & 2: F2-M5 & F2-M10)
 
 Dokumen ini memuat diagram kelas dan dependensi antarmuka untuk **Finance Service** (`services/finance-service`).
 
@@ -17,6 +17,22 @@ classDiagram
         +PayWithVirtualAccount(c *gin.Context)
         +PayWithManualTransfer(c *gin.Context)
         +GetPaymentDetail(c *gin.Context)
+    }
+
+    class InstallmentController {
+        -instSvc InstallmentService
+        +RequestInstallment(c *gin.Context)
+        +ListInstallmentRequests(c *gin.Context)
+        +ReviewInstallmentRequest(c *gin.Context)
+        +GetInstallmentSchedule(c *gin.Context)
+    }
+
+    class ReportController {
+        -repSvc ReportService
+        -instSvc InstallmentService
+        +GetSummary(c *gin.Context)
+        +ExportXLSX(c *gin.Context)
+        +ProcessDueDatesCron(c *gin.Context)
     }
 
     class ReceiptController {
@@ -67,6 +83,26 @@ classDiagram
         +ListAwaitingVerification(ctx context.Context, limit, offset int) ([]Payment, int64, error)
     }
 
+    class InstallmentService {
+        <<interface>>
+        +RequestInstallment(ctx context.Context, invoiceID, userID uuid.UUID, req *CreateInstallmentRequestDTO) (*InstallmentRequest, error)
+        +ListInstallmentRequests(ctx context.Context, status string, limit, offset int) ([]InstallmentRequest, int64, error)
+        +ReviewInstallmentRequest(ctx context.Context, reqID, reviewerID uuid.UUID, req *ReviewInstallmentRequestDTO) (*InstallmentRequest, error)
+        +GetInstallmentSchedule(ctx context.Context, invoiceID, userID uuid.UUID, role string) ([]Installment, error)
+        +ProcessDueDatesAndReminders(ctx context.Context) (int, int, error)
+    }
+
+    class ReportService {
+        <<interface>>
+        +GetSummary(ctx context.Context, startDate, endDate, feeType string) (*FinancialSummaryDTO, error)
+        +ExportXLSX(ctx context.Context, startDate, endDate, feeType string) ([]byte, string, error)
+    }
+
+    class ReportExporter {
+        <<interface>>
+        +ExportFinancialReport(summary *FinancialSummaryDTO, invoices []Invoice) ([]byte, error)
+    }
+
     class PaymentProvider {
         <<interface>>
         +CreateVA(ctx context.Context, invoiceID uuid.UUID, amount int64) (*VAResult, error)
@@ -102,6 +138,29 @@ classDiagram
         +UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error
     }
 
+    class InstallmentRepository {
+        <<interface>>
+        +DB() *gorm.DB
+        +CreateRequest(ctx context.Context, req *InstallmentRequest) error
+        +FindRequestByID(ctx context.Context, id uuid.UUID) (*InstallmentRequest, error)
+        +FindRequestByInvoiceID(ctx context.Context, invoiceID uuid.UUID) (*InstallmentRequest, error)
+        +ListRequests(ctx context.Context, status string, limit, offset int) ([]InstallmentRequest, int64, error)
+        +UpdateRequestInTx(tx *gorm.DB, req *InstallmentRequest) error
+        +CreateInstallmentsInTx(tx *gorm.DB, items []Installment) error
+        +FindInstallmentsByInvoiceID(ctx context.Context, invoiceID uuid.UUID) ([]Installment, error)
+        +FindInstallmentByID(ctx context.Context, id uuid.UUID) (*Installment, error)
+        +FindNextUnpaidInstallment(ctx context.Context, invoiceID uuid.UUID) (*Installment, error)
+        +UpdateInstallmentStatusInTx(tx *gorm.DB, id uuid.UUID, status InstallmentStatus, paidAt *time.Time) error
+        +FindExpiringInstallments(ctx context.Context, targetDate time.Time) ([]Installment, error)
+        +MarkExpiredInstallments(ctx context.Context, now time.Time) (int64, error)
+    }
+
+    class ReportRepository {
+        <<interface>>
+        +GetFinancialSummary(ctx context.Context, startDate, endDate, feeType string) (*FinancialSummaryDTO, error)
+        +GetDetailedInvoices(ctx context.Context, startDate, endDate, feeType string) ([]Invoice, error)
+    }
+
     class ReceiptRepository {
         <<interface>>
         +CreateInTx(tx *gorm.DB, receipt *Receipt) error
@@ -118,6 +177,9 @@ classDiagram
 
     InvoiceController --> InvoiceService
     PaymentController --> PaymentService
+    InstallmentController --> InstallmentService
+    ReportController --> ReportService
+    ReportController --> InstallmentService
     ReceiptController --> PaymentService
     WebhookController --> PaymentService
     DevController --> PaymentService
@@ -130,6 +192,13 @@ classDiagram
     InvoiceService ..> InvoiceRepository
     PaymentService ..> PaymentRepository
     PaymentService ..> InvoiceRepository
+    PaymentService ..> InstallmentRepository
     PaymentService ..> ReceiptRepository
     PaymentService ..> WebhookLogRepository
+
+    InstallmentService ..> InstallmentRepository
+    InstallmentService ..> InvoiceRepository
+    ReportService ..> ReportRepository
+    ReportService ..> ReportExporter
 ```
+

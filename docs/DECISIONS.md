@@ -325,6 +325,39 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Setelah rilis resmi, calon mahasiswa dapat melihat keputusan kelulusan, program studi yang menerima, serta rincian invoice tagihan daftar ulang yang telah terbentuk secara otomatis.
 - **Rasional**: Menjamin integritas keputusan penerimaan mahasiswa baru agar tidak melebihi daya tampung institusi, menciptakan alur pengawasan berjenjang yang akuntabel antara program studi dan pimpinan universitas, menjaga kerahasiaan hasil sebelum waktu rilis resmi, serta mengotomatisasi side-effects lintas layanan (akademik, keuangan, dan notifikasi) tanpa intervensi manual yang rentan kesalahan.
 
+---
+
+## 26. Fase 2: Finance Bagian 2 — Siklus Cicilan, Presisi Integer Bebas Selisih Pembulatan, Proteksi Biaya Pendaftaran, Pengingat H-3/H-1, dan Laporan Keuangan Multi-Role (F2-M10)
+- **Status**: Diputuskan pada Tahap 9, 24 Sep 2026
+- **Keputusan**:
+  - **Larangan Mutlak Cicilan Biaya Pendaftaran (INSTALLMENT_NOT_ALLOWED)**:
+    - Sesuai regulasi institusi PMB dan PRD Bagian 4.5, tagihan biaya pendaftaran (`fee_type == "registration"`) wajib diselesaikan secara penuh (lunas) agar proses seleksi dapat dilanjutkan.
+    - Upaya pengajuan cicilan untuk tagihan pendaftaran ditolak seketika oleh sistem dengan status HTTP `422 Unprocessable Entity` dan kode error `INSTALLMENT_NOT_ALLOWED`.
+    - Pengajuan cicilan hanya diizinkan untuk tagihan daftar ulang (`reregistration`) yang belum lunas dan belum memiliki pengajuan cicilan aktif lain.
+  - **Algoritma Pembagian Cicilan Presisi Integer Rupiah Bebas Selisih**:
+    - Nominal uang seluruhnya dikelola dalam bilangan bulat Rupiah (`int64`).
+    - Untuk menghindari selisih pembulatan (rounding error) pada nominal ganjil (contohnya Rp 3.333.334 dibagi 3 termin), sistem menghitung nominal dasar `base = totalAmount / numTerms` dan sisa modulus `remainder = totalAmount % numTerms`.
+    - Nilai `remainder` ditambahkan sepenuhnya pada termin pertama (`term_1 = base + remainder`, `term_i = base`).
+    - Hasil perhitungan: Termin 1 = Rp 1.111.112, Termin 2 = Rp 1.111.111, Termin 3 = Rp 1.111.111. Akumulasi total termin dijamin tepat 100% identik dengan nominal tagihan (Rp 3.333.334), tanpa selisih Rp 1 pun.
+  - **Aturan Pembagian Termin dan Tanggal Jatuh Tempo**:
+    - Default batas maksimal termin adalah 4 termin, dengan termin pertama minimal 25% dari total tagihan.
+    - Tanggal jatuh tempo termin digenerate secara bertahap dengan jeda 30 hari kalender:
+      $$\text{DueDate}_i = \text{ApprovalTime} + (30 \times i \text{ hari})$$
+  - **Transisi Status Tagihan Berdasarkan Pembayaran Termin**:
+    - Saat calon mahasiswa melunasi termin pertama (`term_number == 1`), status invoice bertransisi menjadi `partially_paid`.
+    - Status `partially_paid` ini menjadi prasyarat sah bagi calon mahasiswa untuk melanjutkan proses daftar ulang di Student Service (Tahap 10).
+    - Status invoice hanya akan berubah menjadi `paid` (lunas total) setelah seluruh termin cicilan diselesaikan.
+  - **Pekerjaan Terjadwal & Pengingat Jatuh Tempo (H-3, H-1, Expired)**:
+    - Endpoint pemrosesan jatuh tempo `POST /admin/cron/process-due-dates` memeriksa seluruh termin dan tagihan yang belum dibayar.
+    - Tagihan/termin yang jatuh tempo dalam 3 hari ke depan dikirimkan notifikasi email pengingat (`payment_reminder_d3`).
+    - Tagihan/termin yang jatuh tempo esok hari dikirimkan notifikasi email urgensi (`payment_reminder_d1`).
+    - Tagihan/termin yang telah melampaui batas waktu pembayaran (`due_date < now`) secara otomatis ditandai berstatus `expired`.
+  - **Laporan Ringkasan Keuangan & Ekspor Spreadsheet Excel Multi-Role**:
+    - Endpoint `GET /admin/reports/summary` menyajikan indikator kinerja keuangan agregat (total ditagihkan, total penerimaan terkumpul, piutang tertunggak, serta distribusi status tagihan dan breakdown jenis biaya).
+    - Endpoint `GET /admin/reports/export?format=xlsx` menghasilkan berkas spreadsheet Excel `.xlsx` resmi menggunakan library `excelize/v2` yang terdiri dari Sheet 1 (Ringkasan Keuangan Berformat Eksekutif) dan Sheet 2 (Daftar Rincian Seluruh Tagihan & Cicilan).
+    - Kedua endpoint laporan dapat diakses oleh role `keuangan`, `pimpinan`, dan `superadmin`. Konfigurasi API Gateway (`routes.yaml`) diperbarui agar prefix `/api/v1/finance/admin` secara sah meneruskan permintaan dari role `pimpinan`.
+- **Rasional**: Mencegah kebocoran pendapatan kampus dari selisih pembulatan matematis, menjamin kelancaran arus kas pendaftaran awal, memberikan fleksibilitas pembiayaan bagi mahasiswa berpotensi lewat cicilan daftar ulang yang tertib administrasi, serta membekali pimpinan universitas dengan visibilitas data keuangan real-time untuk pengambilan keputusan strategis.
+
 
 
 

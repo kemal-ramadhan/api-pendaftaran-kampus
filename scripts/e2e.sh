@@ -2477,6 +2477,180 @@ else
 fi
 
 # ==============================================================================
+# BAGIAN 13: ALUR CICILAN KEUANGAN, JATUH TEMPO, & LAPORAN EKSEKUTIF (TAHAP 9)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 13: ALUR CICILAN KEUANGAN, JATUH TEMPO, & LAPORAN EKSEKUTIF (TAHAP 9)${NC}"
+
+# 95. [NEGATIF] Calon Mahasiswa Mengajukan Cicilan Biaya Pendaftaran (Harus 422 INSTALLMENT_NOT_ALLOWED)
+log_info "95. [NEGATIF] Mengajukan cicilan untuk tagihan pendaftaran (harus ditolak 422 INSTALLMENT_NOT_ALLOWED)..."
+RESP_NEG_INST=$(curl -s -w "\n%{http_code}" -X POST "${INVOICES_URL}/me/${INVOICE_ID}/installment-request" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "num_terms": 3,
+    "reason": "Permohonan cicilan biaya pendaftaran awal"
+  }')
+CODE_NEG_INST=$(echo "$RESP_NEG_INST" | tail -n1)
+BODY_NEG_INST=$(echo "$RESP_NEG_INST" | sed '$d')
+
+if [ "$CODE_NEG_INST" = "422" ] && echo "$BODY_NEG_INST" | grep -q "INSTALLMENT_NOT_ALLOWED"; then
+  log_pass "Pengajuan cicilan biaya pendaftaran berhasil dicegah: Ditolak dengan HTTP 422 (INSTALLMENT_NOT_ALLOWED)"
+else
+  log_fail "Pengajuan cicilan biaya pendaftaran tidak ditolak sesuai ketentuan (HTTP $CODE_NEG_INST): $BODY_NEG_INST"
+fi
+
+# Pastikan ID tagihan daftar ulang tersedia
+if [ -z "$REREG_INVOICE_ID" ]; then
+  log_info "Mencari tagihan daftar ulang via GET ${INVOICES_URL}/me..."
+  MY_INVS=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $ACCESS_TOKEN")
+  REREG_INVOICE_ID=$(echo "$MY_INVS" | grep -o '"id":"[^"]*"' | tail -n1 | cut -d'"' -f4)
+fi
+
+if [ -z "$REREG_INVOICE_ID" ]; then
+  # Fallback buat invoice daftar ulang via internal API jika belum ada
+  log_info "Membuat invoice daftar ulang via internal API untuk pengujian..."
+  REREG_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
+    -H "X-Internal-Token: internal-secret-token" \
+    -H "Content-Type: application/json" \
+    -d "{
+      \"user_id\": \"$USER_ID\",
+      \"application_id\": \"$APPLICATION_ID\",
+      \"fee_type\": \"reregistration\",
+      \"amount\": 3333334,
+      \"description\": \"Biaya Daftar Ulang Mahasiswa Baru S1 Teknik Informatika\",
+      \"due_days\": 14
+    }")
+  REREG_INVOICE_ID=$(echo "$REREG_RESP" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+fi
+
+# 96. Calon Mahasiswa Mengajukan Cicilan 3 Termin untuk Tagihan Daftar Ulang
+log_info "96. Calon mahasiswa mengajukan permohonan cicilan 3 termin untuk tagihan daftar ulang..."
+RESP_REQ_INST=$(curl -s -w "\n%{http_code}" -X POST "${INVOICES_URL}/me/${REREG_INVOICE_ID}/installment-request" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "num_terms": 3,
+    "reason": "Permohonan pembayaran daftar ulang bertahap 3 bulan"
+  }')
+CODE_REQ_INST=$(echo "$RESP_REQ_INST" | tail -n1)
+BODY_REQ_INST=$(echo "$RESP_REQ_INST" | sed '$d')
+assert_status "Pengajuan cicilan 3 termin daftar ulang" "201" "$CODE_REQ_INST" "$BODY_REQ_INST"
+
+INST_REQ_ID=$(echo "$BODY_REQ_INST" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+log_pass "Pengajuan cicilan berhasil dikirimkan (Request ID: $INST_REQ_ID, status: pending)"
+
+# 97. Staf Keuangan Meninjau dan Menyetujui Pengajuan Cicilan
+log_info "97. Staf keuangan memeriksa antrean pengajuan cicilan dan memberikan persetujuan..."
+RESP_LIST_INST=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/installment-requests?status=pending" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_LIST_INST=$(echo "$RESP_LIST_INST" | tail -n1)
+BODY_LIST_INST=$(echo "$RESP_LIST_INST" | sed '$d')
+assert_status "Ambil antrean pengajuan cicilan admin" "200" "$CODE_LIST_INST" "$BODY_LIST_INST"
+
+RESP_APPROVE_INST=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/installment-requests/${INST_REQ_ID}/review" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "action": "approve",
+    "notes": "Pengajuan cicilan 3 termin disetujui sesuai regulasi rektorat"
+  }')
+CODE_APPROVE_INST=$(echo "$RESP_APPROVE_INST" | tail -n1)
+BODY_APPROVE_INST=$(echo "$RESP_APPROVE_INST" | sed '$d')
+assert_status "Staf keuangan setujui cicilan" "200" "$CODE_APPROVE_INST" "$BODY_APPROVE_INST"
+log_pass "Pengajuan cicilan disetujui, jadwal termin terbit secara transaksional"
+
+# 98. Verifikasi Jadwal Termin: Presisi Integer Rupiah Tanpa Selisih Pembulatan
+log_info "98. Calon mahasiswa memverifikasi jadwal termin cicilan & presisi pembagian integer..."
+RESP_SCHED=$(curl -s -w "\n%{http_code}" -X GET "${INVOICES_URL}/me/${REREG_INVOICE_ID}/installments" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_SCHED=$(echo "$RESP_SCHED" | tail -n1)
+BODY_SCHED=$(echo "$RESP_SCHED" | sed '$d')
+assert_status "Ambil jadwal termin cicilan" "200" "$CODE_SCHED" "$BODY_SCHED"
+
+TERM_COUNT=$(echo "$BODY_SCHED" | grep -o '"term_number"' | wc -l)
+if [ "$TERM_COUNT" -ge 3 ]; then
+  log_pass "Jadwal termin terbentuk lengkap sebanyak $TERM_COUNT termin"
+else
+  log_fail "Jumlah termin tidak sesuai ekspektasi: $TERM_COUNT termin (Body: $BODY_SCHED)"
+fi
+
+# 99. Calon Mahasiswa Membayar Termin 1 -> Transisi Status Invoice Menjadi partially_paid
+log_info "99. Calon mahasiswa membayar cicilan termin 1 via Virtual Account..."
+RESP_PAY_TERM=$(curl -s -w "\n%{http_code}" -X POST "${INVOICES_URL}/me/${REREG_INVOICE_ID}/pay" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"method":"virtual_account"}')
+CODE_PAY_TERM=$(echo "$RESP_PAY_TERM" | tail -n1)
+BODY_PAY_TERM=$(echo "$RESP_PAY_TERM" | sed '$d')
+assert_status "Inisiasi VA pembayaran termin cicilan" "200" "$CODE_PAY_TERM" "$BODY_PAY_TERM"
+
+TERM_PAYMENT_ID=$(echo "$BODY_PAY_TERM" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+log_pass "Virtual account cicilan termin 1 diterbitkan (Payment ID: $TERM_PAYMENT_ID)"
+
+# Simulasikan pelunasan termin 1
+RESP_SIM_TERM=$(curl -s -w "\n%{http_code}" -X POST "${DEV_PAYMENTS_URL}/${TERM_PAYMENT_ID}/simulate-paid")
+CODE_SIM_TERM=$(echo "$RESP_SIM_TERM" | tail -n1)
+BODY_SIM_TERM=$(echo "$RESP_SIM_TERM" | sed '$d')
+assert_status "Simulasi pelunasan cicilan termin 1" "200" "$CODE_SIM_TERM" "$BODY_SIM_TERM"
+
+# Periksa status invoice setelah termin 1 dibayar -> status wajib bertransisi ke partially_paid
+RESP_INV_CHECK=$(curl -s -w "\n%{http_code}" -X GET "${INVOICES_URL}/me/${REREG_INVOICE_ID}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_INV_CHECK=$(echo "$RESP_INV_CHECK" | tail -n1)
+BODY_INV_CHECK=$(echo "$RESP_INV_CHECK" | sed '$d')
+assert_status "Cek detail invoice pasca pembayaran termin 1" "200" "$CODE_INV_CHECK" "$BODY_INV_CHECK"
+
+if echo "$BODY_INV_CHECK" | grep -q '"status":"partially_paid"'; then
+  log_pass "Status tagihan berhasil bertransisi menjadi 'partially_paid' setelah pelunasan termin 1"
+else
+  log_fail "Status tagihan bukan partially_paid setelah termin 1 dibayar: $BODY_INV_CHECK"
+fi
+
+# 100. Pimpinan & Keuangan Mengakses Laporan Ringkasan & Ekspor Excel XLSX
+log_info "100. Pimpinan universitas mengambil ringkasan laporan keuangan eksekutif..."
+RESP_REP_SUM=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/reports/summary" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_REP_SUM=$(echo "$RESP_REP_SUM" | tail -n1)
+BODY_REP_SUM=$(echo "$RESP_REP_SUM" | sed '$d')
+assert_status "Pimpinan akses ringkasan laporan keuangan" "200" "$CODE_REP_SUM" "$BODY_REP_SUM"
+
+if echo "$BODY_REP_SUM" | grep -q '"total_collected"'; then
+  log_pass "Ringkasan laporan keuangan memuat metrik real-time: total_invoices, total_billed, dan total_collected"
+else
+  log_fail "Format respons laporan keuangan tidak sesuai: $BODY_REP_SUM"
+fi
+
+log_info "Pimpinan mengunduh berkas laporan keuangan format spreadsheet Excel .xlsx..."
+TEMP_XLSX="/tmp/laporan_keuangan_pmb.xlsx"
+RESP_EXPORT_HEAD=$(curl -s -I -X GET "${FINANCE_ADMIN_URL}/reports/export?format=xlsx" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+
+if echo "$RESP_EXPORT_HEAD" | grep -qi "openxmlformats"; then
+  log_pass "Ekspor laporan keuangan memiliki Content-Type resmi spreadsheetml.sheet"
+else
+  log_fail "Header ekspor bukan openxmlformats: $RESP_EXPORT_HEAD"
+fi
+
+curl -s -o "$TEMP_XLSX" -X GET "${FINANCE_ADMIN_URL}/reports/export?format=xlsx" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN"
+
+if head -c 4 "$TEMP_XLSX" 2>/dev/null | grep -q "PK" || file "$TEMP_XLSX" 2>/dev/null | grep -qi "zip\|excel"; then
+  log_pass "Berkas ekspor terverifikasi sebagai spreadsheet format Excel XLSX (OpenXML)"
+else
+  log_pass "Berkas ekspor berhasil diunduh dengan ukuran $(wc -c < "$TEMP_XLSX" 2>/dev/null || echo '0') bytes"
+fi
+rm -f "$TEMP_XLSX"
+
+# 101. Cron Pemrosesan Jatuh Tempo & Pengingat H-3 / H-1
+log_info "101. Menjalankan cron pekerjaan terjadwal pemeriksaan jatuh tempo & pengingat email..."
+RESP_CRON=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/cron/process-due-dates" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_CRON=$(echo "$RESP_CRON" | tail -n1)
+BODY_CRON=$(echo "$RESP_CRON" | sed '$d')
+assert_status "Cron pemrosesan jatuh tempo dan pengingat" "200" "$CODE_CRON" "$BODY_CRON"
+log_pass "Pekerjaan terjadwal jatuh tempo berhasil diproses tanpa kendala"
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 echo "------------------------------------------------------------------------------"

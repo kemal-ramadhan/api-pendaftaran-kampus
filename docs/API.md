@@ -1176,6 +1176,212 @@ Menyetujui atau menolak bukti transfer bank.
 
 ---
 
+### 10.9 Endpoint Pengajuan & Jadwal Cicilan Mahasiswa (`/api/v1/invoices/me/...`)
+
+Calon mahasiswa dapat mengajukan permohonan pembayaran tagihan daftar ulang secara bertahap (cicilan/installment). Sesuai PRD, tagihan biaya pendaftaran (`fee_type = "registration"`) ditolak secara mutlak untuk dicicil.
+
+#### `POST /api/v1/invoices/me/:id/installment-request`
+Mengajukan permohonan cicilan untuk tagihan tertentu (default maksimal 4 termin, minimal 25% untuk termin pertama).
+- **Akses**: Calon Mahasiswa (pemilik tagihan)
+- **Request Body**:
+  ```json
+  {
+    "num_terms": 3,
+    "reason": "Memohon keringanan pembayaran bertahap 3 bulan"
+  }
+  ```
+- **Validasi & Error**:
+  - `422 Unprocessable Entity (INSTALLMENT_NOT_ALLOWED)`: Tagihan biaya pendaftaran (`registration`) tidak dapat dicicil, atau tagihan sudah memiliki status lunas/terkait pengajuan cicilan lain.
+  - `422 Unprocessable Entity (VALIDATION_ERROR)`: Jumlah termin harus antara 2 hingga 4 termin.
+- **Respons (201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Pengajuan cicilan berhasil dikirimkan, menunggu persetujuan bagian keuangan",
+    "data": {
+      "id": "7f8a9b0c-1d2e-3f4a-5b6c-7d8e9f0a1b2c",
+      "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+      "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+      "num_terms": 3,
+      "reason": "Memohon keringanan pembayaran bertahap 3 bulan",
+      "status": "pending",
+      "created_at": "2026-09-24T06:00:00Z"
+    }
+  }
+  ```
+
+#### `GET /api/v1/invoices/me/:id/installments`
+Mengambil jadwal termin cicilan aktif untuk tagihan yang pengajuan cicilannya telah disetujui.
+- **Akses**: Calon Mahasiswa (pemilik) atau staf `keuangan` / `superadmin`
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Jadwal cicilan berhasil diambil",
+    "data": [
+      {
+        "id": "11111111-2222-3333-4444-555555555551",
+        "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+        "term_number": 1,
+        "amount": 1111112,
+        "due_date": "2026-10-24T06:00:00Z",
+        "status": "unpaid",
+        "paid_at": null
+      },
+      {
+        "id": "11111111-2222-3333-4444-555555555552",
+        "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+        "term_number": 2,
+        "amount": 1111111,
+        "due_date": "2026-11-23T06:00:00Z",
+        "status": "unpaid",
+        "paid_at": null
+      },
+      {
+        "id": "11111111-2222-3333-4444-555555555553",
+        "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+        "term_number": 3,
+        "amount": 1111111,
+        "due_date": "2026-12-23T06:00:00Z",
+        "status": "unpaid",
+        "paid_at": null
+      }
+    ]
+  }
+  ```
+- **Catatan Pembayaran Per Termin**:
+  - Saat membayar via `POST /api/v1/invoices/me/:id/pay`, sistem secara otomatis mengaitkan pembayaran ke termin tertua yang belum dibayar (`installment_id`).
+  - Setelah termin 1 dibayar lunas, status invoice berubah menjadi `partially_paid` (memenuhi syarat kelulusan & pendaftaran ulang di Student Service).
+  - Setelah seluruh termin dibayar, status invoice berubah menjadi `paid`.
+
+---
+
+### 10.10 Endpoint Peninjauan Cicilan Admin Keuangan (`/api/v1/finance/admin/...`)
+
+#### `GET /api/v1/finance/admin/installment-requests`
+Mengambil daftar pengajuan cicilan mahasiswa dengan filter status.
+- **Akses**: `keuangan`, `superadmin`, `admin_pmb`
+- **Query Params**:
+  - `status`: `pending`, `approved`, `rejected` (opsional)
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Daftar pengajuan cicilan berhasil diambil",
+    "data": [
+      {
+        "id": "7f8a9b0c-1d2e-3f4a-5b6c-7d8e9f0a1b2c",
+        "invoice_id": "2b3a4c5d-6e7f-8a9b-0c1d-2e3f4a5b6c7d",
+        "user_id": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        "num_terms": 3,
+        "reason": "Memohon keringanan pembayaran bertahap 3 bulan",
+        "status": "pending",
+        "invoice": {
+          "invoice_number": "INV-20260924-00001",
+          "amount": 3333334,
+          "fee_type": "reregistration"
+        }
+      }
+    ]
+  }
+  ```
+
+#### `POST /api/v1/finance/admin/installment-requests/:id/review`
+Menyetujui atau menolak pengajuan cicilan calon mahasiswa.
+- **Akses**: `keuangan`, `superadmin`, `admin_pmb`
+- **Request Body**:
+  ```json
+  {
+    "action": "approve", // atau "reject"
+    "notes": "Pengajuan cicilan disetujui sesuai regulasi kampus"
+  }
+  ```
+- **Efek Transaksional Saat Approved**:
+  1. Status pengajuan menjadi `approved`.
+  2. Status skema pembayaran tagihan berubah menjadi `installment`.
+  3. Jadwal termin di tabel `installments` digenerate secara transaksional dengan rumus presisi integer rupiah:
+     - Termin 1: jatuh tempo 30 hari dari persetujuan (+ sisa pembagian bulat jika ada).
+     - Termin $i$: jatuh tempo $30 \times i$ hari dari persetujuan.
+     - Total seluruh termin dijamin tepat 100% tanpa selisih Rp 1 pun dari nominal tagihan asli.
+  4. Notifikasi persetujuan cicilan dikirimkan ke calon mahasiswa via Notification Service.
+
+---
+
+### 10.11 Endpoint Laporan Keuangan & Ekspor Spreadsheet (`/api/v1/finance/admin/reports/...`)
+
+Disediakan untuk pimpinan universitas dan staf keuangan guna memantau arus kas penerimaan, piutang, dan status pembayaran pendaftar.
+
+#### `GET /api/v1/finance/admin/reports/summary`
+Mengambil ringkasan agregat keuangan real-time.
+- **Akses**: `keuangan`, `pimpinan`, `superadmin`, `admin_pmb`
+- **Query Params**:
+  - `start_date`: ISO format tanggal awal (opsional)
+  - `end_date`: ISO format tanggal akhir (opsional)
+  - `fee_type`: `registration` atau `reregistration` (opsional)
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Ringkasan laporan keuangan berhasil diambil",
+    "data": {
+      "total_invoices": 150,
+      "total_billed": 450000000,
+      "total_collected": 375000000,
+      "total_outstanding": 75000000,
+      "paid_count": 120,
+      "unpaid_count": 15,
+      "partially_paid_count": 10,
+      "expired_count": 5,
+      "by_fee_type": {
+        "registration": {
+          "total_invoices": 100,
+          "billed": 25000000,
+          "collected": 25000000
+        },
+        "reregistration": {
+          "total_invoices": 50,
+          "billed": 425000000,
+          "collected": 350000000
+        }
+      }
+    }
+  }
+  ```
+
+#### `GET /api/v1/finance/admin/reports/export?format=xlsx`
+Mengunduh laporan komprehensif keuangan dalam format berkas spreadsheet Excel `.xlsx`.
+- **Akses**: `keuangan`, `pimpinan`, `superadmin`, `admin_pmb`
+- **Respons**: Binary stream berkas Excel:
+  - `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - `Content-Disposition: attachment; filename="Laporan_Keuangan_PMB_YYYYMMDD_HHMMSS.xlsx"`
+- **Struktur Berkas Excel**:
+  - **Sheet 1 ("Ringkasan Keuangan")**: Judul resmi institusi, KPI agregat (Total Ditagihkan, Total Diterima, Total Piutang), dan tabel rekapitulasi per jenis biaya (`registration` vs `reregistration`).
+  - **Sheet 2 ("Rincian Tagihan")**: Rincian baris per tagihan pendaftar (Nomor Tagihan, User ID, Jenis Biaya, Skema, Jumlah Tagihan, Jumlah Terbayar, Status, Tanggal Terbit, Jatuh Tempo, dan Keterangan).
+
+---
+
+### 10.12 Pekerjaan Terjadwal & Pengingat Jatuh Tempo (`/api/v1/finance/admin/cron/...`)
+
+#### `POST /api/v1/finance/admin/cron/process-due-dates`
+Memproses pemeriksaan jatuh tempo secara periodik (cron job):
+1. **Pengingat H-3**: Mengirimkan notifikasi email pengingat tagihan/termin yang akan jatuh tempo dalam kurun 3 hari.
+2. **Pengingat H-1**: Mengirimkan notifikasi email urgensi tagihan/termin yang akan jatuh tempo besok.
+3. **Penandaan Expired**: Mengubah status tagihan/termin yang telah melewati `due_date` dan belum terbayar menjadi `expired`.
+- **Akses**: `keuangan`, `superadmin`, `admin_pmb` (atau trigger cron daemon sistem)
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Pemeriksaan jatuh tempo dan pengiriman pengingat berhasil diproses",
+    "data": {
+      "reminders_sent": 12,
+      "expired_updated": 3
+    }
+  }
+  ```
+
+---
+
 ## 11. Exam Service (`pmb-exam-service`)
 
 Exam Service mengelola sesi ujian tulis dan wawancara, penugasan dosen penguji, penjadwalan peserta pendaftar yang telah terverifikasi, pencatatan kehadiran presensi, dan penerbitan kartu tanda peserta ujian resmi (PDF) dengan QR code dinamis.
