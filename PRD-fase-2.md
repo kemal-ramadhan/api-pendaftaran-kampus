@@ -455,7 +455,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M0** Fondasi bersama | `pkg/internalclient`, `pkg/storage` (MinIO), `pkg/pagination`, `pkg/outbox`, template service baru, MinIO & init DB di compose | build/test lulus, MinIO bisa upload/download lewat test |
 | **F2-M1** Organization | 4.1 + validasi scope di Auth (4.10) | superadmin membuat prodi; atur role prodi dengan scope tak dikenal ditolak |
 | **F2-M2** Identity | 4.2 | calon mahasiswa mengisi biodata; `completeness` benar; NIK terenkripsi di DB |
-| **F2-M2b** OCR KTP *(v2)* | 4.11: OCR Service (Python FastAPI) + enhancement non-generatif | **Selesai** (OCR Service containerized, Tesseract ind+eng, 14/14 tests pass, benchmark NIK exact match 100%, docs/ocr-benchmark.md dibuat) |
+| **F2-M2b** OCR KTP *(v2)* | 4.11: OCR Service (Python) + endpoint scan di Identity | KTP sintetis terbaca otomatis, gambar buram diperbaiki atau diminta foto ulang, benchmark akurasi memenuhi target |
 | **F2-M3** Notification | 4.3 | notifikasi masuk Mailpit, retry saat SMTP mati |
 | **F2-M4** Admission bagian 1 | Master data + buat pendaftaran + state machine awal | pendaftaran dibuat, kuota & periode tervalidasi |
 | **F2-M5** Finance bagian 1 | Skema biaya, tagihan, VA mock, webhook, transfer manual, verifikasi, kwitansi | bayar pendaftaran → Admission `form_open` |
@@ -466,6 +466,26 @@ Setiap milestone wajib menghasilkan:
 | **F2-M10** Finance bagian 2 | Cicilan, reminder, laporan & export | ajukan & setujui cicilan, bayar termin |
 | **F2-M11** Student + NIM | 4.9 | daftar ulang → NIM unik → role `mahasiswa` |
 | **F2-M12** Integrasi akhir | e2e flowchart 1 penuh, dashboard statistik pimpinan, Postman & dokumentasi lengkap | `e2e.sh` seluruh alur PASS dari database kosong |
+
+### 9.1 Pemetaan ke Timeline Tim
+
+Pekerjaan dieksekusi **bertahap mengikuti baris timeline** (sheet Timeline Development IT). Satu tahap = satu atau dua milestone di atas.
+
+| Tahap | Baris timeline | Milestone | Rencana tanggal |
+|---|---|---|---|
+| 1 | Organization Service | F2-M0 + F2-M1 | 22–25 Sep 2026 |
+| 2 | Identity Service | F2-M2 + F2-M2b (OCR KTP) | 26 Sep – 6 Okt 2026 |
+| 3 | Admission Service (1) | F2-M3 (Notification) + F2-M4 | 7–13 Okt 2026 |
+| 4 | Finance Service (bagian 1) | F2-M5 | 14–20 Okt 2026 |
+| 5 | Admission Service (2) | F2-M6 | 21–26 Okt 2026 |
+| 6 | Exam Service | F2-M7 | 27 Okt – 2 Nov 2026 |
+| 7 | Scoring Service | F2-M8 | 3–6 Nov 2026 |
+| 8 | Selection Service | F2-M9 | 7–12 Nov 2026 |
+| 9 | Finance Service (bagian 2) | F2-M10 | 13–18 Nov 2026 |
+| 10 | Student Service | F2-M11 (bagian Student) | 19–21 Nov 2026 |
+| 11 | NIM Service | F2-M11 (bagian NIM) + F2-M12 | 22–30 Nov 2026 |
+
+Tambahan atau perubahan dari lead dimasukkan sebagai **Change Request** (lihat `docs/CHANGE_REQUESTS.md`) dan dikerjakan di tahap yang paling relevan tanpa merombak tahap yang sudah selesai.
 
 Urutan boleh disesuaikan dengan sprint di timeline tim; jika berubah, catat di `docs/DECISIONS.md`. Prinsip yang tidak boleh dilanggar: service yang menjadi ketergantungan dikerjakan lebih dulu.
 
