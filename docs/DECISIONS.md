@@ -267,6 +267,34 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Presensi kehadiran peserta (`present` / `absent`) dapat dicatat oleh Admin PMB atau oleh Dosen Penguji yang bertugas pada sesi tersebut via `PATCH /api/v1/exam/admin/participants/:id/attendance`. Upaya perubahan presensi oleh dosen pada sesi lain ditolak dengan HTTP 403 (`ErrForbiddenExaminer`).
 - **Rasional**: Menjamin ketertiban seleksi penerimaan mahasiswa baru, memastikan integritas dokumen identitas peserta di ruang ujian melalui QR code verifikasi pengawas, dan mengisolasi wewenang dosen penguji secara aman sesuai pembagian tugas.
 
+---
+
+## 24. Fase 2: Scoring Service — Master Komponen & Bobot Nilai 100%, Otorisasi Dosen Penguji, Rata-Rata Tertimbang, Pemeringkatan Prodi Dinamis, Ekspor Excel XLSX, dan Proteksi Penguncian Nilai (F2-M8)
+- **Status**: Diputuskan pada Tahap 7, 24 Sep 2026
+- **Keputusan**:
+  - **Arsitektur Scoring Service Mandiri**:
+    - Layanan Scoring Service (`pmb-scoring-service`) beroperasi sebagai microservice independen pada port `8089` dengan basis data terisolasi `pmb_scoring`.
+    - Mematuhi standar keamanan `docs/AGENT_RULES.md`: verifikasi HMAC API Gateway (`pkg/gatewayauth`), autentikasi inter-service token internal (`pkg/internalauth`), migrasi skema SQL terstruktur, dan penanganan error standar.
+  - **Validasi Mutlak Total Bobot Komponen Nilai 100%**:
+    - Komponen penilaian dikonfigurasikan per jalur seleksi (`path_id`).
+    - Total persentase bobot seluruh komponen aktif pada satu jalur seleksi wajib tepat **100.00%**. Upaya penambahan atau perubahan bobot komponen yang menyebabkan akumulasi bobot melebihi 100% langsung ditolak dengan status HTTP `422 Unprocessable Entity (INVALID_WEIGHT_SUM)`.
+  - **Otorisasi Dosen Penguji via Inter-Service Exam**:
+    - Setiap kali dosen penguji (role `dosen`) menginput atau mengubah nilai peserta (`PUT /api/v1/scoring/examiner/scores/:application_id`), Scoring Service secara internal memverifikasi ke Exam Service (`GET /internal/participants/:application_id` dan `GET /internal/sessions/:session_id`).
+    - Nilai hanya dapat diinput jika `examiner_user_id` dosen bersangkutan tercantum dalam daftar penguji resmi pada sesi ujian peserta tersebut. Upaya input nilai untuk peserta di luar sesi dosen ditolak dengan HTTP `403 Forbidden`. Role `admin_pmb` dan `superadmin` memiliki wewenang administratif untuk menginput nilai tanpa batasan sesi penguji.
+  - **Proteksi Penguncian Nilai (Flag Locked)**:
+    - Sesuai PRD Bagian 4.7, setelah kombinasi gelombang dan program studi dikunci oleh alur kelulusan (`program_locks.is_locked = true`), seluruh modifikasi atau penambahan nilai ditolak dengan HTTP `422 Unprocessable Entity` dan kode error `SCORES_LOCKED`.
+  - **Formula Nilai Akhir & Pemeringkatan Dinamis**:
+    - Nilai akhir dihitung secara transaksional menggunakan rumus rata-rata tertimbang:
+      $$\text{FinalScore} = \sum_{i=1}^n \left( \text{score}_i \times \frac{\text{weight}_i}{100} \right)$$
+    - Pemeringkatan dilakukan secara dinamis dan transaksional pada tabel `score_summaries` menggunakan PostgreSQL window function `ROW_NUMBER() OVER (PARTITION BY period_id, path_id, study_program_code ORDER BY final_score DESC, computed_at ASC)` sehingga urutan ranking selalu konsisten dan terkini.
+  - **Isolasi Role Program Studi**:
+    - Pengguna dengan role `prodi` dibatasi hanya dapat meninjau rekapitulasi nilai dan pemeringkatan pada program studi yang sesuai dengan `scope_id` pada tokennya. Upaya mengakses rekap prodi lain ditolak dengan HTTP `403 Forbidden`.
+  - **Ekspor Rekapitulasi Berkas Spreadsheet Excel (.xlsx)**:
+    - Endpoint `GET /api/v1/scoring/program/recap/export` memproduksi berkas spreadsheet `.xlsx` resmi menggunakan library `github.com/xuri/excelize/v2` yang memuat header navy blue, border tabel rapi, format angka desimal seragam, rincian komponen nilai, nilai akhir tertimbang, dan nomor urut peringkat.
+  - **Inter-Service Consumption untuk Selection Service**:
+    - Endpoint internal `GET /internal/summaries?period_id=&program=` dan `POST /internal/locks` disediakan khusus untuk dikonsumsi oleh Selection Service pada tahap perumusan rekomendasi kelulusan.
+- **Rasional**: Menjamin keakuratan matematis dan transparansi penilaian seleksi penerimaan mahasiswa baru, melindungi integritas skor dari perubahan tanpa izin setelah masa seleksi berakhir, mengamankan hak akses antar dosen penguji dan program studi, serta mempermudah sidang pleno kelulusan panitia PMB melalui berkas rekapitulasi Excel berstandar tinggi.
+
 
 
 

@@ -100,9 +100,9 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Fase 2 |
 | UC-25 | Lihat Laporan Keuangan | Finance | Fase 2 |
-| UC-26 | Export Laporan | Finance, Scoring, Admission | Sebagian (Admission export selesai di Tahap 5) |
-| UC-27 | Input Nilai Seleksi | Scoring | Fase 2 |
-| UC-28 | Lihat Rekap & Ranking | Scoring | Fase 2 |
+| UC-26 | Export Laporan | Finance, Scoring, Admission | Sebagian (Admission & Scoring export selesai di Tahap 5 & 7) |
+| UC-27 | Input Nilai Seleksi | Scoring | Selesai (Tahap 7) |
+| UC-28 | Lihat Rekap & Ranking | Scoring | Selesai (Tahap 7) |
 | UC-29 | Rekomendasi Kelulusan | Selection | Fase 2 |
 | UC-30 | Setujui Kelulusan | Selection | Fase 2 |
 | UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Sebagian (Admission stats selesai di Tahap 5) |

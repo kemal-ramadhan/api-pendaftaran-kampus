@@ -46,6 +46,8 @@ DEV_PAYMENTS_URL="${GATEWAY_BASE}/api/v1/dev/payments"
 WEBHOOKS_URL="${GATEWAY_BASE}/api/v1/webhooks/payments"
 EXAM_DIRECT_URL="${EXAM_DIRECT_URL:-http://localhost:8087}"
 EXAM_URL="${GATEWAY_BASE}/api/v1/exam"
+SCORING_DIRECT_URL="${SCORING_DIRECT_URL:-http://localhost:8089}"
+SCORING_URL="${GATEWAY_BASE}/api/v1/scoring"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -2041,6 +2043,249 @@ if echo "$BODY_ATTEND" | grep -q '"attendance":"present"'; then
   log_pass "Presensi kehadiran peserta berhasil dicatat sebagai 'present' oleh Dosen Penguji"
 else
   log_fail "Gagal memperbarui presensi peserta: $BODY_ATTEND"
+fi
+
+# ==============================================================================
+# BAGIAN 11: PENGUJIAN TAHAP 7 — SCORING SERVICE (F2-M8)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 11: PENGUJIAN TAHAP 7 — SCORING SERVICE (F2-M8)${NC}"
+
+# 78. [NEGATIF] Validasi Bobot: Komponen dengan Total Bobot Melebihi 100% Ditolak (HTTP 422)
+log_info "78. [NEGATIF] Menguji penolakan komponen dengan bobot melebihi 100%..."
+RESP_FAIL_WEIGHT=$(curl -s -w "\n%{http_code}" -X POST "${SCORING_URL}/admin/components" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"path_id\": \"$PATH_ID\",
+    \"code\": \"invalid_comp\",
+    \"name\": \"Komponen Invalid\",
+    \"weight_percent\": 110.00,
+    \"max_score\": 100.00
+  }")
+CODE_FAIL_WEIGHT=$(echo "$RESP_FAIL_WEIGHT" | tail -n1)
+BODY_FAIL_WEIGHT=$(echo "$RESP_FAIL_WEIGHT" | sed '$d')
+
+if [ "$CODE_FAIL_WEIGHT" = "422" ] && echo "$BODY_FAIL_WEIGHT" | grep -q "INVALID_WEIGHT_SUM"; then
+  log_pass "Guard berhasil: Bobot komponen > 100% ditolak dengan HTTP 422 INVALID_WEIGHT_SUM"
+else
+  log_fail "Bobot komponen > 100% tidak ditolak dengan benar (HTTP $CODE_FAIL_WEIGHT): $BODY_FAIL_WEIGHT"
+fi
+
+# 79. Admin PMB Menambah Komponen Nilai: Ujian Tulis (60%) & Wawancara (40%)
+log_info "79. Admin PMB menambahkan komponen nilai Ujian Tulis (60%) & Wawancara (40%)..."
+# Bersihkan atau tambahkan komponen untuk jalur aktif
+RESP_COMP_1=$(curl -s -w "\n%{http_code}" -X POST "${SCORING_URL}/admin/components" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"path_id\": \"$PATH_ID\",
+    \"code\": \"written_test\",
+    \"name\": \"Ujian Tulis Kemampuan Dasar\",
+    \"weight_percent\": 60.00,
+    \"max_score\": 100.00
+  }")
+CODE_COMP_1=$(echo "$RESP_COMP_1" | tail -n1)
+BODY_COMP_1=$(echo "$RESP_COMP_1" | sed '$d')
+
+if [ "$CODE_COMP_1" = "201" ] || echo "$BODY_COMP_1" | grep -q "DUPLICATE_COMPONENT"; then
+  log_pass "Komponen 'written_test' (bobot 60%) terkonfigurasi pada jalur $PATH_ID"
+else
+  log_fail "Gagal menambahkan komponen written_test (HTTP $CODE_COMP_1): $BODY_COMP_1"
+fi
+
+RESP_COMP_2=$(curl -s -w "\n%{http_code}" -X POST "${SCORING_URL}/admin/components" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"path_id\": \"$PATH_ID\",
+    \"code\": \"interview\",
+    \"name\": \"Wawancara Motivasi & Kepribadian\",
+    \"weight_percent\": 40.00,
+    \"max_score\": 100.00
+  }")
+CODE_COMP_2=$(echo "$RESP_COMP_2" | tail -n1)
+BODY_COMP_2=$(echo "$RESP_COMP_2" | sed '$d')
+
+if [ "$CODE_COMP_2" = "201" ] || echo "$BODY_COMP_2" | grep -q "DUPLICATE_COMPONENT"; then
+  log_pass "Komponen 'interview' (bobot 40%) terkonfigurasi pada jalur $PATH_ID"
+else
+  log_fail "Gagal menambahkan komponen interview (HTTP $CODE_COMP_2): $BODY_COMP_2"
+fi
+
+# 80. Validasi Total Bobot Komponen Jalur Wajib Tepat 100.00% (HTTP 200)
+log_info "80. Memverifikasi total persentase bobot komponen jalur (wajib tepat 100%)..."
+RESP_VAL_WEIGHT=$(curl -s -w "\n%{http_code}" -X POST "${SCORING_URL}/admin/paths/${PATH_ID}/validate-weight" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_VAL_WEIGHT=$(echo "$RESP_VAL_WEIGHT" | tail -n1)
+BODY_VAL_WEIGHT=$(echo "$RESP_VAL_WEIGHT" | sed '$d')
+assert_status "Validasi total bobot jalur tepat 100%" "200" "$CODE_VAL_WEIGHT" "$BODY_VAL_WEIGHT"
+log_pass "Total persentase bobot komponen aktif terverifikasi valid tepat 100.00%"
+
+# 81. [NEGATIF] Dosen Luar Sesi / Tidak Ditugaskan Ditolak Input Nilai (HTTP 403 Forbidden)
+log_info "81. [NEGATIF] Menguji penolakan dosen di luar sesi ujian menginput nilai peserta..."
+# Buat akun dosen kedua yang tidak ditugaskan ke sesi ini
+DOSEN2_EMAIL="dosen_lain_${RAND_ID}@univ.ac.id"
+DOSEN2_PASS="DosenLainPass123!"
+RESP_DOSEN2_USER=$(curl -s -X POST "${GATEWAY_URL}/admin/users" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$DOSEN2_EMAIL\",
+    \"full_name\": \"Dosen Lain Ph.D\",
+    \"phone\": \"081999888777\",
+    \"password\": \"$DOSEN2_PASS\",
+    \"roles\": [{\"code\": \"dosen\"}]
+  }")
+
+DOSEN2_TOKEN=$(curl -s -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$DOSEN2_EMAIL\",\"password\":\"$DOSEN2_PASS\"}" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ -n "$DOSEN2_TOKEN" ]; then
+  RESP_FAIL_EXAMINER=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+    -H "Authorization: Bearer $DOSEN2_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "component_code": "written_test",
+      "score": 85.00,
+      "note": "Percobaan ilegal dosen luar sesi"
+    }')
+  CODE_FAIL_EXAMINER=$(echo "$RESP_FAIL_EXAMINER" | tail -n1)
+  BODY_FAIL_EXAMINER=$(echo "$RESP_FAIL_EXAMINER" | sed '$d')
+
+  if [ "$CODE_FAIL_EXAMINER" = "403" ]; then
+    log_pass "Guard berhasil: Dosen luar sesi ditolak menginput nilai peserta (HTTP 403 Forbidden)"
+  else
+    log_fail "Dosen luar sesi tidak ditolak dengan 403 (HTTP $CODE_FAIL_EXAMINER): $BODY_FAIL_EXAMINER"
+  fi
+fi
+
+# 82. Dosen Penguji Resmi Menginput Nilai & Kalkulasi Rata-Rata Tertimbang & Ranking
+log_info "82. Dosen penguji resmi menginput nilai peserta dan kalkulasi rata-rata tertimbang..."
+# 1) Ujian Tulis: skor 80.00 (bobot 60%)
+RESP_SCORE_1=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "component_code": "written_test",
+    "score": 80.00,
+    "note": "Pengerjaan soal tulis cukup baik"
+  }')
+CODE_SCORE_1=$(echo "$RESP_SCORE_1" | tail -n1)
+BODY_SCORE_1=$(echo "$RESP_SCORE_1" | sed '$d')
+assert_status "Dosen input nilai ujian tulis" "200" "$CODE_SCORE_1" "$BODY_SCORE_1"
+
+# 2) Wawancara: skor 90.00 (bobot 40%)
+# Rata-rata tertimbang: (80 * 0.6) + (90 * 0.4) = 48 + 36 = 84.00
+RESP_SCORE_2=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "component_code": "interview",
+    "score": 90.00,
+    "note": "Kemampuan komunikasi dan motivasi sangat tinggi"
+  }')
+CODE_SCORE_2=$(echo "$RESP_SCORE_2" | tail -n1)
+BODY_SCORE_2=$(echo "$RESP_SCORE_2" | sed '$d')
+assert_status "Dosen input nilai wawancara" "200" "$CODE_SCORE_2" "$BODY_SCORE_2"
+
+FINAL_SCORE=$(echo "$BODY_SCORE_2" | grep -o '"final_score":[0-9.]*' | cut -d':' -f2)
+RANK_PRODI=$(echo "$BODY_SCORE_2" | grep -o '"rank_in_program":[0-9]*' | cut -d':' -f2)
+
+if [ "$FINAL_SCORE" = "84" ] || [ "$FINAL_SCORE" = "84.00" ] || [ "$FINAL_SCORE" = "84.0" ]; then
+  log_pass "Kalkulasi rata-rata tertimbang akurat secara matematis: final_score = $FINAL_SCORE (80*0.6 + 90*0.4 = 84.00)"
+else
+  log_fail "Kalkulasi nilai akhir salah: didapat '$FINAL_SCORE', diharapkan '84.00'"
+fi
+
+if [ -n "$RANK_PRODI" ] && [ "$RANK_PRODI" -gt 0 ]; then
+  log_pass "Peringkat dinamis peserta berhasil diterbitkan: rank_in_program = $RANK_PRODI"
+else
+  log_fail "Peringkat dinamis belum terbentuk: $BODY_SCORE_2"
+fi
+
+# 83. Role Prodi Melihat Rekapitulasi & Ranking Prodinya Sendiri (HTTP 200)
+log_info "83. Role prodi melihat rekapitulasi dan ranking prodinya sendiri..."
+RESP_RECAP_PRODI=$(curl -s -w "\n%{http_code}" -X GET "${SCORING_URL}/program/recap?period_id=${PERIOD_ID}&path_id=${PATH_ID}&study_program_code=${PRODI_CODE}" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+CODE_RECAP_PRODI=$(echo "$RESP_RECAP_PRODI" | tail -n1)
+BODY_RECAP_PRODI=$(echo "$RESP_RECAP_PRODI" | sed '$d')
+assert_status "Prodi lihat rekap prodinya" "200" "$CODE_RECAP_PRODI" "$BODY_RECAP_PRODI"
+
+if echo "$BODY_RECAP_PRODI" | grep -q "$APPLICATION_ID"; then
+  log_pass "Pendaftar $APPLICATION_ID terdaftar pada rekap prodi $PRODI_CODE dengan nilai akhir $FINAL_SCORE"
+else
+  log_fail "Pendaftar tidak ditemukan pada rekap prodi: $BODY_RECAP_PRODI"
+fi
+
+# 84. [NEGATIF] Role Prodi Ditolak Mengakses Rekapitulasi Prodi Lain (HTTP 403 Forbidden)
+log_info "84. [NEGATIF] Menguji isolasi hak akses: Role prodi mencoba melihat rekap prodi lain..."
+RESP_FAIL_SCOPE=$(curl -s -w "\n%{http_code}" -X GET "${SCORING_URL}/program/recap?period_id=${PERIOD_ID}&path_id=${PATH_ID}&study_program_code=PRODI_LAIN_XYZ" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+CODE_FAIL_SCOPE=$(echo "$RESP_FAIL_SCOPE" | tail -n1)
+BODY_FAIL_SCOPE=$(echo "$RESP_FAIL_SCOPE" | sed '$d')
+
+if [ "$CODE_FAIL_SCOPE" = "403" ]; then
+  log_pass "Isolasi scope role prodi berhasil: Akses ke prodi lain diblokir dengan HTTP 403 Forbidden"
+else
+  log_fail "Role prodi tidak diblokir saat mengakses prodi lain (HTTP $CODE_FAIL_SCOPE): $BODY_FAIL_SCOPE"
+fi
+
+# 85. Ekspor Rekapitulasi Nilai ke Format Excel Spreadsheet (.xlsx)
+log_info "85. Mengunduh ekspor rekapitulasi nilai dan peringkat ke berkas Excel .xlsx..."
+RESP_EXCEL_HEAD=$(curl -s -I -X GET "${SCORING_URL}/program/recap/export?period_id=${PERIOD_ID}&path_id=${PATH_ID}&study_program_code=${PRODI_CODE}" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+
+if echo "$RESP_EXCEL_HEAD" | grep -qi "spreadsheetml.sheet"; then
+  log_pass "Ekspor rekapitulasi nilai memiliki Content-Type application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+else
+  log_fail "Header ekspor rekapitulasi bukan format spreadsheet .xlsx: $RESP_EXCEL_HEAD"
+fi
+
+TEMP_XLSX="/tmp/rekap_nilai_${PRODI_CODE}.xlsx"
+curl -s -o "$TEMP_XLSX" -X GET "${SCORING_URL}/program/recap/export?period_id=${PERIOD_ID}&path_id=${PATH_ID}&study_program_code=${PRODI_CODE}" \
+  -H "Authorization: Bearer $PRODI_TOKEN"
+
+if head -c 4 "$TEMP_XLSX" | grep -q "PK"; then
+  log_pass "Berkas spreadsheet Excel .xlsx berhasil diunduh dan terverifikasi sebagai format OpenXML (PK header) yang valid"
+else
+  log_fail "Berkas unduhan bukan format ZIP/OpenXML Excel yang valid"
+fi
+rm -f "$TEMP_XLSX"
+
+# 86. Proteksi Penguncian Nilai (Flag Locked): Nilai Dikunci, Modifikasi Nilai Ditolak (HTTP 422 SCORES_LOCKED)
+log_info "86. Menguji proteksi penguncian nilai: Mengunci nilai prodi lalu mencoba mengubah nilai..."
+# Kunci nilai melalui internal API Scoring Service
+RESP_LOCK=$(curl -s -w "\n%{http_code}" -X POST "${SCORING_DIRECT_URL}/internal/locks" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": \"$PERIOD_ID\",
+    \"path_id\": \"$PATH_ID\",
+    \"study_program_code\": \"$PRODI_CODE\",
+    \"is_locked\": true
+  }")
+CODE_LOCK=$(echo "$RESP_LOCK" | tail -n1)
+BODY_LOCK=$(echo "$RESP_LOCK" | sed '$d')
+assert_status "Kunci nilai prodi via internal API" "200" "$CODE_LOCK" "$BODY_LOCK"
+log_pass "Nilai seleksi pada periode $PERIOD_ID dan prodi $PRODI_CODE berhasil dikunci (flag is_locked: true)"
+
+# Dosen mencoba mengubah nilai peserta setelah dikunci -> Harus ditolak HTTP 422 SCORES_LOCKED
+RESP_FAIL_LOCK=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/examiner/scores/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "component_code": "interview",
+    "score": 99.00,
+    "note": "Percobaan edit nilai setelah status dikunci"
+  }')
+CODE_FAIL_LOCK=$(echo "$RESP_FAIL_LOCK" | tail -n1)
+BODY_FAIL_LOCK=$(echo "$RESP_FAIL_LOCK" | sed '$d')
+
+if [ "$CODE_FAIL_LOCK" = "422" ] && echo "$BODY_FAIL_LOCK" | grep -q "SCORES_LOCKED"; then
+  log_pass "Proteksi penguncian nilai berhasil: Perubahan nilai ditolak dengan HTTP 422 (SCORES_LOCKED)"
+else
+  log_fail "Perubahan nilai setelah dikunci tidak ditolak dengan 422 SCORES_LOCKED (HTTP $CODE_FAIL_LOCK): $BODY_FAIL_LOCK"
 fi
 
 # ==============================================================================

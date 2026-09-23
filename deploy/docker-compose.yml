@@ -155,6 +155,7 @@ services:
       ADMISSION_SERVICE_URL: ${ADMISSION_SERVICE_URL:-http://admission-service:8084}
       FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
       EXAM_SERVICE_URL: ${EXAM_SERVICE_URL:-http://exam-service:8087}
+      SCORING_SERVICE_URL: ${SCORING_SERVICE_URL:-http://scoring-service:8089}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
@@ -172,6 +173,8 @@ services:
       finance-service:
         condition: service_healthy
       exam-service:
+        condition: service_healthy
+      scoring-service:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -346,6 +349,43 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8087/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  scoring-service:
+    build:
+      context: ..
+      dockerfile: services/scoring-service/Dockerfile
+    container_name: pmb-scoring-service
+    restart: unless-stopped
+    ports:
+      - "8089:8089"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 8089
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: pmb_scoring
+      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      EXAM_SERVICE_URL: http://exam-service:8087
+      ADMISSION_SERVICE_URL: http://admission-service:8084
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+      ORGANIZATION_SERVICE_URL: http://organization-service:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      admission-service:
+        condition: service_healthy
+      exam-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8089/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5

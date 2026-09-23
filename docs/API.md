@@ -1333,5 +1333,187 @@ Mengambil data peserta ujian berdasarkan ID pendaftaran (digunakan oleh Scoring 
 Mengambil rincian sesi ujian.
 - **Akses**: Khusus internal (Header `X-Internal-Token`)
 
+---
+
+## 12. Rincian Endpoint — Scoring Service
+
+Scoring Service (`pmb-scoring-service:8089`) bertanggung jawab mengelola konfigurasi komponen penilaian seleksi per jalur, pencatatan skor peserta oleh penguji terverifikasi, kalkulasi nilai akhir tertimbang (*weighted average*), pemeringkatan dinamis pendaftar per program studi pilihan, penyajian rekapitulasi nilai berbasis scope program studi, ekspor berkas spreadsheet `.xlsx` resmi, serta antarmuka penguncian (*locking*) untuk proses rekomendasi kelulusan.
+
+### 12.1 Konsep Komponen Nilai & Validasi Bobot Mutlak 100%
+- Setiap jalur seleksi (`path_id`) memiliki sejumlah komponen penilaian (misal: Ujian Tulis Kemampuan Dasar bobot 60%, Wawancara Motivasi bobot 40%).
+- **Validasi Mutlak**: Total persentase bobot (`weight_percent`) seluruh komponen aktif pada satu jalur **wajib tepat 100%**.
+  - Penambahan atau pengubahan komponen yang menyebabkan akumulasi bobot melebihi 100% langsung ditolak dengan kode status `422 Unprocessable Entity (INVALID_WEIGHT_SUM)`.
+  - Verifikasi total bobot dapat dilakukan melalui endpoint khusus `/api/v1/scoring/admin/paths/:path_id/validate-weight`.
+
+### 12.2 Formula Nilai Akhir & Pemeringkatan Dinamis
+1. **Rata-Rata Tertimbang (*Weighted Average*)**:
+   $$\text{FinalScore} = \sum_{i=1}^n \left( \text{score}_i \times \frac{\text{weight}_i}{100} \right)$$
+   Nilai akhir dibulatkan dengan presisi 2 angka di belakang koma (*two decimal places*).
+2. **Pemeringkatan Otomatis (`rank_in_program`)**:
+   Setiap kali nilai diinput atau diperbarui, sistem secara transaksional menghitung ulang urutan peringkat di antara pendaftar yang memilih Program Studi Pilihan 1 yang sama pada gelombang/periode yang sama menggunakan *window function* `ROW_NUMBER() OVER (PARTITION BY period_id, path_id, study_program_code ORDER BY final_score DESC, computed_at ASC)`.
+3. **Proteksi Penguncian Nilai (`SCORES_LOCKED`)**:
+   Apabila kombinasi gelombang dan program studi telah dikunci oleh panitia seleksi (`is_locked = true`), seluruh permintaan perubahan atau penambahan nilai ditolak dengan HTTP `422 Unprocessable Entity` dan kode error `SCORES_LOCKED`.
+
+---
+
+### 12.3 Endpoint Admin PMB (`/api/v1/scoring/admin/...`)
+Seluruh endpoint di bawah memerlukan peran `admin_pmb` atau `superadmin`.
+
+#### 1. Tambah Komponen Nilai: `POST /api/v1/scoring/admin/components`
+- **Request Body**:
+  ```json
+  {
+    "path_id": "c0000000-0000-0000-0000-000000000001",
+    "code": "written_test",
+    "name": "Ujian Tulis Berbasis Komputer",
+    "weight_percent": 60.00,
+    "max_score": 100.00,
+    "is_active": true
+  }
+  ```
+- **Response `201 Created`**: Komponen berhasil dibuat.
+- **Error `422 Unprocessable Entity`**: Jika akumulasi bobot > 100% (`INVALID_WEIGHT_SUM`).
+- **Error `400 Bad Request`**: Jika kode komponen sudah terdaftar pada jalur tersebut (`DUPLICATE_COMPONENT`).
+
+#### 2. Ambil Komponen per Jalur: `GET /api/v1/scoring/admin/components?path_id=:path_id`
+- **Response `200 OK`**: Daftar komponen penilaian pada jalur yang dipilih.
+
+#### 3. Perbarui Komponen Nilai: `PUT /api/v1/scoring/admin/components/:id`
+- **Request Body**:
+  ```json
+  {
+    "name": "Ujian Tulis & Kemampuan Skolastik",
+    "weight_percent": 60.00,
+    "max_score": 100.00,
+    "is_active": true
+  }
+  ```
+
+#### 4. Hapus Komponen Nilai: `DELETE /api/v1/scoring/admin/components/:id`
+- **Response `200 OK`**: Komponen berhasil dihapus.
+
+#### 5. Validasi Total Bobot Jalur: `POST /api/v1/scoring/admin/paths/:path_id/validate-weight`
+- **Response `200 OK`**: Jika total persentase bobot komponen aktif tepat 100.00%.
+- **Response `422 Unprocessable Entity`**: Jika total persentase bobot != 100.00%.
+
+---
+
+### 12.4 Endpoint Dosen Penguji (`/api/v1/scoring/examiner/...`)
+Dapat diakses oleh role `dosen`, `admin_pmb`, atau `superadmin`.
+
+#### 1. Input / Perbarui Nilai Peserta: `PUT /api/v1/scoring/examiner/scores/:application_id`
+- **Request Body**:
+  ```json
+  {
+    "component_code": "written_test",
+    "score": 85.50,
+    "note": "Menyelesaikan seluruh soal numerik dengan sangat baik"
+  }
+  ```
+- **Aturan Otorisasi & Validasi**:
+  - Dosen hanya diizinkan menginput nilai bagi peserta yang terdaftar pada sesi ujian yang ditugaskan kepadanya. Sistem memverifikasi penugasan penguji ke Exam Service secara internal (`GET /internal/participants/:application_id` dan `GET /internal/sessions/:session_id`). Upaya penilaian peserta di luar sesi dosen ditolak dengan HTTP `403 Forbidden`.
+  - Jika kombinasi periode dan prodi peserta sudah dikunci, ditolak dengan HTTP `422 Unprocessable Entity (SCORES_LOCKED)`.
+  - Nilai tidak boleh bernilai negatif atau melebihi batas `max_score` komponen.
+- **Side Effects**:
+  - Menyimpan/memperbarui record pada tabel `scores`.
+  - Menghitung ulang rata-rata tertimbang (`final_score`) pada `score_summaries`.
+  - Menghitung ulang peringkat (`rank_in_program`) seluruh peserta di program studi bersangkutan.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Nilai pendaftar berhasil disimpan dan nilai akhir dihitung",
+    "data": {
+      "score": {
+        "application_id": "e0000000-0000-0000-0000-000000000001",
+        "component_code": "written_test",
+        "score": 85.50,
+        "note": "Menyelesaikan seluruh soal numerik dengan sangat baik"
+      },
+      "summary": {
+        "application_id": "e0000000-0000-0000-0000-000000000001",
+        "study_program_code": "TIF",
+        "final_score": 85.50,
+        "rank_in_program": 1
+      }
+    }
+  }
+  ```
+
+#### 2. Tinjau Nilai Peserta: `GET /api/v1/scoring/examiner/scores/:application_id`
+- **Response `200 OK`**: Daftar skor per komponen dan ringkasan nilai akhir peserta.
+
+---
+
+### 12.5 Endpoint Rekapitulasi & Ekspor Program Studi (`/api/v1/scoring/program/...`)
+Dapat diakses oleh role `prodi`, `admin_pmb`, `superadmin`, dan `pimpinan`.
+
+#### 1. Ambil Rekapitulasi & Ranking: `GET /api/v1/scoring/program/recap`
+- **Query Parameters**:
+  - `period_id` (UUID, wajib)
+  - `path_id` (UUID, wajib)
+  - `study_program_code` (String, wajib)
+- **Isolasi Hak Akses (Role Prodi Scope Check)**:
+  - Pengguna dengan role `prodi` hanya dapat melihat data program studi yang tertera pada `scope_id` tokennya. Upaya mengakses prodi lain ditolak dengan HTTP `403 Forbidden`.
+  - Pengguna dengan role `admin_pmb`, `superadmin`, atau `pimpinan` memiliki akses tinjauan global ke seluruh prodi.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Rekapitulasi nilai dan pemeringkatan program studi berhasil diambil",
+    "data": {
+      "period_id": "b0000000-0000-0000-0000-000000000001",
+      "path_id": "c0000000-0000-0000-0000-000000000001",
+      "study_program_code": "TIF",
+      "is_locked": false,
+      "total_applicants": 2,
+      "participants": [
+        {
+          "application_id": "e0000000-0000-0000-0000-000000000001",
+          "registration_number": "REG-2026-001",
+          "full_name": "Ahmad Syafiq",
+          "study_program_code": "TIF",
+          "component_scores": [
+            { "component_code": "written_test", "component_name": "Ujian Tulis", "weight_percent": 60, "score": 85.00 },
+            { "component_code": "interview", "component_name": "Wawancara", "weight_percent": 40, "score": 90.00 }
+          ],
+          "final_score": 87.00,
+          "rank_in_program": 1
+        }
+      ]
+    }
+  }
+  ```
+
+#### 2. Ekspor Rekapitulasi ke Excel (.xlsx): `GET /api/v1/scoring/program/recap/export`
+- **Query Parameters**: `period_id`, `path_id`, `study_program_code`.
+- **Response `200 OK`**: Berkas spreadsheet `.xlsx` resmi yang digenerate langsung menggunakan library `excelize/v2` dengan header styling navy blue, tabel border, format angka desimal rapi, rincian komponen nilai, nilai akhir, serta kolom peringkat.
+  - Header: `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - Header: `Content-Disposition: attachment; filename="rekap-nilai-<study_program_code>.xlsx"`
+
+---
+
+### 12.6 Endpoint Internal Antarlayanan (`/internal/...`)
+Khusus dipanggil oleh Selection Service dengan menyertakan header `X-Internal-Token`.
+
+#### 1. Ambil Ringkasan Nilai: `GET /internal/summaries?period_id=:period_id&program=:study_program_code`
+- Digunakan oleh Selection Service saat merumuskan rekomendasi kelulusan berbasis kuota prodi.
+
+#### 2. Atur Status Penguncian Nilai: `POST /internal/locks`
+- **Request Body**:
+  ```json
+  {
+    "period_id": "b0000000-0000-0000-0000-000000000001",
+    "path_id": "c0000000-0000-0000-0000-000000000001",
+    "study_program_code": "TIF",
+    "is_locked": true,
+    "locked_by": "9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d"
+  }
+  ```
+- **Response `200 OK`**: Mengunci atau membuka kembali izin penginputan nilai pendaftar pada gelombang dan prodi terkait.
+
+#### 3. Periksa Status Kunci: `GET /internal/locks?period_id=&path_id=&study_program_code=`
+- **Response `200 OK`**: Mengembalikan objek boolean `is_locked`.
+
 
 

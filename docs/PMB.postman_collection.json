@@ -2324,12 +2324,180 @@
           }
         }
       ]
+    },
+    {
+      "name": "11. SCORING",
+      "item": [
+        {
+          "name": "11.1 [Admin] Tambah Komponen Nilai",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"path_id\": \"{{admission_path_id}}\",\n  \"code\": \"written_test\",\n  \"name\": \"Ujian Tulis Kemampuan Dasar\",\n  \"weight_percent\": 60.00,\n  \"max_score\": 100.00,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/scoring/admin/components",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "admin", "components"]
+            }
+          }
+        },
+        {
+          "name": "11.2 [Admin] List Komponen Nilai by Path",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/scoring/admin/components?path_id={{admission_path_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "admin", "components"],
+              "query": [
+                { "key": "path_id", "value": "{{admission_path_id}}" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "11.3 [Admin] Validasi Total Bobot Jalur (Wajib 100%)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/scoring/admin/paths/{{admission_path_id}}/validate-weight",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "admin", "paths", "{{admission_path_id}}", "validate-weight"]
+            }
+          }
+        },
+        {
+          "name": "11.4 [Examiner] Input Nilai Peserta Sesi",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{dosen_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"component_code\": \"written_test\",\n  \"score\": 85.50,\n  \"note\": \"Pengerjaan soal analitis sangat baik\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/scoring/examiner/scores/{{application_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "examiner", "scores", "{{application_id}}"]
+            }
+          }
+        },
+        {
+          "name": "11.5 [Examiner] Get Nilai Peserta",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{dosen_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/scoring/examiner/scores/{{application_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "examiner", "scores", "{{application_id}}"]
+            }
+          }
+        },
+        {
+          "name": "11.6 [Prodi] Rekapitulasi & Ranking Nilai Prodi",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{prodi_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/scoring/program/recap?period_id={{period_id}}&path_id={{admission_path_id}}&study_program_code=TIF",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "program", "recap"],
+              "query": [
+                { "key": "period_id", "value": "{{period_id}}" },
+                { "key": "path_id", "value": "{{admission_path_id}}" },
+                { "key": "study_program_code", "value": "TIF" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "11.7 [Prodi] Export Rekap Nilai ke Excel (.xlsx)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{prodi_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/scoring/program/recap/export?period_id={{period_id}}&path_id={{admission_path_id}}&study_program_code=TIF",
+              "host": ["{{base_url}}"],
+              "path": ["scoring", "program", "recap", "export"],
+              "query": [
+                { "key": "period_id", "value": "{{period_id}}" },
+                { "key": "path_id", "value": "{{admission_path_id}}" },
+                { "key": "study_program_code", "value": "TIF" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "11.8 [Internal] Kunci / Buka Nilai Prodi",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period_id\": \"{{period_id}}\",\n  \"path_id\": \"{{admission_path_id}}\",\n  \"study_program_code\": \"TIF\",\n  \"is_locked\": true\n}"
+            },
+            "url": {
+              "raw": "{{scoring_service_direct_url}}/internal/locks",
+              "host": ["{{scoring_service_direct_url}}"],
+              "path": ["internal", "locks"]
+            }
+          }
+        },
+        {
+          "name": "11.9 [Internal] Get Summaries untuk Selection Service",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" }
+            ],
+            "url": {
+              "raw": "{{scoring_service_direct_url}}/internal/summaries?period_id={{period_id}}&program=TIF",
+              "host": ["{{scoring_service_direct_url}}"],
+              "path": ["internal", "summaries"],
+              "query": [
+                { "key": "period_id", "value": "{{period_id}}" },
+                { "key": "program", "value": "TIF" }
+              ]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "scoring_service_direct_url",
+      "value": "http://localhost:8089",
       "type": "string"
     },
     {
