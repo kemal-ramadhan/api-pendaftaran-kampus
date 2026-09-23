@@ -237,12 +237,22 @@ services:
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
       NOTIFICATION_SERVICE_URL: http://notification-service:8083
       FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
+      IDENTITY_SERVICE_URL: http://identity-service:8082
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_USE_SSL: "false"
+      DOCUMENT_BUCKET: pmb-admission-documents
       OUTBOX_INTERVAL_SECONDS: 5
       OUTBOX_BATCH_SIZE: 20
     depends_on:
       postgres:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8084/health || exit 1"]

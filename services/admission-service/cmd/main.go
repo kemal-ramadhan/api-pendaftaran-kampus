@@ -13,6 +13,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/pkg/logger"
 	"github.com/pkm-asia/pmb-backend/pkg/outbox"
+	"github.com/pkm-asia/pmb-backend/pkg/storage"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/controller"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/model"
@@ -93,6 +94,32 @@ func main() {
 		})
 	}
 
+	var identityCli internalclient.Client
+	if cfg.IdentityServiceURL != "" {
+		identityCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.IdentityServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
+	// Inisialisasi Storage Client (MinIO)
+	var storageCli storage.Client
+	if cfg.MinIOEndpoint != "" {
+		sc, sErr := storage.NewClient(storage.Config{
+			Endpoint:        cfg.MinIOEndpoint,
+			AccessKeyID:     cfg.MinIOAccessKey,
+			SecretAccessKey: cfg.MinIOSecretKey,
+			UseSSL:          cfg.MinIOUseSSL,
+		})
+		if sErr != nil {
+			log.Warn("Gagal inisialisasi MinIO client:", zap.Error(sErr))
+		} else {
+			storageCli = sc
+			_ = storageCli.EnsureBucket(context.Background(), cfg.DocumentBucket)
+		}
+	}
+
 	// 6. Inisialisasi Outbox Worker
 	outboxRepo := outbox.NewRepository()
 	outboxCtx, outboxCancel := context.WithCancel(context.Background())
@@ -113,6 +140,7 @@ func main() {
 	pathRepo := repository.NewAdmissionPathRepository(db)
 	quotaRepo := repository.NewQuotaRepository(db)
 	appRepo := repository.NewApplicationRepository(db)
+	docRepo := repository.NewApplicationDocumentRepository(db)
 
 	// 8. Inisialisasi Service
 	admissionSvc := service.NewAdmissionService(
@@ -120,8 +148,13 @@ func main() {
 		pathRepo,
 		quotaRepo,
 		appRepo,
+		docRepo,
 		outboxRepo,
 		notifCli,
+		identityCli,
+		financeCli,
+		storageCli,
+		*cfg,
 	)
 
 	// 9. Inisialisasi Controllers

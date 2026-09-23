@@ -1772,6 +1772,144 @@
               ]
             }
           }
+        },
+        {
+          "name": "7.7 Upload Dokumen Persyaratan (Multipart)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "document_type", "type": "text", "value": "ijazah" },
+                { "key": "file", "type": "file", "src": "" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/admission/applications/me/documents",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "me", "documents"]
+            }
+          }
+        },
+        {
+          "name": "7.8 Hapus Dokumen Persyaratan",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/applications/me/documents/ijazah",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "me", "documents", "ijazah"]
+            }
+          }
+        },
+        {
+          "name": "7.9 Presigned URL Dokumen Mahasiswa",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/applications/me/documents/ijazah/url",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "me", "documents", "ijazah", "url"]
+            }
+          }
+        },
+        {
+          "name": "7.10 Submit Pendaftaran",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/applications/me/submit",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "applications", "me", "submit"]
+            }
+          }
+        },
+        {
+          "name": "7.11 Admin Verifikasi Dokumen",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reviews\": [\n    {\n      \"document_type\": \"ijazah\",\n      \"status\": \"valid\",\n      \"notes\": \"Ijazah terlegalisir jelas\"\n    },\n    {\n      \"document_type\": \"ktp\",\n      \"status\": \"invalid\",\n      \"notes\": \"Foto KTP buram\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/admission/admin/applications/{{target_application_id}}/verify",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "applications", "{{target_application_id}}", "verify"]
+            }
+          }
+        },
+        {
+          "name": "7.12 Admin Presigned URL Dokumen (5 Menit)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/admin/applications/{{target_application_id}}/documents/ijazah/url",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "applications", "{{target_application_id}}", "documents", "ijazah", "url"]
+            }
+          }
+        },
+        {
+          "name": "7.13 Admin Detail Pendaftaran Terpadu (OCR & Finance)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/admin/applications/{{target_application_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "applications", "{{target_application_id}}"]
+            }
+          }
+        },
+        {
+          "name": "7.14 Admin Export Pendaftar (Excel)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/admin/applications/export",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "applications", "export"]
+            }
+          }
+        },
+        {
+          "name": "7.15 Admin Statistik Pendaftaran",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/admission/admin/stats",
+              "host": ["{{base_url}}"],
+              "path": ["admission", "admin", "stats"]
+            }
+          }
         }
       ]
     },

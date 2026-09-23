@@ -1,4 +1,4 @@
-# Class Diagram — Admission Service (Bagian 1)
+# Class Diagram — Admission Service (Bagian 1 & 2 — F2-M4 & F2-M6)
 
 Dokumen ini memuat arsitektur kelas, antarmuka, dan dependensi untuk **Admission Service** (`services/admission-service`).
 
@@ -18,12 +18,20 @@ classDiagram
         +GetMyApplications(c *gin.Context)
         +GetApplicationDetail(c *gin.Context)
         +ChangeChoices(c *gin.Context)
+        +UploadDocument(c *gin.Context)
+        +DeleteDocument(c *gin.Context)
+        +GetDocumentURL(c *gin.Context)
+        +SubmitApplication(c *gin.Context)
     }
 
     class AdminController {
         -svc AdmissionService
         +ListApplications(c *gin.Context)
         +GetApplicationDetail(c *gin.Context)
+        +VerifyDocuments(c *gin.Context)
+        +GetDocumentURL(c *gin.Context)
+        +ExportApplications(c *gin.Context)
+        +GetStats(c *gin.Context)
     }
 
     class AdmissionService {
@@ -35,6 +43,13 @@ classDiagram
         +ListApplicationsAdmin(ctx context.Context, filter ApplicationFilter) ([]Application, int64, error)
         +GetActivePeriod(ctx context.Context) (*Period, error)
         +GetAdmissionPaths(ctx context.Context) ([]AdmissionPath, error)
+        +UploadDocument(ctx context.Context, appID uuid.UUID, userID uuid.UUID, reqCode string, reader io.Reader, size int64, originalName string, declaredMime string) (*ApplicationDocument, error)
+        +DeleteDocument(ctx context.Context, appID uuid.UUID, userID uuid.UUID, reqCode string) error
+        +SubmitApplication(ctx context.Context, appID uuid.UUID, userID uuid.UUID) (*Application, error)
+        +VerifyApplicationDocuments(ctx context.Context, appID uuid.UUID, reviewerID uuid.UUID, reviews []DocumentReviewItem) (*Application, error)
+        +GetDocumentPresignedURL(ctx context.Context, appID uuid.UUID, reqCode string, requesterID uuid.UUID, role string) (string, error)
+        +ExportApplicationsXLSX(ctx context.Context, filter ApplicationFilter) ([]byte, error)
+        +GetStats(ctx context.Context) (*AdmissionStats, error)
     }
 
     class admissionServiceImpl {
@@ -42,8 +57,13 @@ classDiagram
         -pathRepo AdmissionPathRepository
         -quotaRepo QuotaRepository
         -appRepo ApplicationRepository
+        -docRepo ApplicationDocumentRepository
         -outboxRepo outbox.Repository
         -notifCli internalclient.Client
+        -identityCli internalclient.Client
+        -financeCli internalclient.Client
+        -storageCli storage.Client
+        -cfg Config
     }
 
     class ApplicationRepository {
@@ -54,22 +74,24 @@ classDiagram
         +FindByRegistrationNo(ctx context.Context, regNo string) (*Application, error)
         +FindByUserID(ctx context.Context, userID uuid.UUID) ([]Application, error)
         +UpdateChoices(ctx context.Context, id uuid.UUID, choice1ID uuid.UUID, choice2ID *uuid.UUID) error
+        +UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus ApplicationStatus, toStatus ApplicationStatus, notes string, changedBy *uuid.UUID) error
         +GenerateRegistrationNo(ctx context.Context, tx *gorm.DB, periodID uint, academicYear string) (string, error)
         +ListApplications(ctx context.Context, filter ApplicationFilter) ([]Application, int64, error)
-        +CreateStatusLog(tx *gorm.DB, log *ApplicationStatusLog) error
+        +ListAllForExport(ctx context.Context, filter ApplicationFilter) ([]Application, error)
+        +GetStats(ctx context.Context) (*AdmissionStats, error)
     }
 
-    class PeriodRepository {
+    class ApplicationDocumentRepository {
         <<interface>>
-        +FindActive(ctx context.Context) (*Period, error)
-        +FindByID(ctx context.Context, id uint) (*Period, error)
-        +FindAll(ctx context.Context) ([]Period, error)
+        +Save(ctx context.Context, doc *ApplicationDocument) error
+        +FindByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) (*ApplicationDocument, error)
+        +FindByApplicationID(ctx context.Context, appID uuid.UUID) ([]ApplicationDocument, error)
+        +DeleteByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) error
+        +UpdateReviewStatus(ctx context.Context, id uuid.UUID, status string, notes string, reviewerID *uuid.UUID) error
     }
 
-    class AdmissionPathRepository {
-        <<interface>>
-        +FindAllActive(ctx context.Context) ([]AdmissionPath, error)
-        +FindByID(ctx context.Context, id uint) (*AdmissionPath, error)
+    class ExcelExporter {
+        +GenerateApplicationsExcel(apps []Application) ([]byte, error)
     }
 
     class Application {
@@ -82,27 +104,27 @@ classDiagram
         +UUID Choice2ID
         +ApplicationStatus Status
         +UUID InvoiceID
+        +Time SubmittedAt
+        +Time VerifiedAt
+        +UUID VerifiedBy
         +CanChangeMajor() bool
+        +CanUploadDocument() bool
+        +CanSubmit() bool
     }
 
-    class ApplicationStatusLog {
+    class ApplicationDocument {
         +UUID ID
         +UUID ApplicationID
-        +ApplicationStatus FromStatus
-        +ApplicationStatus ToStatus
-        +UUID ChangedBy
-        +string Notes
-        +Time CreatedAt
-    }
-
-    class OutboxEvent {
-        +UUID ID
-        +string AggregateType
-        +string AggregateID
-        +string EventType
-        +string Payload
-        +string IdempotencyKey
+        +string DocumentType
+        +string FileName
+        +string FileURL
+        +string ObjectKey
+        +string MimeType
+        +int64 FileSize
         +string Status
+        +string Notes
+        +UUID VerifiedBy
+        +Time VerifiedAt
     }
 
     PublicController --> AdmissionService : memanggil
@@ -110,9 +132,8 @@ classDiagram
     AdminController --> AdmissionService : memanggil
     AdmissionService <|.. admissionServiceImpl : implementasi
     admissionServiceImpl --> ApplicationRepository : persistensi aplikasi
-    admissionServiceImpl --> PeriodRepository : validasi periode
-    admissionServiceImpl --> AdmissionPathRepository : validasi jalur
-    admissionServiceImpl --> OutboxEvent : kirim event invoice
+    admissionServiceImpl --> ApplicationDocumentRepository : persistensi dokumen
+    admissionServiceImpl --> ExcelExporter : ekspor spreadsheet
     ApplicationRepository ..> Application : mengelola entitas
-    ApplicationRepository ..> ApplicationStatusLog : mencatat riwayat
+    ApplicationDocumentRepository ..> ApplicationDocument : mengelola berkas
 ```

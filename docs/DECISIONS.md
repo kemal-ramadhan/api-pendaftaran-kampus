@@ -216,5 +216,33 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Staf keuangan melihat antrean via `GET /api/v1/finance/admin/payments?status=awaiting_verification` dan melakukan tindakan `approve` (melunasi tagihan & menerbitkan kwitansi) atau `reject` (calon mahasiswa diizinkan mengunggah ulang bukti baru).
 - **Rasional**: Mencegah kesalahan kalkulasi uang melalui pembulatan, menjamin isolasi dan keamanan data finansial calon mahasiswa, memastikan idempotenitas transaksi, serta mengintegrasikan alur pendaftaran dan pembayaran secara otomatis dan reliabel.
 
+---
+
+## 22. Fase 2: Admission Service Bagian 2 — Dokumen Persyaratan, Magic Bytes Sniffing, Submit Pendaftaran, Verifikasi Admin, dan Ekspor Excel (F2-M6)
+- **Status**: Diputuskan pada Tahap 5, 23 Sep 2026
+- **Keputusan**:
+  - **Validasi Keamanan Magic Bytes Berkas Persyaratan**:
+    - Seluruh unggahan dokumen pendaftaran (`POST /api/v1/admission/applications/me/documents`) divalidasi tipe konten sebenarnya menggunakan `pkg/storage.SniffAndValidate` (membaca 512 byte pertama stream berkas). Berkas executable atau script biner yang berkedok ekstensi `.pdf` (mis. `virus.pdf` dengan magic bytes `MZ`) ditolak secara dini dengan HTTP 415 (`FILE_TYPE_NOT_ALLOWED`).
+    - Berkas yang lolos disimpan ke bucket MinIO privat `pmb-admission-documents` dengan object key berstruktur `documents/{appID}/{docType}_{timestamp}_{filename}`.
+  - **Validasi Ketat Sebelum Submit Pendaftaran**:
+    - Pendaftar hanya dapat melakukan submit (`POST /api/v1/admission/applications/me/submit`) saat status berada pada `form_open` atau `revision_required`.
+    - **Pemeriksaan Kelengkapan Biodata**: Admission Service memanggil Identity Service (`GET /internal/persons/:user_id/completeness`). Jika biodata (profil, alamat KTP, wali, riwayat pendidikan) belum lengkap, pendaftaran ditolak dengan kode error `BIODATA_INCOMPLETE`.
+    - **Pemeriksaan Berkas Dokumen Wajib**: Seluruh dokumen dengan `is_required = true` pada jalur pendaftaran terkait wajib telah terunggah dan tidak dalam status `invalid`. Jika ada dokumen wajib yang kurang, pendaftaran ditolak dengan kode error `DOCUMENT_REQUIRED`.
+    - Setelah lolos, status bertransisi ke `submitted` dan sistem mengirimkan notifikasi konfirmasi email (`application_submitted`).
+  - **Alur Verifikasi Dokumen & Mekanisme Revisi**:
+    - Admin PMB memverifikasi berkas pendaftar via `POST /api/v1/admission/admin/applications/:id/verify` dengan payload evaluasi per berkas (`valid` atau `invalid` beserta catatan perbaikan).
+    - Jika terdapat minimal 1 dokumen yang dinyatakan `invalid`, status pendaftaran otomatis beralih ke `revision_required` dan sistem mengirimkan notifikasi catatan revisi (`application_revision_required`). Calon mahasiswa kemudian mengunggah ulang dokumen perbaikan dan melakukan submit ulang.
+    - Jika seluruh dokumen wajib telah berstatus `valid`, status pendaftaran otomatis beralih ke `verified` dan sistem mengirimkan notifikasi kelulusan berkas (`application_verified`).
+  - **Presigned URL Dokumen Admin 5 Menit**:
+    - Khusus untuk akses admin/panitia PMB (`GET /api/v1/admission/admin/applications/:id/documents/:code/url`), presigned URL MinIO disetel kedaluwarsa tepat 300 detik (5 menit) untuk memitigasi risiko kebocoran tautan dokumen privat calon mahasiswa.
+  - **Ekspor Data Pendaftar Excel Spreadsheet (.xlsx)**:
+    - Admin PMB dapat mengekspor daftar pendaftar lengkap dengan seluruh metadata pilihan prodi dan status pendaftaran ke format `.xlsx` via `GET /api/v1/admission/admin/applications/export` menggunakan library `github.com/xuri/excelize/v2` dengan styling header profesional, lebar kolom otomatis, dan format tanggal waktu standar.
+  - **Agregasi Statistik Pendaftaran Real-Time**:
+    - Endpoint `GET /api/v1/admission/admin/stats` menyajikan ringkasan statistik komprehensif: total pendaftar, distribusi per status (`awaiting_payment`, `form_open`, `submitted`, `revision_required`, `verified`), sebaran per program studi, sebaran per jalur masuk, dan per gelombang/periode.
+  - **Tampilan Terpadu Detail Pendaftar Admin**:
+    - Endpoint detail pendaftar `GET /api/v1/admission/admin/applications/:id` bagi panitia PMB menggabungkan data formulir (Admission), biodata lengkap dan data OCR KTP unmasked (Identity Service), serta status tagihan dan pembayaran (Finance Service) dalam satu representasi komprehensif.
+- **Rasional**: Menjamin integritas berkas calon mahasiswa dari ancaman malware berkas palsu, memastikan kepatuhan alur verifikasi berkas sebelum seleksi, memberikan kemudahan audit administratif bagi panitia PMB, dan menjaga keamanan dokumen privat dengan masa berlaku presigned URL yang ketat.
+
+
 
 

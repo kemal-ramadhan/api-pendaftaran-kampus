@@ -81,7 +81,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-05 | Pilih Program Studi | Admission (+ Organization) | Selesai (Tahap 3) |
 | UC-06 | Isi Biodata | Identity | Selesai |
 | UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Selesai |
-| UC-07 | Upload Dokumen Persyaratan | Admission | Fase 2 |
+| UC-07 | Upload Dokumen Persyaratan | Admission | Selesai (Tahap 5) |
 | UC-08 | Bayar Biaya Pendaftaran | Finance | Selesai (Tahap 4) |
 | UC-09 | Cetak Kartu Ujian | Exam | Fase 2 |
 | UC-10 | Lihat Pengumuman Hasil | Selection | Fase 2 |
@@ -92,20 +92,20 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-15 | Ajukan Cicilan | Finance | Fase 2 |
 | UC-16 | Generate NIM | NIM | Fase 2 |
 | UC-17 | Kirim Notifikasi | Notification | Selesai (Tahap 3) |
-| UC-18 | Kelola Data Pendaftar | Admission | Selesai (Tahap 3) |
-| UC-19 | Verifikasi Dokumen | Admission | Fase 2 |
+| UC-18 | Kelola Data Pendaftar | Admission | Selesai (Tahap 3 & 5) |
+| UC-19 | Verifikasi Dokumen | Admission | Selesai (Tahap 5) |
 | UC-20 | Kelola Jadwal Seleksi | Exam | Fase 2 |
 | UC-21 | Assign Dosen Penguji | Exam | Fase 2 |
 | UC-22 | Publikasikan Pengumuman | Selection | Fase 2 |
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Fase 2 |
 | UC-25 | Lihat Laporan Keuangan | Finance | Fase 2 |
-| UC-26 | Export Laporan | Finance, Scoring, Admission | Fase 2 |
+| UC-26 | Export Laporan | Finance, Scoring, Admission | Sebagian (Admission export selesai di Tahap 5) |
 | UC-27 | Input Nilai Seleksi | Scoring | Fase 2 |
 | UC-28 | Lihat Rekap & Ranking | Scoring | Fase 2 |
 | UC-29 | Rekomendasi Kelulusan | Selection | Fase 2 |
 | UC-30 | Setujui Kelulusan | Selection | Fase 2 |
-| UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Fase 2 |
+| UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Sebagian (Admission stats selesai di Tahap 5) |
 | UC-32 | Kelola Master Data | Organization (prodi selesai), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya) | Sebagian (prodi selesai) |
 | UC-33 | Kelola User & Role | Auth | Selesai |
 
@@ -459,7 +459,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M3** Notification | 4.3 | notifikasi masuk Mailpit, retry saat SMTP mati |
 | **F2-M4** Admission bagian 1 | Master data + buat pendaftaran + state machine awal | pendaftaran dibuat, kuota & periode tervalidasi |
 | **F2-M5** Finance bagian 1 | Skema biaya, tagihan, VA mock, webhook, transfer manual, verifikasi, kwitansi | bayar pendaftaran → Admission `form_open` |
-| **F2-M6** Admission bagian 2 | Upload dokumen, submit, verifikasi & revisi, export, statistik | alur sampai `verified` + notifikasi |
+| **F2-M6** Admission bagian 2 | Upload dokumen, submit, verifikasi & revisi, export, statistik | **Selesai** (alur upload dokumen, validasi magic bytes, submit, verifikasi admin, revisi, presigned URL 5 menit, export xlsx, statistik selesai) |
 | **F2-M7** Exam | 4.6 | jadwal, dosen, peserta, kartu PDF |
 | **F2-M8** Scoring | 4.7 | dosen input nilai, rekap & ranking prodi |
 | **F2-M9** Selection | 4.8 | rekomendasi → persetujuan → pengumuman → tagihan daftar ulang |

@@ -818,9 +818,9 @@ Mengambil status pengiriman, retries, dan pesan kesalahan.
 
 ---
 
-## 9. Rincian Endpoint — Admission Service (Pendaftaran Bagian 1)
+## 9. Rincian Endpoint — Admission Service (Pendaftaran Bagian 1 & 2 — F2-M4 & F2-M6)
 
-Admission Service (`pmb-admission-service:8084`) menangani master periode/jalur masuk, kuota, persyaratan berkas, formulir pendaftaran calon mahasiswa, dan integrasi penagihan via Transactional Outbox.
+Admission Service (`pmb-admission-service:8084`) menangani master periode/jalur masuk, kuota, persyaratan berkas, formulir pendaftaran calon mahasiswa, unggah dan validasi dokumen magic bytes ke MinIO, submit pendaftaran terverifikasi biodata, verifikasi berkas per dokumen oleh admin, alur revisi pendaftar, presigned URL dokumen (5 menit untuk admin), ekspor spreadsheet Excel (.xlsx), dan agregasi statistik pendaftaran.
 
 ### 9.1 Endpoint Publik / Informasi Pendaftaran
 
@@ -853,7 +853,7 @@ Mengambil daftar jalur masuk aktif beserta rincian biaya pendaftaran dan dokumen
 
 #### `POST /api/v1/admission/applications`
 Membuat formulir pendaftaran baru. Pendaftaran langsung berstatus `awaiting_payment` dan event outbox tagihan pendaftaran dibuat secara transactional.
-- **Autentikasi**: Wajib (`user` / calon mahasiswa)
+- **Autentikasi**: Wajib (`calon_mahasiswa`)
 - **Request Body**:
   ```json
   {
@@ -861,22 +861,6 @@ Membuat formulir pendaftaran baru. Pendaftaran langsung berstatus `awaiting_paym
     "admission_path_id": 1,
     "choice_1_id": "b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11",
     "choice_2_id": "d2b3c4e5-1111-4444-8888-abcdef123456"
-  }
-  ```
-- **Respons (201 Created)**:
-  ```json
-  {
-    "success": true,
-    "message": "Pendaftaran berhasil dibuat, silakan lakukan pembayaran",
-    "data": {
-      "id": "7fa6b73a-4422-48df-b452-19e4871987d6",
-      "registration_no": "PMB-2026-1-00001",
-      "status": "awaiting_payment",
-      "period_id": 1,
-      "admission_path_id": 1,
-      "choice_1_id": "b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11",
-      "choice_2_id": "d2b3c4e5-1111-4444-8888-abcdef123456"
-    }
   }
   ```
 - **Error Responses**:
@@ -892,17 +876,140 @@ Mengambil detail formulir pendaftaran tertentu (hanya milik user bersangkutan).
 #### `PUT /api/v1/admission/applications/:id/choices`
 Mengubah pilihan program studi 1 & 2.
 - **Batasan**: Hanya diizinkan bila status pendaftaran masih `draft` atau `awaiting_payment`.
-- **Error `400 INVALID_STATE`**: Muncul bila status sudah `payment_verified` atau lebih lanjut.
+- **Error `400 INVALID_STATE`**: Muncul bila status sudah `form_open` atau lebih lanjut.
+
+#### `POST /api/v1/admission/applications/me/documents` (atau `/:id/documents`)
+Mengunggah berkas dokumen persyaratan ke MinIO privat (`pmb-admission-documents`).
+- **Autentikasi**: Wajib (`calon_mahasiswa`)
+- **Status yang Diizinkan**: `form_open` atau `revision_required`
+- **Content-Type**: `multipart/form-data`
+- **Form Data**:
+  - `document_type`: Kode jenis dokumen (mis. `ijazah`, `rapor`, `ktp`, `kk`, `pas_foto`, `sertifikat_prestasi`).
+  - `file`: Berkas fisik dokumen.
+- **Validasi Keamanan Magic Bytes**:
+  - Tipe berkas dideteksi secara mendalam dari header byte pertama (`pkg/storage.SniffAndValidate`). Berkas berbahaya (seperti `.exe` atau script biner berkedok `.pdf`) otomatis ditolak dengan `415 Unsupported Media Type` (`FILE_TYPE_NOT_ALLOWED`).
+  - Ukuran berkas divalidasi terhadap batas maksimal per dokumen (`FILE_TOO_LARGE`).
+- **Respons (201 Created)**:
+  ```json
+  {
+    "success": true,
+    "message": "Dokumen persyaratan berhasil diunggah",
+    "data": {
+      "id": "11111111-2222-3333-4444-555555555555",
+      "application_id": "7fa6b73a-4422-48df-b452-19e4871987d6",
+      "document_type": "ijazah",
+      "file_name": "ijazah_asli.pdf",
+      "file_url": "https://...",
+      "mime_type": "application/pdf",
+      "file_size": 1048576,
+      "status": "uploaded"
+    }
+  }
+  ```
+
+#### `DELETE /api/v1/admission/applications/me/documents/:code`
+Menghapus dokumen persyaratan yang telah diunggah sebelum submit.
+- **Akses**: Calon Mahasiswa (pemilik) saat status `form_open` atau `revision_required`.
+
+#### `GET /api/v1/admission/applications/me/documents/:code/url`
+Mengambil presigned download URL sementara (15 menit) untuk berkas pendaftaran milik calon mahasiswa.
+
+#### `POST /api/v1/admission/applications/me/submit` (atau `/:id/submit`)
+Mengunci dan mengirimkan seluruh berkas pendaftaran ke panitia PMB.
+- **Autentikasi**: Wajib (`calon_mahasiswa`)
+- **Status yang Diizinkan**: `form_open` atau `revision_required`
+- **Aturan Validasi Ketat**:
+  1. **Kelengkapan Biodata**: Memanggil Identity Service (`GET /internal/persons/:user_id/completeness`). Jika belum lengkap, pendaftaran ditolak dengan `400 Bad Request` dan error code `BIODATA_INCOMPLETE` beserta daftar field yang kurang.
+  2. **Kelengkapan Berkas Wajib**: Seluruh dokumen dengan `is_required = true` pada jalur pendaftaran terkait wajib telah diunggah dan tidak dalam status `invalid`. Jika ada yang belum diunggah, ditolak dengan `400 Bad Request` dan error code `DOCUMENT_REQUIRED`.
+- **Transisi Status**: `form_open` / `revision_required` $\rightarrow$ `submitted`.
+- **Notifikasi**: Otomatis mengirim email konfirmasi pendaftaran berhasil disubmit via Notification Service (`application_submitted`).
 
 ---
 
 ### 9.3 Endpoint Admin & Program Studi (`/api/v1/admission/admin/...`)
 
 #### `GET /api/v1/admission/admin/applications`
-Mengambil daftar pendaftar dengan filter `period_id`, `path_id`, `status`, `search`, serta pagination.
+Mengambil daftar pendaftar dengan filter `period_id`, `path_id`, `status`, `prodi_id`, `search`, serta pagination.
 - **Hak Akses**:
   - `superadmin` / `admin_pmb`: Mengakses seluruh pendaftar.
   - `prodi`: Hanya melihat pendaftar yang prodinya tercantum pada `choice_1_id` atau `choice_2_id`.
+
+#### `GET /api/v1/admission/admin/applications/:id`
+Mengambil detail pendaftaran komprehensif untuk panitia PMB.
+- **Penggabungan Lintas Service**:
+  - Data Formulir & Berkas Dokumen terunggah (Admission Service).
+  - Biodata Lengkap calon mahasiswa & NIK utuh/unmasked (Identity Service).
+  - Data OCR KTP jika tersedia: URL foto KTP, `quality_score`, serta `fields_edited_by_user`.
+  - Status Tagihan & Pembayaran Biaya Pendaftaran (Finance Service).
+
+#### `POST /api/v1/admission/admin/applications/:id/verify`
+Memverifikasi dokumen persyaratan pendaftar per berkas.
+- **Hak Akses**: `admin_pmb`, `superadmin`
+- **Status Pendaftaran yang Diizinkan**: `submitted`
+- **Request Body**:
+  ```json
+  {
+    "reviews": [
+      {
+        "document_type": "ijazah",
+        "status": "valid",
+        "notes": "Ijazah terlegalisir jelas"
+      },
+      {
+        "document_type": "ktp",
+        "status": "invalid",
+        "notes": "Foto KTP buram dan nomor NIK tidak terbaca"
+      }
+    ]
+  }
+  ```
+- **Logika Evaluasi Status**:
+  - **Revisi Diperlukan (`revision_required`)**: Jika ada minimal 1 dokumen yang dinyatakan `invalid`. Sistem mencatat catatan revisi dan mengirim notifikasi revisi ke email pendaftar (`application_revision_required`). Calon mahasiswa dapat mengunggah ulang dokumen yang ditolak dan melakukan submit ulang.
+  - **Lolos Verifikasi (`verified`)**: Jika seluruh dokumen persyaratan wajib telah berstatus `valid` dan tidak ada dokumen `invalid`. Sistem mengubah status ke `verified` dan mengirim notifikasi kelulusan berkas (`application_verified`).
+
+#### `GET /api/v1/admission/admin/applications/:id/documents/:code/url`
+Mengambil presigned URL berkas pendaftar untuk panitia PMB.
+- **Keamanan Ketat**: Presigned URL kedaluwarsa tepat **300 detik (5 menit)** untuk meminimalkan risiko kebocoran link dokumen privat.
+
+#### `GET /api/v1/admission/admin/applications/export`
+Mengekspor seluruh data pendaftar ke spreadsheet Excel (`.xlsx`).
+- **Hak Akses**: `admin_pmb`, `superadmin`
+- **Query Filter**: `period_id`, `path_id`, `status`, `prodi_id`, `search`
+- **Respons**: File binary stream `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` dengan header `Content-Disposition: attachment; filename="pmb_applications_export_YYYYMMDD_HHMMSS.xlsx"`.
+- **Fitur Lembar Kerja**: Styling header biru navy, auto-width kolom, dan format tanggal waktu standar.
+
+#### `GET /api/v1/admission/admin/stats`
+Mengambil statistik agregasi pendaftaran PMB secara real-time.
+- **Hak Akses**: `admin_pmb`, `superadmin`, `prodi`
+- **Respons (200 OK)**:
+  ```json
+  {
+    "success": true,
+    "message": "Statistik pendaftaran berhasil diambil",
+    "data": {
+      "total_applications": 1250,
+      "by_status": {
+        "awaiting_payment": 200,
+        "form_open": 350,
+        "submitted": 400,
+        "revision_required": 50,
+        "verified": 250
+      },
+      "by_study_program": {
+        "b1a1c97a-9a91-4cf1-88f5-f5b21ee4bb11": 720,
+        "d2b3c4e5-1111-4444-8888-abcdef123456": 530
+      },
+      "by_admission_path": {
+        "1": 800,
+        "2": 300,
+        "3": 150
+      },
+      "by_period": {
+        "1": 1250
+      }
+    }
+  }
+  ```
 
 ---
 

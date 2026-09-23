@@ -1513,6 +1513,321 @@ assert_status "Staf keuangan approve transfer manual" "200" "$HTTP_CODE_VP" "$BO
 log_pass "Staf keuangan berhasil memverifikasi dan menyetujui pembayaran transfer manual"
 
 # ==============================================================================
+# BAGIAN 9: PENGUJIAN TAHAP 5 — ADMISSION BAGIAN 2 (F2-M6: Berkas, Magic Bytes, Submit, Verifikasi, Revisi, Export XLSX, Statistik)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 9: PENGUJIAN TAHAP 5 — ADMISSION BAGIAN 2 (F2-M6)${NC}"
+
+# 56. [NEGATIF] Mengunggah Berkas Palsu / Eksekusi (Magic Bytes Sniffing)
+log_info "56. [NEGATIF] Mengunggah file biner palsu berkedok PDF (deteksi magic bytes)..."
+FAKE_PDF="/tmp/fake_malware_${RAND_ID}.pdf"
+# Buat header MZ (DOS/Windows Executable) berkedok nama .pdf
+printf "MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00\xb8\x00\x00\x00" > "$FAKE_PDF"
+
+RESP_FAKE=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=ijazah" \
+  -F "file=@${FAKE_PDF};type=application/pdf")
+CODE_FAKE=$(echo "$RESP_FAKE" | tail -n1)
+BODY_FAKE=$(echo "$RESP_FAKE" | sed '$d')
+rm -f "$FAKE_PDF"
+
+if [ "$CODE_FAKE" = "415" ] || echo "$BODY_FAKE" | grep -q "FILE_TYPE_NOT_ALLOWED"; then
+  log_pass "Proteksi Magic Bytes berhasil: berkas palsu (.exe berekstensi .pdf) ditolak sistem (HTTP $CODE_FAKE)"
+else
+  log_fail "Sistem gagal mendeteksi berkas palsu (HTTP $CODE_FAKE): $BODY_FAKE"
+fi
+
+# 57. Calon Mahasiswa Mengunggah Berkas Dokumen Persyaratan yang Valid
+log_info "57. Mengunggah seluruh berkas dokumen persyaratan valid (PDF & JPG)..."
+DUMMY_PDF="/tmp/valid_doc_${RAND_ID}.pdf"
+printf "%%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%%%EOF" > "$DUMMY_PDF"
+
+DUMMY_JPG="/tmp/valid_foto_${RAND_ID}.jpg"
+# Header JPEG SOI
+printf "\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00\`\x00\`\x00\x00\xff\xdb\x00C\x00\xff\xd9" > "$DUMMY_JPG"
+
+# Unggah Ijazah
+RESP_IJAZAH=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=ijazah" \
+  -F "file=@${DUMMY_PDF};type=application/pdf")
+CODE_IJAZAH=$(echo "$RESP_IJAZAH" | tail -n1)
+assert_status "Unggah dokumen ijazah" "201" "$CODE_IJAZAH" "$RESP_IJAZAH"
+
+# Unggah Rapor
+RESP_RAPOR=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=rapor" \
+  -F "file=@${DUMMY_PDF};type=application/pdf")
+CODE_RAPOR=$(echo "$RESP_RAPOR" | tail -n1)
+assert_status "Unggah dokumen rapor" "201" "$CODE_RAPOR" "$RESP_RAPOR"
+
+# Unggah KTP
+RESP_KTP=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=ktp" \
+  -F "file=@${DUMMY_PDF};type=application/pdf")
+CODE_KTP=$(echo "$RESP_KTP" | tail -n1)
+assert_status "Unggah dokumen KTP" "201" "$CODE_KTP" "$RESP_KTP"
+
+# Unggah KK
+RESP_KK=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=kk" \
+  -F "file=@${DUMMY_PDF};type=application/pdf")
+CODE_KK=$(echo "$RESP_KK" | tail -n1)
+assert_status "Unggah dokumen KK" "201" "$CODE_KK" "$RESP_KK"
+
+# Unggah Pas Foto
+RESP_FOTO=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=pas_foto" \
+  -F "file=@${DUMMY_JPG};type=image/jpeg")
+CODE_FOTO=$(echo "$RESP_FOTO" | tail -n1)
+assert_status "Unggah pas foto" "201" "$CODE_FOTO" "$RESP_FOTO"
+
+rm -f "$DUMMY_PDF" "$DUMMY_JPG"
+log_pass "Seluruh berkas persyaratan wajib berhasil diunggah ke MinIO"
+
+# 58. Calon Mahasiswa Mengambil Presigned URL Dokumen
+log_info "58. Calon mahasiswa mengambil presigned URL dokumen miliknya..."
+RESP_URL=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me/documents/ijazah/url" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_URL=$(echo "$RESP_URL" | tail -n1)
+BODY_URL=$(echo "$RESP_URL" | sed '$d')
+assert_status "Ambil presigned URL dokumen" "200" "$CODE_URL" "$BODY_URL"
+if echo "$BODY_URL" | grep -q '"url":'; then
+  log_pass "Presigned URL dokumen berhasil dibuat untuk calon mahasiswa"
+else
+  log_fail "Presigned URL tidak ditemukan di response: $BODY_URL"
+fi
+
+# 59. [NEGATIF] Validasi Kelengkapan Biodata (BIODATA_INCOMPLETE)
+log_info "59. [NEGATIF] Menguji submit pendaftaran dengan biodata belum lengkap..."
+# Daftarkan user C tanpa melengkapi biodata di Identity Service
+USER_C_EMAIL="pendaftar_incomplete_${RAND_ID}@example.com"
+USER_C_PASS="SecretIncomplete123!"
+curl -s -X POST "${GATEWAY_URL}/register" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$USER_C_EMAIL\",\"password\":\"$USER_C_PASS\",\"full_name\":\"User Incomplete\",\"phone\":\"081299990099\"}" >/dev/null
+
+sleep 1
+USER_C_OTP=""
+MAIL_RESP=$(curl -s "${MAILPIT_URL}/api/v1/messages" || true)
+USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$USER_C_MSG_ID" ]; then
+  USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+fi
+if [ -n "$USER_C_MSG_ID" ]; then
+  MSG_DETAIL=$(curl -s "${MAILPIT_URL}/api/v1/message/${USER_C_MSG_ID}" || true)
+  USER_C_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1)
+fi
+
+RESP_VERIFY_C=$(curl -s -X POST "${GATEWAY_URL}/verify" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$USER_C_EMAIL\",\"otp\":\"$USER_C_OTP\"}")
+USER_C_TOKEN=$(echo "$RESP_VERIFY_C" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+# Buat pendaftaran untuk User C
+RESP_APP_C=$(curl -s -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $USER_C_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": $REG_PATH_ID,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\"
+  }")
+APP_C_ID=$(echo "$RESP_APP_C" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Paksa update status pendaftaran User C ke form_open via internal API untuk menguji submit
+_=$(curl -s -X POST "${ADMISSION_DIRECT_URL}/internal/applications/${APP_C_ID}/status" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d "{\"status\":\"form_open\"}")
+
+# Coba submit tanpa isi biodata
+RESP_SUB_C=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/${APP_C_ID}/submit" \
+  -H "Authorization: Bearer $USER_C_TOKEN")
+CODE_SUB_C=$(echo "$RESP_SUB_C" | tail -n1)
+BODY_SUB_C=$(echo "$RESP_SUB_C" | sed '$d')
+
+if [ "$CODE_SUB_C" = "400" ] && echo "$BODY_SUB_C" | grep -q "BIODATA_INCOMPLETE"; then
+  log_pass "Sistem menolak submit dengan error BIODATA_INCOMPLETE jika profil belum lengkap"
+else
+  log_fail "Submit tidak menolak biodata incomplete (HTTP $CODE_SUB_C): $BODY_SUB_C"
+fi
+
+# 60. Calon Mahasiswa Submit Pendaftaran (Status bertransisi ke submitted)
+log_info "60. Calon mahasiswa submit pendaftaran (berkas & biodata lengkap)..."
+RESP_SUB=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/submit" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_SUB=$(echo "$RESP_SUB" | tail -n1)
+BODY_SUB=$(echo "$RESP_SUB" | sed '$d')
+
+assert_status "Submit pendaftaran calon mahasiswa" "200" "$CODE_SUB" "$BODY_SUB"
+SUB_STATUS=$(echo "$BODY_SUB" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ "$SUB_STATUS" = "submitted" ]; then
+  log_pass "Pendaftaran berhasil disubmit dan berstatus 'submitted'"
+else
+  log_fail "Status pendaftaran setelah submit bukan submitted: $SUB_STATUS"
+fi
+
+# 61. [NEGATIF] Mengubah Pilihan Prodi saat Berstatus submitted Ditolak (400 INVALID_STATE)
+log_info "61. [NEGATIF] Mengubah pilihan program studi saat sudah berstatus submitted..."
+RESP_CHG=$(curl -s -w "\n%{http_code}" -X PUT "${ADMISSION_URL}/applications/${APPLICATION_ID}/choices" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+CODE_CHG=$(echo "$RESP_CHG" | tail -n1)
+BODY_CHG=$(echo "$RESP_CHG" | sed '$d')
+assert_status "Ubah prodi saat submitted ditolak" "400" "$CODE_CHG" "$BODY_CHG"
+if echo "$BODY_CHG" | grep -q "INVALID_STATE"; then
+  log_pass "Sistem menolak perubahan program studi saat submitted dengan INVALID_STATE"
+else
+  log_fail "Error code bukan INVALID_STATE: $BODY_CHG"
+fi
+
+# 62. Admin PMB Melihat Detail Pendaftar Terpadu (OCR & Finance)
+log_info "62. Admin PMB mengambil detail pendaftar terpadu..."
+RESP_DETAIL=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/applications/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_DETAIL=$(echo "$RESP_DETAIL" | tail -n1)
+BODY_DETAIL=$(echo "$RESP_DETAIL" | sed '$d')
+assert_status "Admin detail pendaftar" "200" "$CODE_DETAIL" "$BODY_DETAIL"
+
+if echo "$BODY_DETAIL" | grep -q '"person_data":' && echo "$BODY_DETAIL" | grep -q '"invoice_data":'; then
+  log_pass "Detail pendaftar terpadu berhasil menggabungkan data Identity (biodata) dan Finance (invoice)"
+else
+  log_fail "Detail pendaftar tidak menyertakan person_data atau invoice_data: $BODY_DETAIL"
+fi
+
+# 63. Admin PMB Mengambil Presigned URL Dokumen (Berlaku 5 Menit / 300 Detik)
+log_info "63. Admin PMB mengambil presigned URL dokumen pendaftar..."
+RESP_ADM_URL=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/applications/${APPLICATION_ID}/documents/ijazah/url" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_ADM_URL=$(echo "$RESP_ADM_URL" | tail -n1)
+BODY_ADM_URL=$(echo "$RESP_ADM_URL" | sed '$d')
+assert_status "Admin presigned URL dokumen" "200" "$CODE_ADM_URL" "$BODY_ADM_URL"
+if echo "$BODY_ADM_URL" | grep -q '"url":'; then
+  log_pass "Presigned URL dokumen admin berhasil diterbitkan dengan masa berlaku 5 menit"
+else
+  log_fail "Gagal mendapatkan presigned URL admin: $BODY_ADM_URL"
+fi
+
+# 64. Admin PMB Meminta Revisi Dokumen (Status bertransisi ke revision_required)
+log_info "64. Admin PMB meminta revisi berkas dokumen (evaluasi berkas invalid)..."
+RESP_REV=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/applications/${APPLICATION_ID}/verify" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reviews": [
+      { "document_type": "ijazah", "status": "valid", "notes": "Ijazah jelas dan terlegalisir" },
+      { "document_type": "ktp", "status": "invalid", "notes": "Foto KTP buram dan nomor NIK tidak terbaca" }
+    ]
+  }')
+CODE_REV=$(echo "$RESP_REV" | tail -n1)
+BODY_REV=$(echo "$RESP_REV" | sed '$d')
+assert_status "Admin minta revisi dokumen" "200" "$CODE_REV" "$BODY_REV"
+STATUS_REV=$(echo "$BODY_REV" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ "$STATUS_REV" = "revision_required" ]; then
+  log_pass "Status pendaftaran berhasil bertransisi ke 'revision_required' karena berkas KTP invalid"
+else
+  log_fail "Status pendaftaran bukan revision_required: $STATUS_REV"
+fi
+
+# 65. Calon Mahasiswa Mengunggah Ulang Dokumen Revisi & Re-Submit
+log_info "65. Calon mahasiswa mengunggah ulang dokumen revisi dan re-submit..."
+FIXED_PDF="/tmp/fixed_ktp_${RAND_ID}.pdf"
+printf "%%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%%%EOF" > "$FIXED_PDF"
+
+RESP_REUPLOAD=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -F "document_type=ktp" \
+  -F "file=@${FIXED_PDF};type=application/pdf")
+CODE_REUPLOAD=$(echo "$RESP_REUPLOAD" | tail -n1)
+rm -f "$FIXED_PDF"
+assert_status "Re-upload dokumen KTP perbaikan" "201" "$CODE_REUPLOAD" "$RESP_REUPLOAD"
+
+# Submit ulang
+RESP_RESUBMIT=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/submit" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_RESUBMIT=$(echo "$RESP_RESUBMIT" | tail -n1)
+BODY_RESUBMIT=$(echo "$RESP_RESUBMIT" | sed '$d')
+assert_status "Re-submit pendaftaran setelah revisi" "200" "$CODE_RESUBMIT" "$BODY_RESUBMIT"
+STATUS_RESUBMIT=$(echo "$BODY_RESUBMIT" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ "$STATUS_RESUBMIT" = "submitted" ]; then
+  log_pass "Pendaftaran berhasil disubmit ulang dan kembali berstatus 'submitted'"
+else
+  log_fail "Status setelah re-submit bukan submitted: $STATUS_RESUBMIT"
+fi
+
+# 66. Admin PMB Memverifikasi Seluruh Berkas Lolos Verifikasi (Status verified)
+log_info "66. Admin PMB menyetujui seluruh dokumen pendaftaran (Status bertransisi ke verified)..."
+RESP_VERIFIED=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/applications/${APPLICATION_ID}/verify" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reviews": [
+      { "document_type": "ktp", "status": "valid", "notes": "KTP perbaikan telah jelas dan valid" },
+      { "document_type": "rapor", "status": "valid", "notes": "Rapor semester 1-5 lengkap" },
+      { "document_type": "kk", "status": "valid", "notes": "KK valid" },
+      { "document_type": "pas_foto", "status": "valid", "notes": "Pas foto formal sesuai ketentuan" }
+    ]
+  }')
+CODE_VERIFIED=$(echo "$RESP_VERIFIED" | tail -n1)
+BODY_VERIFIED=$(echo "$RESP_VERIFIED" | sed '$d')
+assert_status "Admin loloskan verifikasi dokumen" "200" "$CODE_VERIFIED" "$BODY_VERIFIED"
+STATUS_FINAL=$(echo "$BODY_VERIFIED" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ "$STATUS_FINAL" = "verified" ]; then
+  log_pass "Pendaftaran berhasil lolos verifikasi berkas dan berstatus 'verified'"
+else
+  log_fail "Status akhir pendaftaran bukan verified: $STATUS_FINAL (Body: $BODY_VERIFIED)"
+fi
+
+# 67. Admin PMB Mengekspor Data Pendaftar ke Excel (.xlsx)
+log_info "67. Admin PMB mengekspor daftar pendaftar ke spreadsheet Excel (.xlsx)..."
+TEMP_EXPORT="/tmp/pendaftar_export_${RAND_ID}.xlsx"
+RESP_EXP_HEAD=$(curl -s -I -X GET "${ADMISSION_URL}/admin/applications/export" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+
+if echo "$RESP_EXP_HEAD" | grep -qi "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"; then
+  log_pass "Ekspor pendaftar memiliki header Content-Type Excel (.xlsx)"
+else
+  log_fail "Header Content-Type bukan spreadsheetml.sheet: $RESP_EXP_HEAD"
+fi
+
+curl -s -o "$TEMP_EXPORT" -X GET "${ADMISSION_URL}/admin/applications/export" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN"
+
+# Periksa header magic bytes file ZIP / XLSX (PK..)
+if head -c 2 "$TEMP_EXPORT" | grep -q "PK"; then
+  log_pass "Berkas ekspor terverifikasi sebagai spreadsheet Excel ZIP/XML yang valid"
+else
+  log_fail "Berkas ekspor Excel tidak valid (magic bytes PK tidak ditemukan)"
+fi
+rm -f "$TEMP_EXPORT"
+
+# 68. Admin PMB / Pimpinan Memantau Statistik Pendaftaran Real-Time
+log_info "68. Admin PMB mengambil agregasi data statistik pendaftaran PMB..."
+RESP_STATS=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/stats" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_STATS=$(echo "$RESP_STATS" | tail -n1)
+BODY_STATS=$(echo "$RESP_STATS" | sed '$d')
+assert_status "Ambil statistik pendaftaran" "200" "$CODE_STATS" "$BODY_STATS"
+
+if echo "$BODY_STATS" | grep -q '"total_applications":' && echo "$BODY_STATS" | grep -q '"by_status":' && echo "$BODY_STATS" | grep -q '"verified":'; then
+  log_pass "Statistik pendaftaran berhasil menyajikan agregasi status (termasuk verified), prodi, dan jalur"
+else
+  log_fail "Payload statistik pendaftaran tidak lengkap: $BODY_STATS"
+fi
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 echo "------------------------------------------------------------------------------"

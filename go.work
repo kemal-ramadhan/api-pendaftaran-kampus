@@ -4,12 +4,11 @@ use (
 	./pkg
 	./scripts/infra
 	./services/_template
+	./services/admission-service
 	./services/api-gateway
 	./services/auth-service
-	./services/organization-service
+	./services/finance-service
 	./services/identity-service
 	./services/notification-service
-	./services/admission-service
-	./services/finance-service
+	./services/organization-service
 )
-

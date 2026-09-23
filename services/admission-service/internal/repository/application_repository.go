@@ -38,6 +38,8 @@ type ApplicationRepository interface {
 	UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error
 	GenerateRegistrationNo(ctx context.Context, tx *gorm.DB, periodID uint, academicYear string) (string, error)
 	ListApplications(ctx context.Context, filter ApplicationFilter) ([]model.Application, int64, error)
+	ListAllForExport(ctx context.Context, filter ApplicationFilter) ([]model.Application, error)
+	GetStats(ctx context.Context) (*model.AdmissionStats, error)
 	CreateStatusLog(tx *gorm.DB, log *model.ApplicationStatusLog) error
 }
 
@@ -136,10 +138,19 @@ func (r *applicationRepository) UpdateChoices(ctx context.Context, id uuid.UUID,
 
 func (r *applicationRepository) UpdateStatus(ctx context.Context, id uuid.UUID, fromStatus, toStatus model.ApplicationStatus, notes string, changedBy *uuid.UUID) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&model.Application{}).Where("id = ?", id).Updates(map[string]interface{}{
+		now := time.Now()
+		updates := map[string]interface{}{
 			"status":     toStatus,
-			"updated_at": time.Now(),
-		}).Error; err != nil {
+			"updated_at": now,
+		}
+		if toStatus == model.StatusSubmitted {
+			updates["submitted_at"] = &now
+		} else if toStatus == model.StatusVerified {
+			updates["verified_at"] = &now
+			updates["verified_by"] = changedBy
+		}
+
+		if err := tx.Model(&model.Application{}).Where("id = ?", id).Updates(updates).Error; err != nil {
 			return err
 		}
 
@@ -150,7 +161,7 @@ func (r *applicationRepository) UpdateStatus(ctx context.Context, id uuid.UUID, 
 			ToStatus:      toStatus,
 			ChangedBy:     changedBy,
 			Notes:         notes,
-			CreatedAt:     time.Now(),
+			CreatedAt:     now,
 		}
 		return tx.Create(statusLog).Error
 	})
@@ -228,6 +239,101 @@ func (r *applicationRepository) ListApplications(ctx context.Context, filter App
 		Find(&apps).Error
 
 	return apps, total, err
+}
+
+func (r *applicationRepository) ListAllForExport(ctx context.Context, filter ApplicationFilter) ([]model.Application, error) {
+	var apps []model.Application
+	q := r.db.WithContext(ctx).Model(&model.Application{})
+
+	if filter.PeriodID != nil {
+		q = q.Where("period_id = ?", *filter.PeriodID)
+	}
+	if filter.AdmissionPathID != nil {
+		q = q.Where("admission_path_id = ?", *filter.AdmissionPathID)
+	}
+	if filter.Status != nil && *filter.Status != "" {
+		q = q.Where("status = ?", *filter.Status)
+	}
+	if filter.StudyProgramID != nil {
+		q = q.Where("(choice_1_id = ? OR choice_2_id = ?)", *filter.StudyProgramID, *filter.StudyProgramID)
+	}
+	if filter.Search != "" {
+		searchPattern := "%" + filter.Search + "%"
+		q = q.Where("registration_no ILIKE ?", searchPattern)
+	}
+
+	err := q.Preload("Period").
+		Preload("AdmissionPath").
+		Preload("Documents").
+		Order("created_at desc").
+		Find(&apps).Error
+
+	return apps, err
+}
+
+func (r *applicationRepository) GetStats(ctx context.Context) (*model.AdmissionStats, error) {
+	stats := &model.AdmissionStats{
+		ByStatus:        make(map[string]int64),
+		ByStudyProgram:  make(map[string]int64),
+		ByAdmissionPath: make(map[string]int64),
+		ByPeriod:        make(map[string]int64),
+	}
+
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&model.Application{}).Count(&total).Error; err != nil {
+		return nil, err
+	}
+	stats.TotalApplications = total
+
+	type statusCount struct {
+		Status string
+		Count  int64
+	}
+	var sc []statusCount
+	_ = r.db.WithContext(ctx).Model(&model.Application{}).
+		Select("status, count(*) as count").
+		Group("status").Scan(&sc).Error
+	for _, s := range sc {
+		stats.ByStatus[s.Status] = s.Count
+	}
+
+	type pathCount struct {
+		AdmissionPathID uint
+		Count           int64
+	}
+	var pc []pathCount
+	_ = r.db.WithContext(ctx).Model(&model.Application{}).
+		Select("admission_path_id, count(*) as count").
+		Group("admission_path_id").Scan(&pc).Error
+	for _, p := range pc {
+		stats.ByAdmissionPath[fmt.Sprintf("%d", p.AdmissionPathID)] = p.Count
+	}
+
+	type periodCount struct {
+		PeriodID uint
+		Count    int64
+	}
+	var perc []periodCount
+	_ = r.db.WithContext(ctx).Model(&model.Application{}).
+		Select("period_id, count(*) as count").
+		Group("period_id").Scan(&perc).Error
+	for _, p := range perc {
+		stats.ByPeriod[fmt.Sprintf("%d", p.PeriodID)] = p.Count
+	}
+
+	type prodiCount struct {
+		Choice1ID uuid.UUID
+		Count     int64
+	}
+	var proc []prodiCount
+	_ = r.db.WithContext(ctx).Model(&model.Application{}).
+		Select("choice_1_id, count(*) as count").
+		Group("choice_1_id").Scan(&proc).Error
+	for _, p := range proc {
+		stats.ByStudyProgram[p.Choice1ID.String()] = p.Count
+	}
+
+	return stats, nil
 }
 
 func (r *applicationRepository) CreateStatusLog(tx *gorm.DB, log *model.ApplicationStatusLog) error {

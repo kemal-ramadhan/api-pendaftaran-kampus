@@ -20,6 +20,12 @@ type Config struct {
 	InternalToken          string
 	NotificationServiceURL string
 	FinanceServiceURL      string
+	IdentityServiceURL     string
+	MinIOEndpoint          string
+	MinIOAccessKey         string
+	MinIOSecretKey         string
+	MinIOUseSSL            bool
+	DocumentBucket         string
 	OutboxIntervalSeconds  int
 	OutboxBatchSize        int
 }
@@ -39,6 +45,12 @@ func LoadConfig() (*Config, error) {
 		InternalToken:          getEnv("INTERNAL_TOKEN", "secret-internal-token"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://localhost:8085"),
+		IdentityServiceURL:     getEnv("IDENTITY_SERVICE_URL", "http://localhost:8082"),
+		MinIOEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinIOAccessKey:         getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinIOSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinIOUseSSL:            getEnv("MINIO_USE_SSL", "false") == "true",
+		DocumentBucket:         getEnv("DOCUMENT_BUCKET", "pmb-admission-documents"),
 		OutboxIntervalSeconds:  getEnvAsInt("OUTBOX_INTERVAL_SECONDS", 5),
 		OutboxBatchSize:        getEnvAsInt("OUTBOX_BATCH_SIZE", 20),
 	}

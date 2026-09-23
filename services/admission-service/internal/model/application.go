@@ -12,15 +12,17 @@ type ApplicationStatus string
 const (
 	StatusDraft              ApplicationStatus = "draft"
 	StatusAwaitingPayment    ApplicationStatus = "awaiting_payment"
-	StatusPaymentVerified    ApplicationStatus = "payment_verified"
-	StatusDocumentSubmitted  ApplicationStatus = "document_submitted"
-	StatusUnderReview        ApplicationStatus = "under_review"
+	StatusFormOpen           ApplicationStatus = "form_open"
+	StatusSubmitted          ApplicationStatus = "submitted"
+	StatusRevisionRequired   ApplicationStatus = "revision_required"
+	StatusVerified           ApplicationStatus = "verified"
 	StatusExamScheduled      ApplicationStatus = "exam_scheduled"
 	StatusInterviewScheduled ApplicationStatus = "interview_scheduled"
 	StatusDirectDecision     ApplicationStatus = "direct_decision"
-	StatusSelectionPassed    ApplicationStatus = "selection_passed"
-	StatusSelectionFailed    ApplicationStatus = "selection_failed"
-	StatusRegistered         ApplicationStatus = "registered"
+	StatusPassed             ApplicationStatus = "passed"
+	StatusFailed             ApplicationStatus = "failed"
+	StatusReregistered       ApplicationStatus = "reregistered"
+	StatusEnrolled           ApplicationStatus = "enrolled"
 	StatusCancelled          ApplicationStatus = "cancelled"
 	StatusExpired            ApplicationStatus = "expired"
 )
@@ -36,10 +38,16 @@ type Application struct {
 	Status          ApplicationStatus      `gorm:"type:varchar(30);not null;default:'awaiting_payment';index" json:"status"`
 	InvoiceID       *uuid.UUID             `gorm:"type:uuid" json:"invoice_id,omitempty"`
 	FinalChoiceID   *uuid.UUID             `gorm:"type:uuid" json:"final_choice_id,omitempty"`
+	SubmittedAt     *time.Time             `json:"submitted_at,omitempty"`
+	VerifiedAt      *time.Time             `json:"verified_at,omitempty"`
+	VerifiedBy      *uuid.UUID             `gorm:"type:uuid" json:"verified_by,omitempty"`
+	Notes           string                 `gorm:"type:text" json:"notes,omitempty"`
 	Period          *Period                `gorm:"foreignKey:PeriodID" json:"period,omitempty"`
 	AdmissionPath   *AdmissionPath         `gorm:"foreignKey:AdmissionPathID" json:"admission_path,omitempty"`
 	Documents       []ApplicationDocument  `gorm:"foreignKey:ApplicationID" json:"documents,omitempty"`
 	StatusLogs      []ApplicationStatusLog `gorm:"foreignKey:ApplicationID" json:"status_logs,omitempty"`
+	PersonData      interface{}            `gorm:"-" json:"person_data,omitempty"`
+	InvoiceData     interface{}            `gorm:"-" json:"invoice_data,omitempty"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
 }
@@ -54,4 +62,22 @@ func (a *Application) BeforeCreate(tx *gorm.DB) error {
 // CanChangeMajor memeriksa apakah pendaftar diizinkan mengubah pilihan prodi
 func (a *Application) CanChangeMajor() bool {
 	return a.Status == StatusDraft || a.Status == StatusAwaitingPayment
+}
+
+// CanUploadDocument memeriksa apakah pendaftar diizinkan mengunggah dokumen
+func (a *Application) CanUploadDocument() bool {
+	return a.Status == StatusFormOpen || a.Status == StatusRevisionRequired
+}
+
+// CanSubmit memeriksa apakah pendaftar diizinkan men-submit formulir
+func (a *Application) CanSubmit() bool {
+	return a.Status == StatusFormOpen || a.Status == StatusRevisionRequired
+}
+
+type AdmissionStats struct {
+	TotalApplications int64            `json:"total_applications"`
+	ByStatus          map[string]int64 `json:"by_status"`
+	ByStudyProgram    map[string]int64 `json:"by_study_program"`
+	ByAdmissionPath   map[string]int64 `json:"by_admission_path"`
+	ByPeriod          map[string]int64 `json:"by_period"`
 }

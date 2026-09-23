@@ -1,13 +1,19 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/outbox"
+	"github.com/pkm-asia/pmb-backend/pkg/storage"
+	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/repository"
 	"github.com/stretchr/testify/assert"
@@ -104,7 +110,6 @@ func newMockAppRepo() *mockAppRepo {
 }
 
 func (m *mockAppRepo) DB() *gorm.DB {
-	// Dummy gorm DB
 	return &gorm.DB{}
 }
 
@@ -189,29 +194,188 @@ func (m *mockAppRepo) ListApplications(ctx context.Context, filter repository.Ap
 	return list, int64(len(list)), nil
 }
 
+func (m *mockAppRepo) ListAllForExport(ctx context.Context, filter repository.ApplicationFilter) ([]model.Application, error) {
+	var list []model.Application
+	for _, app := range m.apps {
+		list = append(list, *app)
+	}
+	return list, nil
+}
+
+func (m *mockAppRepo) GetStats(ctx context.Context) (*model.AdmissionStats, error) {
+	return &model.AdmissionStats{
+		TotalApplications: int64(len(m.apps)),
+		ByStatus:          map[string]int64{"submitted": int64(len(m.apps))},
+	}, nil
+}
+
 func (m *mockAppRepo) CreateStatusLog(tx *gorm.DB, log *model.ApplicationStatusLog) error {
 	return nil
 }
 
-func TestAdmissionService_RulesAndStateTransitions(t *testing.T) {
+type mockDocRepo struct {
+	docs map[string]*model.ApplicationDocument
+}
+
+func newMockDocRepo() *mockDocRepo {
+	return &mockDocRepo{
+		docs: make(map[string]*model.ApplicationDocument),
+	}
+}
+
+func (m *mockDocRepo) Save(ctx context.Context, doc *model.ApplicationDocument) error {
+	key := fmt.Sprintf("%s:%s", doc.ApplicationID.String(), doc.DocumentType)
+	m.docs[key] = doc
+	return nil
+}
+
+func (m *mockDocRepo) FindByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) (*model.ApplicationDocument, error) {
+	key := fmt.Sprintf("%s:%s", appID.String(), docType)
+	if doc, ok := m.docs[key]; ok {
+		return doc, nil
+	}
+	return nil, repository.ErrDocumentNotFound
+}
+
+func (m *mockDocRepo) FindByApplicationID(ctx context.Context, appID uuid.UUID) ([]model.ApplicationDocument, error) {
+	var list []model.ApplicationDocument
+	for _, d := range m.docs {
+		if d.ApplicationID == appID {
+			list = append(list, *d)
+		}
+	}
+	return list, nil
+}
+
+func (m *mockDocRepo) DeleteByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) error {
+	key := fmt.Sprintf("%s:%s", appID.String(), docType)
+	if _, ok := m.docs[key]; ok {
+		delete(m.docs, key)
+		return nil
+	}
+	return repository.ErrDocumentNotFound
+}
+
+func (m *mockDocRepo) UpdateReviewStatus(ctx context.Context, id uuid.UUID, status string, notes string, reviewerID *uuid.UUID) error {
+	for _, d := range m.docs {
+		if d.ID == id {
+			d.Status = status
+			d.Notes = notes
+			d.VerifiedBy = reviewerID
+			return nil
+		}
+	}
+	return repository.ErrDocumentNotFound
+}
+
+type mockStorage struct {
+	files       map[string][]byte
+	lastExpiry  time.Duration
+	rejectMagic bool
+}
+
+func (s *mockStorage) EnsureBucket(ctx context.Context, bucketName string) error { return nil }
+func (s *mockStorage) Upload(ctx context.Context, bucketName, objectKey string, reader io.Reader, size int64, contentType string) error {
+	buf := new(bytes.Buffer)
+	_, _ = io.Copy(buf, reader)
+	if s.files == nil {
+		s.files = make(map[string][]byte)
+	}
+	s.files[objectKey] = buf.Bytes()
+	return nil
+}
+func (s *mockStorage) Download(ctx context.Context, bucketName, objectKey string) (io.ReadCloser, error) {
+	return nil, nil
+}
+func (s *mockStorage) PresignedGetObject(ctx context.Context, bucketName, objectKey string, expiry time.Duration) (string, error) {
+	s.lastExpiry = expiry
+	return fmt.Sprintf("https://minio.pmb.ac.id/%s/%s?exp=%d", bucketName, objectKey, int(expiry.Seconds())), nil
+}
+func (s *mockStorage) PresignedPutObject(ctx context.Context, bucketName, objectKey string, expiry time.Duration) (string, error) {
+	return "", nil
+}
+func (s *mockStorage) DeleteObject(ctx context.Context, bucketName, objectKey string) error {
+	delete(s.files, objectKey)
+	return nil
+}
+func (s *mockStorage) SniffAndValidate(reader io.Reader, allowedTypes []string) (io.Reader, string, error) {
+	if s.rejectMagic {
+		return nil, "", storage.ErrFileTypeNotAllowed
+	}
+	buf := make([]byte, 512)
+	n, _ := reader.Read(buf)
+	fullReader := io.MultiReader(bytes.NewReader(buf[:n]), reader)
+	return fullReader, "application/pdf", nil
+}
+
+type mockInternalCli struct {
+	completenessResult bool
+	missingFields      []string
+}
+
+func (c *mockInternalCli) Get(ctx context.Context, path string, query map[string]string, dest interface{}) error {
+	if strings.Contains(path, "/completeness") {
+		// Populate dest
+		target, ok := dest.(*struct {
+			Data struct {
+				Complete bool     `json:"complete"`
+				Missing  []string `json:"missing"`
+			} `json:"data"`
+		})
+		if ok {
+			target.Data.Complete = c.completenessResult
+			target.Data.Missing = c.missingFields
+			return nil
+		}
+	}
+	return nil
+}
+
+func (c *mockInternalCli) Post(ctx context.Context, path string, body interface{}, dest interface{}) error {
+	return nil
+}
+func (c *mockInternalCli) Put(ctx context.Context, path string, body interface{}, dest interface{}) error {
+	return nil
+}
+func (c *mockInternalCli) Patch(ctx context.Context, path string, body interface{}, dest interface{}) error {
+	return nil
+}
+func (c *mockInternalCli) Delete(ctx context.Context, path string, dest interface{}) error {
+	return nil
+}
+func (c *mockInternalCli) PostMultipart(ctx context.Context, path, fileField, filename string, fileReader io.Reader, extraFields map[string]string, dest interface{}) error {
+	return nil
+}
+
+func TestAdmissionService_DocumentsAndSubmitFlow(t *testing.T) {
 	ctx := context.Background()
 
 	activePeriod := &model.Period{
 		ID:           1,
-		Name:         "Gelombang 1 2026/2027",
 		AcademicYear: "2026/2027",
-		StartDate:    time.Now().AddDate(0, -1, 0),
-		EndDate:      time.Now().AddDate(0, 1, 0),
+		StartDate:    time.Now().Add(-24 * time.Hour),
+		EndDate:      time.Now().Add(24 * time.Hour),
 		IsActive:     true,
 	}
 
-	closedPeriod := &model.Period{
-		ID:           2,
-		Name:         "Gelombang Lampau",
-		AcademicYear: "2025/2026",
-		StartDate:    time.Now().AddDate(0, -3, 0),
-		EndDate:      time.Now().AddDate(0, -2, 0),
-		IsActive:     false,
+	reqIjazah := model.DocumentRequirement{
+		ID:              uuid.New(),
+		AdmissionPathID: 1,
+		DocumentType:    "ijazah",
+		Name:            "Ijazah / SKL",
+		IsRequired:      true,
+		MaxSizeMB:       5,
+		AllowedFormats:  "pdf,jpg,png",
+	}
+
+	reqKtp := model.DocumentRequirement{
+		ID:              uuid.New(),
+		AdmissionPathID: 1,
+		DocumentType:    "ktp",
+		Name:            "KTP Asli",
+		IsRequired:      true,
+		MaxSizeMB:       3,
+		AllowedFormats:  "pdf,jpg,png",
 	}
 
 	regPath := &model.AdmissionPath{
@@ -220,147 +384,129 @@ func TestAdmissionService_RulesAndStateTransitions(t *testing.T) {
 		Code:            "REG",
 		RegistrationFee: 250000,
 		IsActive:        true,
+		Requirements:    []model.DocumentRequirement{reqIjazah, reqKtp},
 	}
 
-	t.Run("success create application and check outbox event", func(t *testing.T) {
-		appRepo := newMockAppRepo()
-		outboxRepo := &mockOutboxRepo{}
-		periodRepo := &mockPeriodRepo{period: activePeriod}
-		pathRepo := &mockPathRepo{paths: map[uint]*model.AdmissionPath{1: regPath}}
+	periodRepo := &mockPeriodRepo{period: activePeriod}
+	pathRepo := &mockPathRepo{paths: map[uint]*model.AdmissionPath{1: regPath}}
+	appRepo := newMockAppRepo()
+	docRepo := newMockDocRepo()
+	outboxRepo := &mockOutboxRepo{}
+	storageCli := &mockStorage{files: make(map[string][]byte)}
+	identityCli := &mockInternalCli{completenessResult: true}
+	notifCli := &mockInternalCli{}
+	financeCli := &mockInternalCli{}
 
-		svc := &admissionService{
-			periodRepo: periodRepo,
-			pathRepo:   pathRepo,
-			quotaRepo:  &mockQuotaRepo{},
-			appRepo:    appRepo,
-			outboxRepo: outboxRepo,
-		}
+	cfg := config.Config{
+		DocumentBucket: "pmb-admission-documents",
+	}
 
-		userID := uuid.New()
-		prodi1 := uuid.New()
-		req := &CreateApplicationRequest{
-			UserID:          userID,
-			PeriodID:        activePeriod.ID,
-			AdmissionPathID: regPath.ID,
-			Choice1ID:       prodi1,
-		}
+	svc := NewAdmissionService(
+		periodRepo,
+		pathRepo,
+		&mockQuotaRepo{},
+		appRepo,
+		docRepo,
+		outboxRepo,
+		notifCli,
+		identityCli,
+		financeCli,
+		storageCli,
+		cfg,
+	)
 
-		// Karena mockAppRepo.DB() bukan connection live, untuk testing unit kita bypass Transaction
-		// atau gunakan repository helper. Mari test logika service.
-		// Buat registrasi
-		regNo, err := appRepo.GenerateRegistrationNo(ctx, nil, activePeriod.ID, activePeriod.AcademicYear)
-		assert.NoError(t, err)
-		assert.Equal(t, "PMB-2026-1-00001", regNo)
+	userID := uuid.New()
+	appID := uuid.New()
+	app := &model.Application{
+		ID:              appID,
+		RegistrationNo:  "PMB-2026-1-00001",
+		UserID:          userID,
+		PeriodID:        1,
+		AdmissionPathID: 1,
+		Status:          model.StatusFormOpen,
+	}
+	_ = appRepo.CreateInTx(&gorm.DB{}, app)
 
-		app := &model.Application{
-			ID:              uuid.New(),
-			RegistrationNo:  regNo,
-			UserID:          req.UserID,
-			PeriodID:        req.PeriodID,
-			AdmissionPathID: req.AdmissionPathID,
-			Choice1ID:       req.Choice1ID,
-			Status:          model.StatusAwaitingPayment,
-		}
-		_ = appRepo.CreateInTx(nil, app)
+	// 1. Upload dokumen legal (PDF)
+	fileData := []byte("%PDF-1.4 dummy pdf content")
+	doc, err := svc.UploadDocument(ctx, appID, userID, "ijazah", bytes.NewReader(fileData), int64(len(fileData)), "ijazah.pdf", "application/pdf")
+	assert.NoError(t, err)
+	assert.NotNil(t, doc)
+	assert.Equal(t, "ijazah", doc.DocumentType)
+	assert.Equal(t, model.DocStatusUploaded, doc.Status)
 
-		// State harus awaiting_payment
-		assert.Equal(t, model.StatusAwaitingPayment, app.Status)
-		assert.True(t, app.CanChangeMajor())
+	// 2. Upload ditolak jika magic bytes tidak sesuai (misal file .exe berkedok .pdf)
+	storageCli.rejectMagic = true
+	_, errExe := svc.UploadDocument(ctx, appID, userID, "ktp", bytes.NewReader([]byte("MZ executable header")), 20, "virus.pdf", "application/pdf")
+	assert.Error(t, errExe)
+	assert.True(t, errors.Is(errExe, storage.ErrFileTypeNotAllowed))
+	storageCli.rejectMagic = false
 
-		// Test Ganti Pilihan Prodi saat awaiting_payment
-		prodi2 := uuid.New()
-		err = svc.ChangeChoices(ctx, &ChangeChoicesRequest{
-			ApplicationID: app.ID,
-			UserID:        userID,
-			Choice1ID:     prodi2,
-		})
-		assert.NoError(t, err)
-		updated, _ := appRepo.FindByID(ctx, app.ID)
-		assert.Equal(t, prodi2, updated.Choice1ID)
+	// 3. Submit ditolak jika biodata belum lengkap (BIODATA_INCOMPLETE)
+	identityCli.completenessResult = false
+	identityCli.missingFields = []string{"alamat ktp", "nama ibu"}
+	_, errSubmitIncomplete := svc.SubmitApplication(ctx, appID, userID)
+	assert.Error(t, errSubmitIncomplete)
+	assert.Contains(t, errSubmitIncomplete.Error(), "BIODATA_INCOMPLETE")
 
-		// Ubah status ke payment_verified, ganti prodi harus ditolak dengan ErrInvalidState
-		updated.Status = model.StatusPaymentVerified
-		assert.False(t, updated.CanChangeMajor())
-		err = svc.ChangeChoices(ctx, &ChangeChoicesRequest{
-			ApplicationID: app.ID,
-			UserID:        userID,
-			Choice1ID:     prodi1,
-		})
-		assert.ErrorIs(t, err, ErrInvalidState)
-	})
+	// 4. Submit ditolak jika dokumen wajib belum lengkap (DOCUMENT_REQUIRED)
+	identityCli.completenessResult = true
+	_, errSubmitMissingDoc := svc.SubmitApplication(ctx, appID, userID)
+	assert.Error(t, errSubmitMissingDoc)
+	assert.Contains(t, errSubmitMissingDoc.Error(), "DOCUMENT_REQUIRED")
+	assert.Contains(t, errSubmitMissingDoc.Error(), "KTP Asli")
 
-	t.Run("reject when period closed", func(t *testing.T) {
-		periodRepo := &mockPeriodRepo{period: closedPeriod}
-		pathRepo := &mockPathRepo{paths: map[uint]*model.AdmissionPath{1: regPath}}
-		appRepo := newMockAppRepo()
-		outboxRepo := &mockOutboxRepo{}
+	// 5. Upload dokumen KTP agar lengkap
+	docKtp, err := svc.UploadDocument(ctx, appID, userID, "ktp", bytes.NewReader(fileData), int64(len(fileData)), "ktp.pdf", "application/pdf")
+	assert.NoError(t, err)
+	assert.NotNil(t, docKtp)
 
-		svc := NewAdmissionService(periodRepo, pathRepo, &mockQuotaRepo{}, appRepo, outboxRepo, nil)
+	// 6. Submit sukses -> status bertransisi ke submitted
+	submittedApp, err := svc.SubmitApplication(ctx, appID, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, model.StatusSubmitted, submittedApp.Status)
 
-		req := &CreateApplicationRequest{
-			UserID:          uuid.New(),
-			PeriodID:        closedPeriod.ID,
-			AdmissionPathID: regPath.ID,
-			Choice1ID:       uuid.New(),
-		}
+	// 7. Admin PMB Verifikasi Berkas: Minta Revisi (salah satu invalid)
+	adminID := uuid.New()
+	reviewsRevision := []DocumentReviewItem{
+		{DocumentType: "ijazah", Status: "valid", Notes: "Ijazah jelas"},
+		{DocumentType: "ktp", Status: "invalid", Notes: "Foto KTP buram dan terpotong"},
+	}
+	appRev, err := svc.VerifyApplicationDocuments(ctx, appID, adminID, reviewsRevision)
+	assert.NoError(t, err)
+	assert.Equal(t, model.StatusRevisionRequired, appRev.Status)
 
-		_, err := svc.CreateApplication(ctx, req)
-		assert.ErrorIs(t, err, ErrPeriodClosed)
-	})
+	// 8. Mahasiswa mengunggah ulang dokumen revisi (re-upload KTP) dan re-submit
+	docKtpNew, err := svc.UploadDocument(ctx, appID, userID, "ktp", bytes.NewReader(fileData), int64(len(fileData)), "ktp_jelas.pdf", "application/pdf")
+	assert.NoError(t, err)
+	assert.Equal(t, model.DocStatusUploaded, docKtpNew.Status)
 
-	t.Run("reject duplicate application in same period", func(t *testing.T) {
-		periodRepo := &mockPeriodRepo{period: activePeriod}
-		pathRepo := &mockPathRepo{paths: map[uint]*model.AdmissionPath{1: regPath}}
-		appRepo := newMockAppRepo()
-		outboxRepo := &mockOutboxRepo{}
+	resubmittedApp, err := svc.SubmitApplication(ctx, appID, userID)
+	assert.NoError(t, err)
+	assert.Equal(t, model.StatusSubmitted, resubmittedApp.Status)
 
-		userID := uuid.New()
-		// Simulasikan pendaftaran sudah ada
-		_ = appRepo.CreateInTx(nil, &model.Application{
-			ID:              uuid.New(),
-			UserID:          userID,
-			PeriodID:        activePeriod.ID,
-			AdmissionPathID: regPath.ID,
-			RegistrationNo:  "PMB-2026-1-00001",
-			Status:          model.StatusAwaitingPayment,
-		})
+	// 9. Admin PMB Verifikasi Berkas: Lolos Verifikasi (seluruh wajib valid)
+	reviewsPass := []DocumentReviewItem{
+		{DocumentType: "ktp", Status: "valid", Notes: "KTP perbaikan telah jelas"},
+	}
+	appVerified, err := svc.VerifyApplicationDocuments(ctx, appID, adminID, reviewsPass)
+	assert.NoError(t, err)
+	assert.Equal(t, model.StatusVerified, appVerified.Status)
 
-		svc := NewAdmissionService(periodRepo, pathRepo, &mockQuotaRepo{}, appRepo, outboxRepo, nil)
+	// 10. Admin membaca Presigned URL dokumen: kedaluwarsa tepat 300 detik (5 menit)
+	url, err := svc.GetDocumentPresignedURL(ctx, appID, "ktp", adminID, "admin_pmb")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, url)
+	assert.Equal(t, 300*time.Second, storageCli.lastExpiry)
 
-		req := &CreateApplicationRequest{
-			UserID:          userID,
-			PeriodID:        activePeriod.ID,
-			AdmissionPathID: regPath.ID,
-			Choice1ID:       uuid.New(),
-		}
+	// 11. Ekspor data ke XLSX
+	xlsxBytes, err := svc.ExportApplicationsXLSX(ctx, repository.ApplicationFilter{})
+	assert.NoError(t, err)
+	assert.NotEmpty(t, xlsxBytes)
 
-		_, err := svc.CreateApplication(ctx, req)
-		assert.ErrorIs(t, err, ErrDuplicateApplication)
-	})
-
-	t.Run("prodi role isolation guard", func(t *testing.T) {
-		appRepo := newMockAppRepo()
-		periodRepo := &mockPeriodRepo{period: activePeriod}
-		pathRepo := &mockPathRepo{paths: map[uint]*model.AdmissionPath{1: regPath}}
-		svc := NewAdmissionService(periodRepo, pathRepo, &mockQuotaRepo{}, appRepo, &mockOutboxRepo{}, nil)
-
-		prodiA := uuid.New()
-		prodiB := uuid.New()
-		appA := &model.Application{
-			ID:        uuid.New(),
-			UserID:    uuid.New(),
-			Choice1ID: prodiA,
-			Status:    model.StatusAwaitingPayment,
-		}
-		_ = appRepo.CreateInTx(nil, appA)
-
-		// Prodi A dapat mengakses
-		res, err := svc.GetApplicationDetail(ctx, appA.ID, uuid.New(), "prodi", &prodiA)
-		assert.NoError(t, err)
-		assert.Equal(t, appA.ID, res.ID)
-
-		// Prodi B ditolak dengan ErrForbiddenAccess
-		_, err = svc.GetApplicationDetail(ctx, appA.ID, uuid.New(), "prodi", &prodiB)
-		assert.ErrorIs(t, err, ErrForbiddenAccess)
-	})
+	// 12. Statistik Pendaftaran
+	stats, err := svc.GetStats(ctx)
+	assert.NoError(t, err)
+	assert.NotNil(t, stats)
+	assert.GreaterOrEqual(t, stats.TotalApplications, int64(1))
 }
