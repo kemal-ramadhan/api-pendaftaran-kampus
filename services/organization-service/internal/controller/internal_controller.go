@@ -1,0 +1,68 @@
+package controller
+
+import (
+	"errors"
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/organization-service/internal/dto"
+	"github.com/pkm-asia/pmb-backend/services/organization-service/internal/service"
+)
+
+type InternalController struct {
+	orgService service.OrganizationService
+}
+
+func NewInternalController(orgService service.OrganizationService) *InternalController {
+	return &InternalController{orgService: orgService}
+}
+
+// GetStudyProgramByCode godoc
+// @Summary Ambil Data Prodi (Internal)
+// @Description Mengambil data program studi untuk verifikasi inter-service (Auth, Admission). Dilindungi X-Internal-Token.
+// @Tags Internal
+// @Produce json
+// @Param code path string true "Kode Program Studi"
+// @Success 200 {object} response.SuccessResponse{data=dto.StudyProgramResponse}
+// @Failure 404 {object} response.ErrorResponse
+// @Router /internal/study-programs/{code} [get]
+func (ctl *InternalController) GetStudyProgramByCode(c *gin.Context) {
+	code := c.Param("code")
+	sp, err := ctl.orgService.GetStudyProgramByCode(c.Request.Context(), code)
+	if err != nil {
+		if errors.Is(err, service.ErrStudyProgramNotFound) {
+			response.NotFound(c, "Program studi tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil data program studi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Berhasil mengambil data program studi", sp)
+}
+
+// GetBatchStudyPrograms godoc
+// @Summary Ambil Data Batch Prodi (Internal)
+// @Description Mengambil data banyak program studi sekaligus berdasarkan daftar kode
+// @Tags Internal
+// @Accept json
+// @Produce json
+// @Param request body dto.BatchStudyProgramsRequest true "Daftar Kode Program Studi"
+// @Success 200 {object} response.SuccessResponse{data=[]dto.StudyProgramResponse}
+// @Failure 422 {object} response.ErrorResponse
+// @Router /internal/study-programs/batch [post]
+func (ctl *InternalController) GetBatchStudyPrograms(c *gin.Context) {
+	var req dto.BatchStudyProgramsRequest
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	programs, err := ctl.orgService.GetStudyProgramsByCodes(c.Request.Context(), req.Codes)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil data batch program studi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Berhasil mengambil data batch program studi", programs)
+}

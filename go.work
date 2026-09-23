@@ -6,4 +6,5 @@ use (
 	./services/_template
 	./services/api-gateway
 	./services/auth-service
+	./services/organization-service
 )
