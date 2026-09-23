@@ -243,6 +243,31 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Endpoint detail pendaftar `GET /api/v1/admission/admin/applications/:id` bagi panitia PMB menggabungkan data formulir (Admission), biodata lengkap dan data OCR KTP unmasked (Identity Service), serta status tagihan dan pembayaran (Finance Service) dalam satu representasi komprehensif.
 - **Rasional**: Menjamin integritas berkas calon mahasiswa dari ancaman malware berkas palsu, memastikan kepatuhan alur verifikasi berkas sebelum seleksi, memberikan kemudahan audit administratif bagi panitia PMB, dan menjaga keamanan dokumen privat dengan masa berlaku presigned URL yang ketat.
 
+---
+
+## 23. Fase 2: Exam Service — Sesi Ujian, Penugasan Dosen, Penjadwalan Peserta, Presensi, dan Kartu Ujian PDF dengan QR Code (F2-M7)
+- **Status**: Diputuskan pada Tahap 6, 23 Sep 2026
+- **Keputusan**:
+  - **Arsitektur Exam Service Mandiri**:
+    - Layanan Exam Service (`pmb-exam-service`) beroperasi sebagai microservice independen pada port `8087` dengan basis data relasional terisolasi `pmb_exam`.
+    - Mematuhi standar keamanan `docs/AGENT_RULES.md`: verifikasi HMAC API Gateway (`pkg/gatewayauth`), otentikasi inter-service token internal (`pkg/internalauth`), migrasi skema SQL terstruktur, dan isolasi role ketat.
+  - **Manajemen Sesi Ujian & Validasi Kapasitas**:
+    - Mendukung tipe sesi ujian tulis (`written_test`) dan wawancara (`interview`).
+    - Setiap sesi membatasi kuota peserta (`capacity`). Penjadwalan peserta baru baik secara manual maupun batch otomatis (*auto-assign*) memvalidasi kuota sesi yang tersisa; penambahan yang melebihi kapasitas ditolak dengan error `422 Unprocessable Entity (SESSION_CAPACITY_EXCEEDED)`.
+  - **Prasyarat Status Verified untuk Penjadwalan**:
+    - Hanya pendaftar yang telah lolos verifikasi berkas di Admission Service (`status = verified`) yang dapat dijadwalkan ke sesi ujian. Upaya penjadwalan pendaftar yang belum berstatus `verified` ditolak dengan kode `APPLICATION_NOT_VERIFIED` (HTTP 422).
+    - Setelah berhasil dijadwalkan, Exam Service secara atomik memanggil Admission Service (`POST /internal/applications/:id/status`) untuk memutasi status pendaftaran ke `exam_scheduled` dan memicu notifikasi email jadwal ujian ke Notification Service.
+  - **Penomoran Peserta & Penerbitan Kartu Ujian Resmi (PDF + QR Code)**:
+    - Nomor peserta ujian diterbitkan unik dengan format resmi: `EXAM-{YYYY}-{urut:05d}`.
+    - Generator kartu ujian memproduksi berkas standar `%PDF-1.4` murni Go (tanpa library CGO eksternal).
+    - Kartu memuat: nomor peserta, nama pendaftar (dari Identity Service), pas foto, rincian jadwal, lokasi/link virtual, tata tertib, dan kode QR 2D berbasis vektor resolusi tajam (menggunakan `github.com/skip2/go-qrcode`).
+    - Berkas kartu tersimpan privat di MinIO bucket `pmb-exam-cards` dan dapat diunduh oleh calon mahasiswa via `GET /api/v1/exam/me/card`.
+  - **Isolasi Akses & Presensi Kehadiran Dosen Penguji**:
+    - Dosen penguji (role `dosen`) hanya diizinkan melihat sesi dan peserta yang secara eksplisit ditugaskan kepada mereka (`session_examiners`).
+    - Presensi kehadiran peserta (`present` / `absent`) dapat dicatat oleh Admin PMB atau oleh Dosen Penguji yang bertugas pada sesi tersebut via `PATCH /api/v1/exam/admin/participants/:id/attendance`. Upaya perubahan presensi oleh dosen pada sesi lain ditolak dengan HTTP 403 (`ErrForbiddenExaminer`).
+- **Rasional**: Menjamin ketertiban seleksi penerimaan mahasiswa baru, memastikan integritas dokumen identitas peserta di ruang ujian melalui QR code verifikasi pengawas, dan mengisolasi wewenang dosen penguji secara aman sesuai pembagian tugas.
+
+
 
 
 

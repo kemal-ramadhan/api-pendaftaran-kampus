@@ -7,6 +7,7 @@ use (
 	./services/admission-service
 	./services/api-gateway
 	./services/auth-service
+	./services/exam-service
 	./services/finance-service
 	./services/identity-service
 	./services/notification-service

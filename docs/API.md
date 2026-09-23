@@ -1174,4 +1174,164 @@ Menyetujui atau menolak bukti transfer bank.
   ```
 - **Catatan**: Jika ditolak (`reject`), status pembayaran menjadi `rejected` dan calon mahasiswa dapat mengunggah bukti baru. Jika disetujui (`approve`), tagihan lunas dan kwitansi terbit.
 
+---
+
+## 11. Exam Service (`pmb-exam-service`)
+
+Exam Service mengelola sesi ujian tulis dan wawancara, penugasan dosen penguji, penjadwalan peserta pendaftar yang telah terverifikasi, pencatatan kehadiran presensi, dan penerbitan kartu tanda peserta ujian resmi (PDF) dengan QR code dinamis.
+
+### 11.1 Manajemen Sesi Ujian (Admin PMB)
+
+#### `POST /api/v1/exam/admin/sessions`
+Membuat sesi ujian baru.
+- **Akses**: `admin_pmb`, `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "period_id": "b0000000-0000-0000-0000-000000000001",
+    "path_id": "c0000000-0000-0000-0000-000000000001",
+    "type": "written_test", // atau "interview"
+    "study_program_code": "TI", // opsional
+    "title": "Ujian Tulis Kemampuan Dasar Sesi 1",
+    "start_at": "2026-11-01T08:00:00Z",
+    "end_at": "2026-11-01T10:00:00Z",
+    "location": "Gedung Rektorat Lab Komputer 1",
+    "meeting_link": null,
+    "capacity": 30
+  }
+  ```
+- **Respons (201 Created)**: Objek sesi ujian yang berhasil dibuat.
+
+#### `GET /api/v1/exam/admin/sessions`
+Mendapatkan daftar seluruh sesi ujian dengan filter fleksibel.
+- **Akses**: `admin_pmb`, `superadmin`
+- **Query Params**: `period_id`, `path_id`, `type`, `is_active`
+
+#### `GET /api/v1/exam/admin/sessions/:id`
+Mendapatkan rincian sesi ujian beserta daftar dosen penguji bertugas dan jumlah peserta terdaftar.
+- **Akses**: `admin_pmb`, `superadmin`
+
+#### `PUT /api/v1/exam/admin/sessions/:id`
+Memperbarui informasi jadwal, kuota, atau lokasi sesi ujian.
+- **Akses**: `admin_pmb`, `superadmin`
+
+#### `DELETE /api/v1/exam/admin/sessions/:id`
+Menghapus sesi ujian (hanya diizinkan jika belum memiliki peserta terdaftar).
+- **Akses**: `admin_pmb`, `superadmin`
+
+---
+
+### 11.2 Penugasan Dosen Penguji
+
+#### `POST /api/v1/exam/admin/sessions/:id/examiners`
+Menugaskan dosen penguji ke sesi ujian tertentu.
+- **Akses**: `admin_pmb`, `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "examiner_user_id": "d0000000-0000-0000-0000-000000000001"
+  }
+  ```
+
+#### `DELETE /api/v1/exam/admin/sessions/:id/examiners/:user_id`
+Mencabut penugasan dosen dari sesi ujian.
+- **Akses**: `admin_pmb`, `superadmin`
+
+---
+
+### 11.3 Penjadwalan Peserta Ujian
+
+#### `POST /api/v1/exam/admin/sessions/:id/participants`
+Menjadwalkan pendaftar ke sesi ujian secara manual.
+- **Akses**: `admin_pmb`, `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "application_id": "e0000000-0000-0000-0000-000000000001"
+  }
+  ```
+- **Aturan Guard**:
+  - Pendaftar wajib berstatus `verified` di Admission Service. Jika tidak, mengembalikan `422 Unprocessable Entity (APPLICATION_NOT_VERIFIED)`.
+  - Jumlah peserta tidak boleh melampaui kapasitas sesi. Jika penuh, mengembalikan `422 Unprocessable Entity (SESSION_CAPACITY_EXCEEDED)`.
+  - Satu pendaftar tidak dapat dijadwalkan ganda pada sesi yang sama (`409 Conflict (DUPLICATE_PARTICIPANT)`).
+- **Side Effects**:
+  - Menerbitkan nomor peserta unik berformat `EXAM-{YYYY}-{urut:05d}`.
+  - Menerbitkan kartu tanda peserta ujian (PDF) dengan QR code dan tersimpan di MinIO bucket `pmb-exam-cards`.
+  - Otomatis mengubah status pendaftaran di Admission Service menjadi `exam_scheduled`.
+  - Mengirimkan email pemberitahuan jadwal & kartu ujian ke Notification Service.
+
+#### `POST /api/v1/exam/admin/sessions/:id/auto-assign`
+Menjadwalkan beberapa pendaftar sekaligus (*batch*) ke sesi ujian hingga batas kapasitas sesi terpenuhi.
+- **Akses**: `admin_pmb`, `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "application_ids": [
+      "e0000000-0000-0000-0000-000000000001",
+      "e0000000-0000-0000-0000-000000000002"
+    ]
+  }
+  ```
+
+#### `GET /api/v1/exam/admin/sessions/:id/participants`
+Mengambil daftar seluruh peserta terdaftar di sesi ujian beserta status presensi.
+- **Akses**: `admin_pmb`, `superadmin`
+
+---
+
+### 11.4 Presensi Kehadiran Peserta
+
+#### `PATCH /api/v1/exam/admin/participants/:id/attendance`
+Mencatat status kehadiran peserta pada sesi ujian.
+- **Akses**: `admin_pmb`, `superadmin`, atau `dosen` yang ditugaskan pada sesi terkait
+- **Request Body**:
+  ```json
+  {
+    "attendance": "present" // atau "absent"
+  }
+  ```
+- **Isolasi Keamanan**: Akun dosen hanya dapat mengubah presensi peserta pada sesi yang ditugaskan kepadanya. Jika mengakses sesi dosen lain, mengembalikan `403 Forbidden`.
+
+---
+
+### 11.5 Endpoint Calon Mahasiswa (`/api/v1/exam/me/...`)
+
+#### `GET /api/v1/exam/me/schedule`
+Melihat rincian jadwal sesi ujian peserta yang terdaftar untuk akun calon mahasiswa login.
+- **Akses**: `calon_mahasiswa`
+
+#### `GET /api/v1/exam/me/card`
+Mengunduh berkas Kartu Tanda Peserta Ujian Seleksi Masuk resmi berformat PDF.
+- **Akses**: `calon_mahasiswa`
+- **Respons**: Binary stream PDF dengan header:
+  - `Content-Type: application/pdf`
+  - `Content-Disposition: attachment; filename="kartu-ujian-EXAM-YYYY-XXXXX.pdf"`
+- **Karakteristik Dokumen**: Memuat nomor peserta resmi, identitas, foto, jadwal, lokasi, tata tertib, dan kode QR 2D yang dapat dipindai oleh pengawas ujian di lokasi.
+
+---
+
+### 11.6 Endpoint Dosen Penguji (`/api/v1/exam/examiner/...`)
+
+#### `GET /api/v1/exam/examiner/sessions`
+Mengambil daftar sesi ujian yang ditugaskan khusus untuk dosen penguji yang sedang login.
+- **Akses**: `dosen`
+- **Isolasi**: Sesi milik dosen lain tidak terlihat.
+
+#### `GET /api/v1/exam/examiner/sessions/:id/participants`
+Mengambil daftar peserta pada sesi ujian dosen bersangkutan untuk keperluan verifikasi identitas dan penilaian wawancara/tulis.
+- **Akses**: `dosen` (hanya sesi yang ditugaskan)
+
+---
+
+### 11.7 Endpoint Internal Inter-Service (`/internal/...`)
+
+#### `GET /internal/participants/:application_id`
+Mengambil data peserta ujian berdasarkan ID pendaftaran (digunakan oleh Scoring Service untuk memverifikasi penugasan dosen penguji).
+- **Akses**: Khusus internal (Header `X-Internal-Token`)
+
+#### `GET /internal/sessions/:id`
+Mengambil rincian sesi ujian.
+- **Akses**: Khusus internal (Header `X-Internal-Token`)
+
+
 

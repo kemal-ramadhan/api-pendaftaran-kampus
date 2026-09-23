@@ -2112,12 +2112,229 @@
           }
         }
       ]
+    },
+    {
+      "name": "10. EXAM",
+      "item": [
+        {
+          "name": "10.1 [Admin PMB] Buat Sesi Ujian",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"period_id\": \"{{period_id}}\",\n  \"path_id\": \"{{path_id}}\",\n  \"type\": \"written_test\",\n  \"title\": \"Ujian Tulis Kemampuan Dasar Sesi 1\",\n  \"start_at\": \"2026-11-01T08:00:00Z\",\n  \"end_at\": \"2026-11-01T10:00:00Z\",\n  \"location\": \"Gedung Rektorat Lab Komputer 1\",\n  \"capacity\": 30\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "10.2 [Admin PMB] Daftar Sesi Ujian",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "10.3 [Admin PMB] Detail Sesi Ujian",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions/{{exam_session_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions", "{{exam_session_id}}"]
+            }
+          }
+        },
+        {
+          "name": "10.4 [Admin PMB] Tugaskan Dosen Penguji",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"examiner_user_id\": \"{{dosen_user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions/{{exam_session_id}}/examiners",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions", "{{exam_session_id}}", "examiners"]
+            }
+          }
+        },
+        {
+          "name": "10.5 [Admin PMB] Jadwalkan Peserta Ujian",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_id\": \"{{application_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions/{{exam_session_id}}/participants",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions", "{{exam_session_id}}", "participants"]
+            }
+          }
+        },
+        {
+          "name": "10.6 [Admin PMB] Auto-Assign Peserta Ujian",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"application_ids\": [\"{{application_id}}\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions/{{exam_session_id}}/auto-assign",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions", "{{exam_session_id}}", "auto-assign"]
+            }
+          }
+        },
+        {
+          "name": "10.7 [Admin PMB] Daftar Peserta Sesi",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{admin_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/admin/sessions/{{exam_session_id}}/participants",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "sessions", "{{exam_session_id}}", "participants"]
+            }
+          }
+        },
+        {
+          "name": "10.8 [Presensi] Update Kehadiran Peserta",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{dosen_token_access}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attendance\": \"present\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/exam/admin/participants/{{participant_id}}/attendance",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "admin", "participants", "{{participant_id}}", "attendance"]
+            }
+          }
+        },
+        {
+          "name": "10.9 [Calon Mahasiswa] Jadwal Ujian Saya",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/me/schedule",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "me", "schedule"]
+            }
+          }
+        },
+        {
+          "name": "10.10 [Calon Mahasiswa] Unduh Kartu Ujian (PDF)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/me/card",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "me", "card"]
+            }
+          }
+        },
+        {
+          "name": "10.11 [Dosen] Sesi Ujian Ditugaskan",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{dosen_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/examiner/sessions",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "examiner", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "10.12 [Dosen] Peserta Sesi Penguji",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{dosen_token_access}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/exam/examiner/sessions/{{exam_session_id}}/participants",
+              "host": ["{{base_url}}"],
+              "path": ["exam", "examiner", "sessions", "{{exam_session_id}}", "participants"]
+            }
+          }
+        },
+        {
+          "name": "10.13 [Internal] Cek Peserta Ujian by AppID",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "X-Internal-Token", "value": "{{internal_token}}" }
+            ],
+            "url": {
+              "raw": "{{exam_service_direct_url}}/internal/participants/{{application_id}}",
+              "host": ["{{exam_service_direct_url}}"],
+              "path": ["internal", "participants", "{{application_id}}"]
+            }
+          }
+        }
+      ]
     }
   ],
   "variable": [
     {
       "key": "base_url",
       "value": "http://localhost:8000/api/v1",
+      "type": "string"
+    },
+    {
+      "key": "exam_service_direct_url",
+      "value": "http://localhost:8087",
       "type": "string"
     },
     {

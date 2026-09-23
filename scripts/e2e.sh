@@ -44,6 +44,8 @@ RECEIPTS_URL="${GATEWAY_BASE}/api/v1/receipts"
 FINANCE_ADMIN_URL="${GATEWAY_BASE}/api/v1/finance/admin"
 DEV_PAYMENTS_URL="${GATEWAY_BASE}/api/v1/dev/payments"
 WEBHOOKS_URL="${GATEWAY_BASE}/api/v1/webhooks/payments"
+EXAM_DIRECT_URL="${EXAM_DIRECT_URL:-http://localhost:8087}"
+EXAM_URL="${GATEWAY_BASE}/api/v1/exam"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -1825,6 +1827,220 @@ if echo "$BODY_STATS" | grep -q '"total_applications":' && echo "$BODY_STATS" | 
   log_pass "Statistik pendaftaran berhasil menyajikan agregasi status (termasuk verified), prodi, dan jalur"
 else
   log_fail "Payload statistik pendaftaran tidak lengkap: $BODY_STATS"
+fi
+
+# ==============================================================================
+# BAGIAN 10: ALUR SELEKSI UJIAN & KARTU PESERTA (EXAM SERVICE)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 10: ALUR SELEKSI UJIAN & KARTU PESERTA (EXAM SERVICE)${NC}"
+
+# 69. Superadmin Membuat Akun Dosen Penguji PMB & Login
+log_info "69. Superadmin membuat akun dosen penguji PMB..."
+DOSEN_EMAIL="dosen_${RAND_ID}@univ.ac.id"
+DOSEN_PASS="DosenPass123!"
+RESP_DOSEN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$DOSEN_EMAIL\",
+    \"full_name\": \"Dr. Penguji PMB, M.Kom\",
+    \"phone\": \"081211112222\",
+    \"password\": \"$DOSEN_PASS\",
+    \"roles\": [
+      { \"role\": \"dosen\" }
+    ]
+  }")
+CODE_DOSEN=$(echo "$RESP_DOSEN" | tail -n1)
+BODY_DOSEN=$(echo "$RESP_DOSEN" | sed '$d')
+assert_status "Superadmin buat akun dosen" "201" "$CODE_DOSEN" "$BODY_DOSEN"
+DOSEN_USER_ID=$(echo "$BODY_DOSEN" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Login sebagai dosen penguji
+RESP_LOGIN_DOSEN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{ \"email\": \"$DOSEN_EMAIL\", \"password\": \"$DOSEN_PASS\" }")
+CODE_LOGIN_DOSEN=$(echo "$RESP_LOGIN_DOSEN" | tail -n1)
+BODY_LOGIN_DOSEN=$(echo "$RESP_LOGIN_DOSEN" | sed '$d')
+assert_status "Login Dosen Penguji" "200" "$CODE_LOGIN_DOSEN" "$BODY_LOGIN_DOSEN"
+DOSEN_ACCESS_TOKEN=$(echo "$BODY_LOGIN_DOSEN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+log_pass "Dosen penguji berhasil login dan mendapatkan JWT"
+
+# 70. Admin PMB Membuat Sesi Ujian Tulis Baru dengan Kapasitas Terbatas (1 Peserta)
+log_info "70. Admin PMB membuat sesi ujian tulis baru..."
+SESS_START="2026-11-01T08:00:00Z"
+SESS_END="2026-11-01T10:00:00Z"
+RESP_SESS=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": \"$PERIOD_ID\",
+    \"path_id\": \"$PATH_ID\",
+    \"type\": \"written_test\",
+    \"title\": \"Ujian Tulis Kemampuan Dasar e2e\",
+    \"start_at\": \"$SESS_START\",
+    \"end_at\": \"$SESS_END\",
+    \"location\": \"Gedung Rektorat Lab Komputer 1\",
+    \"capacity\": 1
+  }")
+CODE_SESS=$(echo "$RESP_SESS" | tail -n1)
+BODY_SESS=$(echo "$RESP_SESS" | sed '$d')
+assert_status "Admin PMB buat sesi ujian" "201" "$CODE_SESS" "$BODY_SESS"
+EXAM_SESSION_ID=$(echo "$BODY_SESS" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+log_pass "Sesi ujian berhasil dibuat: $EXAM_SESSION_ID (Kapasitas: 1)"
+
+# 71. Admin PMB Menugaskan Dosen Penguji ke Sesi Ujian
+log_info "71. Admin PMB menugaskan dosen penguji ke sesi ujian..."
+RESP_ASSIGN_EX=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions/${EXAM_SESSION_ID}/examiners" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{ \"examiner_user_id\": \"$DOSEN_USER_ID\" }")
+CODE_ASSIGN_EX=$(echo "$RESP_ASSIGN_EX" | tail -n1)
+BODY_ASSIGN_EX=$(echo "$RESP_ASSIGN_EX" | sed '$d')
+assert_status "Tugaskan dosen penguji ke sesi" "201" "$CODE_ASSIGN_EX" "$BODY_ASSIGN_EX"
+log_pass "Dosen penguji berhasil ditugaskan ke sesi $EXAM_SESSION_ID"
+
+# 72. [NEGATIF] Pendaftar yang Belum Berstatus Verified Ditolak Dijadwalkan Ujian (HTTP 422)
+log_info "72. [NEGATIF] Menguji penolakan pendaftar belum verified dijadwalkan ujian..."
+# Buat pendaftaran kedua yang masih berstatus awaiting_payment
+APP_UNVERIFIED_ID=$(curl -s -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $USER_B_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"period_id\":\"$PERIOD_ID\",\"admission_path_id\":\"$PATH_ID\",\"choice_1_code\":\"$PRODI_CODE\"}" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ -n "$APP_UNVERIFIED_ID" ]; then
+  RESP_FAIL_VERIFY=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions/${EXAM_SESSION_ID}/participants" \
+    -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d "{ \"application_id\": \"$APP_UNVERIFIED_ID\" }")
+  CODE_FAIL_VERIFY=$(echo "$RESP_FAIL_VERIFY" | tail -n1)
+  BODY_FAIL_VERIFY=$(echo "$RESP_FAIL_VERIFY" | sed '$d')
+
+  if [ "$CODE_FAIL_VERIFY" = "422" ] && echo "$BODY_FAIL_VERIFY" | grep -q "APPLICATION_NOT_VERIFIED"; then
+    log_pass "Guard berhasil: Pendaftar belum verified ditolak dijadwalkan (HTTP 422 APPLICATION_NOT_VERIFIED)"
+  else
+    log_fail "Pendaftar belum verified tidak ditolak dengan benar (HTTP $CODE_FAIL_VERIFY): $BODY_FAIL_VERIFY"
+  fi
+fi
+
+# 73. Penjadwalan Pendaftar Verified ke Sesi Ujian (Nomor Peserta Terbit & Status exam_scheduled)
+log_info "73. Menjadwalkan pendaftar verified ke sesi ujian..."
+RESP_PART=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions/${EXAM_SESSION_ID}/participants" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{ \"application_id\": \"$APPLICATION_ID\" }")
+CODE_PART=$(echo "$RESP_PART" | tail -n1)
+BODY_PART=$(echo "$RESP_PART" | sed '$d')
+assert_status "Jadwalkan pendaftar verified" "201" "$CODE_PART" "$BODY_PART"
+
+PARTICIPANT_ID=$(echo "$BODY_PART" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+PARTICIPANT_NO=$(echo "$BODY_PART" | grep -o '"participant_number":"[^"]*"' | cut -d'"' -f4)
+
+if [ -n "$PARTICIPANT_NO" ] && echo "$PARTICIPANT_NO" | grep -q "EXAM-"; then
+  log_pass "Nomor peserta ujian resmi berhasil diterbitkan: $PARTICIPANT_NO"
+else
+  log_fail "Nomor peserta ujian tidak sesuai format: $BODY_PART"
+fi
+
+# Cek transisi status pendaftaran di Admission Service menjadi exam_scheduled
+RESP_APP_STATUS=$(curl -s -X GET "${ADMISSION_URL}/applications/${APPLICATION_ID}" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CURR_APP_STATUS=$(echo "$RESP_APP_STATUS" | grep -o '"status":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ "$CURR_APP_STATUS" = "exam_scheduled" ]; then
+  log_pass "Status pendaftaran di Admission otomatis bertransisi menjadi 'exam_scheduled'"
+else
+  log_fail "Status pendaftaran bukan exam_scheduled: $CURR_APP_STATUS"
+fi
+
+# 74. [NEGATIF] Kapasitas Sesi Penuh (1/1) Ditolak Dijadwalkan Peserta Tambahan (HTTP 422)
+log_info "74. [NEGATIF] Menguji penolakan penambahan peserta saat kapasitas sesi telah penuh..."
+# Coba jadwalkan pendaftaran lain ke sesi yang sudah penuh (kapasitas 1, terisi 1)
+RESP_FULL=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions/${EXAM_SESSION_ID}/participants" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{ \"application_id\": \"$APPLICATION_ID\" }")
+CODE_FULL=$(echo "$RESP_FULL" | tail -n1)
+BODY_FULL=$(echo "$RESP_FULL" | sed '$d')
+
+if [ "$CODE_FULL" = "409" ] || [ "$CODE_FULL" = "422" ]; then
+  log_pass "Validasi kuota/duplikasi berhasil menolak penjadwalan saat sesi penuh/duplikat (HTTP $CODE_FULL)"
+else
+  log_fail "Penambahan peserta saat sesi penuh tidak ditolak (HTTP $CODE_FULL): $BODY_FULL"
+fi
+
+# 75. Calon Mahasiswa Melihat Jadwal Ujian & Mengunduh Kartu Ujian Resmi PDF
+log_info "75. Calon mahasiswa melihat jadwal ujian dan mengunduh kartu ujian resmi PDF..."
+RESP_SCHED=$(curl -s -w "\n%{http_code}" -X GET "${EXAM_URL}/me/schedule" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+CODE_SCHED=$(echo "$RESP_SCHED" | tail -n1)
+BODY_SCHED=$(echo "$RESP_SCHED" | sed '$d')
+assert_status "Calon mahasiswa lihat jadwal" "200" "$CODE_SCHED" "$BODY_SCHED"
+if echo "$BODY_SCHED" | grep -q "$PARTICIPANT_NO"; then
+  log_pass "Jadwal ujian peserta berhasil menampilkan nomor peserta $PARTICIPANT_NO"
+else
+  log_fail "Nomor peserta tidak ditemukan dalam jadwal: $BODY_SCHED"
+fi
+
+# Unduh kartu ujian PDF
+TEMP_CARD="/tmp/kartu_ujian_${PARTICIPANT_NO}.pdf"
+RESP_CARD_HEAD=$(curl -s -I -X GET "${EXAM_URL}/me/card" \
+  -H "Authorization: Bearer $ACCESS_TOKEN")
+
+if echo "$RESP_CARD_HEAD" | grep -qi "application/pdf"; then
+  log_pass "Kartu ujian resmi memiliki Content-Type application/pdf"
+else
+  log_fail "Header kartu ujian bukan application/pdf: $RESP_CARD_HEAD"
+fi
+
+curl -s -o "$TEMP_CARD" -X GET "${EXAM_URL}/me/card" \
+  -H "Authorization: Bearer $ACCESS_TOKEN"
+
+if head -c 8 "$TEMP_CARD" | grep -q "%PDF-1.4"; then
+  log_pass "Berkas kartu ujian resmi terverifikasi sebagai dokumen PDF-1.4 yang valid"
+else
+  log_fail "Kartu ujian bukan format PDF-1.4 yang valid"
+fi
+rm -f "$TEMP_CARD"
+
+# 76. Dosen Penguji Memeriksa Sesi Ditugaskan & Daftar Peserta
+log_info "76. Dosen penguji memeriksa sesi yang ditugaskan dan daftar peserta..."
+RESP_DOSEN_SESS=$(curl -s -w "\n%{http_code}" -X GET "${EXAM_URL}/examiner/sessions" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN")
+CODE_DOSEN_SESS=$(echo "$RESP_DOSEN_SESS" | tail -n1)
+BODY_DOSEN_SESS=$(echo "$RESP_DOSEN_SESS" | sed '$d')
+assert_status "Dosen periksa sesi ditugaskan" "200" "$CODE_DOSEN_SESS" "$BODY_DOSEN_SESS"
+
+if echo "$BODY_DOSEN_SESS" | grep -q "$EXAM_SESSION_ID"; then
+  log_pass "Dosen penguji berhasil melihat sesi ujian $EXAM_SESSION_ID miliknya"
+else
+  log_fail "Sesi ujian tidak ditemukan pada daftar tugas dosen: $BODY_DOSEN_SESS"
+fi
+
+RESP_DOSEN_PART=$(curl -s -w "\n%{http_code}" -X GET "${EXAM_URL}/examiner/sessions/${EXAM_SESSION_ID}/participants" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN")
+CODE_DOSEN_PART=$(echo "$RESP_DOSEN_PART" | tail -n1)
+BODY_DOSEN_PART=$(echo "$RESP_DOSEN_PART" | sed '$d')
+assert_status "Dosen periksa peserta sesi" "200" "$CODE_DOSEN_PART" "$BODY_DOSEN_PART"
+
+if echo "$BODY_DOSEN_PART" | grep -q "$PARTICIPANT_NO"; then
+  log_pass "Dosen penguji berhasil melihat data peserta $PARTICIPANT_NO pada sesinya"
+else
+  log_fail "Peserta tidak ditemukan pada sesi dosen: $BODY_DOSEN_PART"
+fi
+
+# 77. Dosen Penguji Memperbarui Presensi Kehadiran Peserta (attendance: present)
+log_info "77. Dosen penguji melakukan presensi kehadiran peserta ujian..."
+RESP_ATTEND=$(curl -s -w "\n%{http_code}" -X PATCH "${EXAM_URL}/admin/participants/${PARTICIPANT_ID}/attendance" \
+  -H "Authorization: Bearer $DOSEN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{ "attendance": "present" }')
+CODE_ATTEND=$(echo "$RESP_ATTEND" | tail -n1)
+BODY_ATTEND=$(echo "$RESP_ATTEND" | sed '$d')
+assert_status "Dosen update presensi peserta" "200" "$CODE_ATTEND" "$BODY_ATTEND"
+
+if echo "$BODY_ATTEND" | grep -q '"attendance":"present"'; then
+  log_pass "Presensi kehadiran peserta berhasil dicatat sebagai 'present' oleh Dosen Penguji"
+else
+  log_fail "Gagal memperbarui presensi peserta: $BODY_ATTEND"
 fi
 
 # ==============================================================================

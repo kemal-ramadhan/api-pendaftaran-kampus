@@ -83,7 +83,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-06a *(baru)* | Scan KTP (OCR + perbaikan kualitas foto), «extend» Isi Biodata | Identity + OCR | Selesai |
 | UC-07 | Upload Dokumen Persyaratan | Admission | Selesai (Tahap 5) |
 | UC-08 | Bayar Biaya Pendaftaran | Finance | Selesai (Tahap 4) |
-| UC-09 | Cetak Kartu Ujian | Exam | Fase 2 |
+| UC-09 | Cetak Kartu Ujian | Exam | Selesai (Tahap 6) |
 | UC-10 | Lihat Pengumuman Hasil | Selection | Fase 2 |
 | UC-11 | Bayar Daftar Ulang | Finance | Fase 2 |
 | UC-12 | Daftar Ulang | Student | Fase 2 |
@@ -94,8 +94,8 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-17 | Kirim Notifikasi | Notification | Selesai (Tahap 3) |
 | UC-18 | Kelola Data Pendaftar | Admission | Selesai (Tahap 3 & 5) |
 | UC-19 | Verifikasi Dokumen | Admission | Selesai (Tahap 5) |
-| UC-20 | Kelola Jadwal Seleksi | Exam | Fase 2 |
-| UC-21 | Assign Dosen Penguji | Exam | Fase 2 |
+| UC-20 | Kelola Jadwal Seleksi | Exam | Selesai (Tahap 6) |
+| UC-21 | Assign Dosen Penguji | Exam | Selesai (Tahap 6) |
 | UC-22 | Publikasikan Pengumuman | Selection | Fase 2 |
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Fase 2 |
@@ -460,7 +460,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M4** Admission bagian 1 | Master data + buat pendaftaran + state machine awal | pendaftaran dibuat, kuota & periode tervalidasi |
 | **F2-M5** Finance bagian 1 | Skema biaya, tagihan, VA mock, webhook, transfer manual, verifikasi, kwitansi | bayar pendaftaran → Admission `form_open` |
 | **F2-M6** Admission bagian 2 | Upload dokumen, submit, verifikasi & revisi, export, statistik | **Selesai** (alur upload dokumen, validasi magic bytes, submit, verifikasi admin, revisi, presigned URL 5 menit, export xlsx, statistik selesai) |
-| **F2-M7** Exam | 4.6 | jadwal, dosen, peserta, kartu PDF |
+| **F2-M7** Exam | 4.6 | **Selesai** (jadwal sesi, dosen penguji, peserta verified, kartu PDF + QR, presensi selesai) |
 | **F2-M8** Scoring | 4.7 | dosen input nilai, rekap & ranking prodi |
 | **F2-M9** Selection | 4.8 | rekomendasi → persetujuan → pengumuman → tagihan daftar ulang |
 | **F2-M10** Finance bagian 2 | Cicilan, reminder, laporan & export | ajukan & setujui cicilan, bayar termin |

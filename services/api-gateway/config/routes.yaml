@@ -21,9 +21,12 @@ services:
     url: ${FINANCE_SERVICE_URL}
     timeout: 15s
     max_body: 10MB
+  exam:
+    url: ${EXAM_SERVICE_URL}
+    timeout: 15s
+    max_body: 5MB
   # slot service berikutnya (biarkan ter-comment sampai service dibuat)
   # selection:    { url: ${SELECTION_SERVICE_URL} }                    # /api/v1/selection
-  # exam:         { url: ${EXAM_SERVICE_URL} }                         # /api/v1/exam
   # scoring:      { url: ${SCORING_SERVICE_URL} }                      # /api/v1/scoring
   # student:      { url: ${STUDENT_SERVICE_URL} }                      # /api/v1/student
   # nim:          { url: ${NIM_SERVICE_URL} }                          # /api/v1/nim
@@ -112,4 +115,22 @@ routes:
     rewrite: /invoices
     auth: required
     max_body: 10MB
+  - prefix: /api/v1/exam/admin
+    service: exam
+    rewrite: /exam/admin
+    auth: required
+    roles: [admin_pmb, superadmin, dosen]
+    max_body: 5MB
+  - prefix: /api/v1/exam/examiner
+    service: exam
+    rewrite: /exam/examiner
+    auth: required
+    roles: [dosen, admin_pmb, superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/exam/me
+    service: exam
+    rewrite: /exam/me
+    auth: required
+    roles: [calon_mahasiswa, admin_pmb, superadmin]
+
 
