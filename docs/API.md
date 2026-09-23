@@ -1953,6 +1953,139 @@ Khusus dipanggil oleh service downstream (mis. Student Service) dengan menyertak
   }
   ```
 
+---
+
+## 14. Student Service (`pmb-student-service`)
+
+Student Service mengelola seluruh alur pendaftaran ulang calon mahasiswa baru yang telah dinyatakan lulus seleksi, verifikasi prasyarat kliring pembayaran tagihan daftar ulang (lunas penuh atau lunas termin pertama cicilan), pengisian data atribut kemahasiswaan (ukuran jas almamater, kontak darurat, dan pernyataan kepatuhan akademik), pencatatan entitas mahasiswa baru ke tabel `students`, persiapan outbox event untuk penerbitan NIM di Tahap 11, serta rekapitulasi data dan ekspor spreadsheet Excel `.xlsx` dengan pembatasan hak akses berbasis program studi.
+
+### 14.1 Endpoint Calon Mahasiswa (`/api/v1/student/me/...`)
+Seluruh endpoint di bawah mewajibkan token JWT calon mahasiswa yang valid (`auth: required`, role: `calon_mahasiswa`).
+
+#### 1. `GET /api/v1/student/me/reregistration`
+Mengambil status dan rincian formulir pendaftaran ulang calon mahasiswa yang login.
+- **Validasi Prasyarat**: Jika calon mahasiswa belum dinyatakan lulus seleksi atau pendaftaran belum terverifikasi panitia, permintaan ditolak seketika dengan status HTTP `422 Unprocessable Entity` (`NOT_PASSED`).
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Data pendaftaran ulang berhasil diambil",
+    "data": {
+      "reregistration": {
+        "id": "e0000000-0000-0000-0000-000000000001",
+        "application_id": "a0000000-0000-0000-0000-000000000001",
+        "user_id": "u0000000-0000-0000-0000-000000000001",
+        "accepted_program": "TI",
+        "status": "waiting_payment", // waiting_payment, in_progress, completed
+        "jacket_size": "XL",
+        "emergency_contact_name": "Bapak Sudirman",
+        "emergency_contact_phone": "081234567890",
+        "statement_agreed": false,
+        "completed_at": null
+      },
+      "is_payment_cleared": true,
+      "payment_status": "partially_paid", // paid / partially_paid / unpaid
+      "invoice_id": "i0000000-0000-0000-0000-000000000001",
+      "can_complete": false
+    }
+  }
+  ```
+
+#### 2. `PUT /api/v1/student/me/reregistration`
+Memperbarui data atribut registrasi mahasiswa baru (ukuran jas almamater, kontak darurat, dan pernyataan kepatuhan).
+- **Request Body**:
+  ```json
+  {
+    "jacket_size": "XL",
+    "emergency_contact_name": "Bapak Sudirman",
+    "emergency_contact_phone": "081234567890",
+    "statement_agreed": true
+  }
+  ```
+- **Validasi & Error**:
+  - `422 Unprocessable Entity (NOT_PASSED)`: Calon mahasiswa belum dinyatakan lulus seleksi.
+  - `422 Unprocessable Entity (ALREADY_COMPLETED)`: Pendaftaran ulang sudah berstatus selesai dan terkunci.
+  - `422 Unprocessable Entity (VALIDATION_ERROR)`: Ukuran jas almamater tidak valid (Pilihan: `S`, `M`, `L`, `XL`, `XXL`, `XXXL`).
+- **Response `200 OK`**: Mengembalikan objek detail pendaftaran ulang yang telah diperbarui dengan status transisi ke `in_progress`.
+
+#### 3. `POST /api/v1/student/me/reregistration/complete`
+Menyelesaikan alur pendaftaran ulang secara final.
+- **Validasi Transaksional**:
+  1. `422 Unprocessable Entity (PAYMENT_REQUIRED)`: Tagihan biaya daftar ulang belum lunas atau cicilan termin 1 belum dibayar.
+  2. `422 Unprocessable Entity (INCOMPLETE_DATA)`: Data jas almamater, kontak darurat, atau pernyataan kepatuhan belum lengkap/disetujui.
+- **Efek Transaksional**:
+  - Status pendaftaran ulang berubah menjadi `completed`, `completed_at` dicatat waktu sekarang.
+  - Entitas mahasiswa baru tercatat di tabel `students` dengan status awal `reregistered`.
+  - Event outbox `nim_issuance_requested` dicatat pada tabel `outbox_events` untuk persiapan konsumsi NIM Service.
+  - Status pendaftaran di Admission Service dimutasi otomatis menjadi `reregistered`.
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Pendaftaran ulang berhasil diselesaikan, Anda telah resmi terdaftar sebagai mahasiswa baru",
+    "data": {
+      "id": "s0000000-0000-0000-0000-000000000001",
+      "user_id": "u0000000-0000-0000-0000-000000000001",
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "nim": "",
+      "study_program_code": "TI",
+      "entry_year": 2026,
+      "entry_path": "Reguler",
+      "status": "reregistered",
+      "created_at": "2026-09-24T06:20:00Z"
+    }
+  }
+  ```
+
+---
+
+### 14.2 Endpoint Administrasi, Rekapitulasi, & Ekspor (`/api/v1/student/admin/...`)
+
+#### 1. `GET /api/v1/student/admin/students`
+Menampilkan daftar mahasiswa baru yang telah menyelesaikan daftar ulang.
+- **Akses**: `admin_pmb`, `superadmin`, `pimpinan`, dan `prodi`.
+- **Aturan Isolasi Role `prodi`**: Pengguna dengan role `prodi` secara otomatis dibatasi hanya dapat melihat data pada program studi yang sesuai dengan `scope_id` pada tokennya. Upaya mengakses prodi lain ditolak dengan status HTTP `403 Forbidden`.
+- **Query Params**: `page`, `per_page`, `study_program_code`, `status`, `entry_year`, `search`.
+- **Response `200 OK`**: Mengembalikan array objek mahasiswa baru beserta metadata paginasi standar (`page`, `per_page`, `total`).
+
+#### 2. `GET /api/v1/student/admin/students/export?format=xlsx`
+Mengunduh laporan rekapitulasi data mahasiswa baru dalam format berkas spreadsheet Excel `.xlsx`.
+- **Akses**: `admin_pmb`, `superadmin`, `pimpinan`, dan `prodi` (terisolasi pada prodi scope-nya).
+- **Response**: Binary stream dengan header:
+  - `Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`
+  - `Content-Disposition: attachment; filename="Laporan_Mahasiswa_Baru_YYYYMMDD_HHMMSS.xlsx"`
+
+---
+
+### 14.3 Endpoint Internal Inter-Service (`/internal/students/...`)
+Khusus dipanggil oleh layanan downstream (seperti NIM Service di Tahap 11) dengan header `X-Internal-Token`.
+
+#### 1. `GET /internal/students/by-application/:application_id`
+Mengambil data mahasiswa berdasarkan `application_id`.
+- **Response `200 OK`**: Objek data `Student`.
+
+#### 2. `PUT /internal/students/by-application/:application_id/nim`
+Memperbarui nomor induk mahasiswa (NIM) dan mengubah status mahasiswa menjadi `active`.
+- **Request Body**:
+  ```json
+  {
+    "nim": "265510001"
+  }
+  ```
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "NIM mahasiswa berhasil diperbarui",
+    "data": {
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "nim": "265510001",
+      "status": "active"
+    }
+  }
+  ```
+
+
 
 
 

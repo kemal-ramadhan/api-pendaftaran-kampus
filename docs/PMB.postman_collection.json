@@ -3622,6 +3622,219 @@
                                                   }
                                   }
                               ]
+                 },
+                 {
+                     "name":  "13. STUDENT (Daftar Ulang, Mahasiswa Baru, \u0026 Ekspor Data)",
+                     "item":  [
+                                  {
+                                      "name":  "13.1 Ambil Data Formulir Daftar Ulang",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "value":  "Bearer {{token_access}}"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{base_url}}/student/me/reregistration",
+                                                                  "host":  [
+                                                                               "{{base_url}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "student",
+                                                                               "me",
+                                                                               "reregistration"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.2 Perbarui Data Tambahan Registrasi Mahasiswa",
+                                      "request":  {
+                                                      "method":  "PUT",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "value":  "Bearer {{token_access}}"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n  \" jacket_size\\: \\XL\\,\n \\emergency_contact_name\\: \\Bapak Sudirman\\,\n \\emergency_contact_phone\\: \\081234567890\\,\n \\statement_agreed\\: true\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               },
+                                                      "url":  {
+                                                                  "raw":  "{{base_url}}/student/me/reregistration",
+                                                                  "host":  [
+                                                                               "{{base_url}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "student",
+                                                                               "me",
+                                                                               "reregistration"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.3 Selesaikan Pendaftaran Ulang (Final)",
+                                      "request":  {
+                                                      "method":  "POST",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "value":  "Bearer {{token_access}}"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{base_url}}/student/me/reregistration/complete",
+                                                                  "host":  [
+                                                                               "{{base_url}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "student",
+                                                                               "me",
+                                                                               "reregistration",
+                                                                               "complete"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.4 Daftar Mahasiswa Baru (Admin / Prodi / Pimpinan)",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "value":  "Bearer {{token_admin}}"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{base_url}}/student/admin/students?page=1\u0026per_page=20",
+                                                                  "host":  [
+                                                                               "{{base_url}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "student",
+                                                                               "admin",
+                                                                               "students"
+                                                                           ],
+                                                                  "query":  [
+                                                                                {
+                                                                                    "key":  "page",
+                                                                                    "value":  "1"
+                                                                                },
+                                                                                {
+                                                                                    "key":  "per_page",
+                                                                                    "value":  "20"
+                                                                                }
+                                                                            ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.5 Ekspor Spreadsheet Excel Mahasiswa Baru",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "Authorization",
+                                                                         "value":  "Bearer {{token_admin}}"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "{{base_url}}/student/admin/students/export?format=xlsx",
+                                                                  "host":  [
+                                                                               "{{base_url}}"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "student",
+                                                                               "admin",
+                                                                               "students",
+                                                                               "export"
+                                                                           ],
+                                                                  "query":  [
+                                                                                {
+                                                                                    "key":  "format",
+                                                                                    "value":  "xlsx"
+                                                                                }
+                                                                            ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.6 Internal - Ambil Mahasiswa by Application ID",
+                                      "request":  {
+                                                      "method":  "GET",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "X-Internal-Token",
+                                                                         "value":  "{{internal_token}}"
+                                                                     }
+                                                                 ],
+                                                      "url":  {
+                                                                  "raw":  "http://localhost:8091/internal/students/by-application/{{application_id}}",
+                                                                  "host":  [
+                                                                               "http://localhost:8091"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "internal",
+                                                                               "students",
+                                                                               "by-application",
+                                                                               "{{application_id}}"
+                                                                           ]
+                                                              }
+                                                  }
+                                  },
+                                  {
+                                      "name":  "13.7 Internal - Perbarui NIM Mahasiswa",
+                                      "request":  {
+                                                      "method":  "PUT",
+                                                      "header":  [
+                                                                     {
+                                                                         "key":  "X-Internal-Token",
+                                                                         "value":  "{{internal_token}}"
+                                                                     },
+                                                                     {
+                                                                         "key":  "Content-Type",
+                                                                         "value":  "application/json"
+                                                                     }
+                                                                 ],
+                                                      "body":  {
+                                                                   "mode":  "raw",
+                                                                   "raw":  "{\n \\nim\\: \\265510001\\\n}",
+                                                                   "options":  {
+                                                                                   "raw":  {
+                                                                                               "language":  "json"
+                                                                                           }
+                                                                               }
+                                                               },
+                                                      "url":  {
+                                                                  "raw":  "http://localhost:8091/internal/students/by-application/{{application_id}}/nim",
+                                                                  "host":  [
+                                                                               "http://localhost:8091"
+                                                                           ],
+                                                                  "path":  [
+                                                                               "internal",
+                                                                               "students",
+                                                                               "by-application",
+                                                                               "{{application_id}}",
+                                                                               "nim"
+                                                                           ]
+                                                              }
+                                                  }
+                                  }
+                              ]
                  }
              ],
     "variable":  [

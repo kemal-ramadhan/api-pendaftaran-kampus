@@ -358,6 +358,34 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Kedua endpoint laporan dapat diakses oleh role `keuangan`, `pimpinan`, dan `superadmin`. Konfigurasi API Gateway (`routes.yaml`) diperbarui agar prefix `/api/v1/finance/admin` secara sah meneruskan permintaan dari role `pimpinan`.
 - **Rasional**: Mencegah kebocoran pendapatan kampus dari selisih pembulatan matematis, menjamin kelancaran arus kas pendaftaran awal, memberikan fleksibilitas pembiayaan bagi mahasiswa berpotensi lewat cicilan daftar ulang yang tertib administrasi, serta membekali pimpinan universitas dengan visibilitas data keuangan real-time untuk pengambilan keputusan strategis.
 
+---
+
+## 27. Fase 2: Student Service — Siklus Pendaftaran Ulang Mahasiswa Baru, Validasi Kliring Tagihan (Lunas / Cicilan Termin 1), Persiapan Outbox Penerbitan NIM, dan Isolasi Program Studi (F2-M11 Bagian Student)
+- **Status**: Diputuskan pada Tahap 10, 24 Sep 2026
+- **Keputusan**:
+  - **Arsitektur Student Service Mandiri**:
+    - Layanan Student Service (`pmb-student-service`) beroperasi sebagai microservice independen pada port `8091` dengan basis data terisolasi `pmb_student`.
+    - Mengikuti standar keamanan ketat `docs/AGENT_RULES.md`: verifikasi HMAC API Gateway (`pkg/gatewayauth`), autentikasi token internal (`pkg/internalauth`), migrasi skema SQL versi terstruktur, dan format amplop respons JSON standar.
+  - **Validasi Mutlak Kelulusan Seleksi (NOT_PASSED)**:
+    - Calon mahasiswa hanya dapat mengakses formulir dan menyelesaikan pendaftaran ulang jika pendaftarannya telah dinyatakan **LULUS** (`passed`) oleh panitia seleksi PMB.
+    - Calon mahasiswa yang tidak lulus atau berkasnya belum terverifikasi ditolak seketika dengan status HTTP `422 Unprocessable Entity` dan kode error `NOT_PASSED`.
+  - **Kliring Pembayaran Tagihan Daftar Ulang (PAYMENT_REQUIRED)**:
+    - Sebelum menyelesaikan pendaftaran ulang (`POST /me/reregistration/complete`), sistem memvalidasi status tagihan daftar ulang ke Finance Service.
+    - Pembayaran dinyatakan kliring dan sah apabila tagihan berstatus **`paid`** (lunas penuh) **ATAU** berstatus **`partially_paid`** (termin 1 cicilan telah lunas dibayar).
+    - Apabila tagihan belum dibayar (`unpaid`), proses pendaftaran ulang ditolak dengan status HTTP `422 Unprocessable Entity` dan kode error `PAYMENT_REQUIRED`.
+  - **Atribut Registrasi Mahasiswa Baru Wajib Lengkap**:
+    - Calon mahasiswa wajib melengkapi ukuran jas almamater (`S`, `M`, `L`, `XL`, `XXL`, `XXXL`), nama dan nomor telepon kontak darurat, serta menyetujui pernyataan tata tertib akademik kampus (`statement_agreed = true`).
+  - **Pola Transaksional & Persiapan Outbox NIM**:
+    - Saat pendaftaran ulang diselesaikan (`complete`):
+      1. Status pendaftaran ulang diubah menjadi `completed` dengan pencatatan waktu `completed_at`.
+      2. Entitas mahasiswa baru dibuat pada tabel `students` dengan status awal `reregistered`.
+      3. Pesan kejadian antarlayanan `nim_issuance_requested` disimpan secara transaksional ke tabel `outbox_events` agar siap dikonsumsi oleh NIM Service di Tahap 11.
+      4. Status pendaftaran di Admission Service dimutasi menjadi `reregistered` via internal HTTP callback.
+  - **Isolasi Role Program Studi & Ekspor Spreadsheet Excel (.xlsx)**:
+    - Pengguna dengan role `prodi` dibatasi secara ketat hanya dapat melihat dan mengekspor data mahasiswa baru pada program studi yang menjadi kewenangannya (`scope_id`). Upaya mengakses prodi lain ditolak dengan HTTP `403 Forbidden`.
+    - Endpoint ekspor `GET /admin/students/export?format=xlsx` memproduksi berkas spreadsheet resmi Excel menggunakan library `excelize/v2` yang memuat header navy blue, border tabel rapi, serta rincian lengkap pendaftar.
+- **Rasional**: Menjamin integritas administratif pendaftaran mahasiswa baru, memastikan kepatuhan kewajiban finansial sebelum registrasi akademik dibuka, memfasilitasi integrasi asinkron penerbitan NIM yang andal dan idempoten, serta mengamankan hak akses data mahasiswa baru antar program studi.
+
 
 
 

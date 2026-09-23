@@ -33,8 +33,11 @@ services:
     url: ${SELECTION_SERVICE_URL}
     timeout: 15s
     max_body: 5MB
+  student:
+    url: ${STUDENT_SERVICE_URL}
+    timeout: 15s
+    max_body: 5MB
   # slot service berikutnya (biarkan ter-comment sampai service dibuat)
-  # student:      { url: ${STUDENT_SERVICE_URL} }                      # /api/v1/student
   # nim:          { url: ${NIM_SERVICE_URL} }                          # /api/v1/nim
 
 routes:
@@ -179,6 +182,18 @@ routes:
     rewrite: /selection/me
     auth: required
     roles: [calon_mahasiswa, admin_pmb, superadmin]
+  - prefix: /api/v1/student/admin
+    service: student
+    rewrite: /student/admin
+    auth: required
+    roles: [admin_pmb, superadmin, prodi, pimpinan]
+    max_body: 5MB
+  - prefix: /api/v1/student/me
+    service: student
+    rewrite: /student/me
+    auth: required
+    roles: [calon_mahasiswa, admin_pmb, superadmin]
+    max_body: 5MB
 
 
 

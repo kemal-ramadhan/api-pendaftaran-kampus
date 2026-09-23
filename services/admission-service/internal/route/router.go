@@ -41,6 +41,7 @@ func SetupRouter(
 		internalGroup.POST("/applications/:id/status", internalCtrl.UpdateStatus)
 		internalGroup.PUT("/applications/:id/status", internalCtrl.UpdateStatus)
 		internalGroup.GET("/applications/:id", internalCtrl.GetApplication)
+		internalGroup.GET("/applications/user/:user_id", internalCtrl.GetApplicationsByUserID)
 		internalGroup.GET("/quotas", internalCtrl.GetQuota)
 	}
 

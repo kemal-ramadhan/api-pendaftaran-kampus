@@ -85,3 +85,21 @@ func (ctrl *InternalController) GetQuota(c *gin.Context) {
 		"capacity":           capacity,
 	})
 }
+
+func (ctrl *InternalController) GetApplicationsByUserID(c *gin.Context) {
+	userIDStr := c.Param("user_id")
+	userUUID, err := uuid.Parse(userIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format user_id tidak valid")
+		return
+	}
+
+	apps, err := ctrl.svc.GetMyApplications(c.Request.Context(), userUUID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil data pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Data pendaftaran berhasil diambil", apps)
+}
+

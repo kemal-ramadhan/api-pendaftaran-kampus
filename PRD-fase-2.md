@@ -86,7 +86,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-09 | Cetak Kartu Ujian | Exam | Selesai (Tahap 6) |
 | UC-10 | Lihat Pengumuman Hasil | Selection | Selesai (Tahap 8) |
 | UC-11 | Bayar Daftar Ulang | Finance | Selesai (Tahap 9) |
-| UC-12 | Daftar Ulang | Student | Fase 2 |
+| UC-12 | Daftar Ulang | Student | Selesai (Tahap 10) |
 | UC-13 | Proses Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-14 | Upload Bukti Transfer | Finance | Selesai (Tahap 4) |
 | UC-15 | Ajukan Cicilan | Finance | Selesai (Tahap 9) |
@@ -100,7 +100,7 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Selesai (Tahap 9) |
 | UC-25 | Lihat Laporan Keuangan | Finance | Selesai (Tahap 9) |
-| UC-26 | Export Laporan | Finance, Scoring, Admission | Sebagian (Admission, Scoring, & Finance export selesai di Tahap 5, 7, 9) |
+| UC-26 | Export Laporan | Finance, Scoring, Admission, Student | Sebagian (Admission, Scoring, Finance, & Student export selesai di Tahap 5, 7, 9, 10) |
 | UC-27 | Input Nilai Seleksi | Scoring | Selesai (Tahap 7) |
 | UC-28 | Lihat Rekap & Ranking | Scoring | Selesai (Tahap 7) |
 | UC-29 | Rekomendasi Kelulusan | Selection | Selesai (Tahap 8) |
@@ -464,7 +464,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M8** Scoring | 4.7 | dosen input nilai, rekap & ranking prodi |
 | **F2-M9** Selection | 4.8 | **Selesai** (rekomendasi prodi divalidasi kuota mutlak QUOTA_EXCEEDED, submit mengunci nilai di Scoring SCORES_LOCKED, persetujuan pimpinan approve/return, publikasi pengumuman oleh admin memutasi status Admission passed/failed, invoice daftar ulang Finance, notifikasi kelulusan, dan me result terproteksi RESULT_NOT_PUBLISHED) |
 | **F2-M10** Finance bagian 2 | Cicilan, reminder, laporan & export | **Selesai** (pengajuan cicilan, larangan cicilan pendaftaran INSTALLMENT_NOT_ALLOWED, pembagian termin presisi integer tanpa selisih pembulatan, persetujuan staf keuangan, pembayaran per termin, transisi status partially_paid/paid, cron reminder H-3 & H-1 via notification service, penandaan expired, ringkasan laporan & ekspor Excel .xlsx) |
-| **F2-M11** Student + NIM | 4.9 | daftar ulang → NIM unik → role `mahasiswa` |
+| **F2-M11** Student + NIM | 4.9 | **Sebagian** (bagian Student selesai di Tahap 10: formulir daftar ulang, validasi kelulusan passed & kliring pembayaran lunas/termin 1 partially_paid, tabel students berstatus reregistered, outbox penerbitan NIM, isolasi prodi, ekspor spreadsheet Excel .xlsx) |
 | **F2-M12** Integrasi akhir | e2e flowchart 1 penuh, dashboard statistik pimpinan, Postman & dokumentasi lengkap | `e2e.sh` seluruh alur PASS dari database kosong |
 
 ### 9.1 Pemetaan ke Timeline Tim

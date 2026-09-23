@@ -14,4 +14,5 @@ use (
 	./services/organization-service
 	./services/scoring-service
 	./services/selection-service
+	./services/student-service
 )
