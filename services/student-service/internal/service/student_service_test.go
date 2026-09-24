@@ -120,11 +120,31 @@ func (m *mockStudentRepository) CreateOutboxEventInTx(tx *gorm.DB, event *model.
 	return nil
 }
 
+func (m *mockStudentRepository) GetPendingOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+	var pending []model.OutboxEvent
+	for _, e := range m.outboxEvents {
+		if e.Status == "pending" {
+			pending = append(pending, *e)
+		}
+	}
+	return pending, nil
+}
+
+func (m *mockStudentRepository) UpdateOutboxEvent(ctx context.Context, event *model.OutboxEvent) error {
+	for i, e := range m.outboxEvents {
+		if e.ID == event.ID {
+			m.outboxEvents[i] = event
+			return nil
+		}
+	}
+	return nil
+}
+
 // Unit Test Logika Bisnis & Validasi
 func TestStudentService_BusinessValidation(t *testing.T) {
 	mockRepo := newMockRepository()
 	exp := exporter.NewStudentExporter()
-	svc := NewStudentService(mockRepo, exp, nil, nil, nil)
+	svc := NewStudentService(mockRepo, exp, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	userID := uuid.New()

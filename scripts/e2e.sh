@@ -53,6 +53,8 @@ SELECTION_URL="${GATEWAY_BASE}/api/v1/selection"
 STUDENT_DIRECT_URL="${STUDENT_DIRECT_URL:-http://localhost:8091}"
 STUDENT_URL="${GATEWAY_BASE}/api/v1/student"
 STUDENT_ADMIN_URL="${GATEWAY_BASE}/api/v1/student/admin"
+NIM_DIRECT_URL="${NIM_DIRECT_URL:-http://localhost:8092}"
+NIM_URL="${GATEWAY_BASE}/api/v1/nim"
 
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
@@ -2904,6 +2906,169 @@ if echo "$BODY_INTERNAL_STUDENT" | grep -q '"status":"reregistered"'; then
   log_pass "Endpoint internal siap diintegrasikan dengan NIM Service pada Tahap 11"
 else
   log_fail "Data internal mahasiswa tidak memuat status reregistered: $BODY_INTERNAL_STUDENT"
+fi
+
+# ==============================================================================
+# BAGIAN 15: PENGUJIAN TAHAP 11 — NIM SERVICE & INTEGRASI MULTI-LAYANAN (F2-M11 BAGIAN NIM)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 15: PENGUJIAN TAHAP 11 — NIM SERVICE & INTEGRASI MULTI-LAYANAN (F2-M11 BAGIAN NIM)${NC}"
+
+# 109. Pemrosesan Otomatis Outbox Daftar Ulang & Penerbitan NIM
+log_info "109. Memproses antrean outbox pendaftaran ulang & memverifikasi penerbitan NIM..."
+RESP_PROC_OUTBOX=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_DIRECT_URL}/internal/outbox/process" \
+  -H "X-Internal-Token: secret-internal-token")
+CODE_PROC_OUTBOX=$(echo "$RESP_PROC_OUTBOX" | tail -n1)
+BODY_PROC_OUTBOX=$(echo "$RESP_PROC_OUTBOX" | sed '$d')
+assert_status "Proses antrean outbox penerbitan NIM" "200" "$CODE_PROC_OUTBOX" "$BODY_PROC_OUTBOX"
+
+# Ambil data penerbitan NIM dari NIM Service
+RESP_GET_NIM=$(curl -s -w "\n%{http_code}" -X GET "${NIM_DIRECT_URL}/internal/nim/issuances/${APPLICATION_ID}" \
+  -H "X-Internal-Token: secret-internal-token")
+CODE_GET_NIM=$(echo "$RESP_GET_NIM" | tail -n1)
+BODY_GET_NIM=$(echo "$RESP_GET_NIM" | sed '$d')
+assert_status "Ambil detail riwayat penerbitan NIM" "200" "$CODE_GET_NIM" "$BODY_GET_NIM"
+
+GENERATED_NIM=$(echo "$BODY_GET_NIM" | grep -o '"nim":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -n "$GENERATED_NIM" ]; then
+  log_pass "Nomor Induk Mahasiswa (NIM) berhasil diterbitkan: $GENERATED_NIM"
+else
+  log_fail "NIM tidak berhasil diekstraksi dari respons: $BODY_GET_NIM"
+fi
+
+# 110. Pengujian Idempotensi Penerbitan NIM
+log_info "110. Menguji sifat idempoten penerbitan NIM untuk application_id yang sama..."
+RESP_IDEMP_NIM=$(curl -s -w "\n%{http_code}" -X POST "${NIM_DIRECT_URL}/internal/nim/issue" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"application_id\": \"$APPLICATION_ID\",
+    \"user_id\": \"$USER_ID\",
+    \"study_program_code\": \"TI\",
+    \"entry_year\": 2026,
+    \"selection_path\": \"reguler\"
+  }")
+CODE_IDEMP_NIM=$(echo "$RESP_IDEMP_NIM" | tail -n1)
+BODY_IDEMP_NIM=$(echo "$RESP_IDEMP_NIM" | sed '$d')
+assert_status "Panggilan ulang penerbitan NIM (idempoten)" "200" "$CODE_IDEMP_NIM" "$BODY_IDEMP_NIM"
+
+if echo "$BODY_IDEMP_NIM" | grep -q '"is_idempotent":true' && echo "$BODY_IDEMP_NIM" | grep -q "$GENERATED_NIM"; then
+  log_pass "Idempotensi penerbitan NIM terverifikasi: Nomor urut sequence tidak bertambah ganda"
+else
+  log_fail "Penerbitan ulang NIM tidak bersifat idempoten: $BODY_IDEMP_NIM"
+fi
+
+# 111. Verifikasi Integrasi Downstream Otomatis: Status Mahasiswa Active & Admission Enrolled
+log_info "111. Memverifikasi pembaruan status mahasiswa (active) dan pendaftaran (enrolled)..."
+RESP_CHECK_STUDENT=$(curl -s -w "\n%{http_code}" -X GET "${STUDENT_DIRECT_URL}/internal/students/by-application/${APPLICATION_ID}" \
+  -H "X-Internal-Token: secret-internal-token")
+CODE_CHECK_STUDENT=$(echo "$RESP_CHECK_STUDENT" | tail -n1)
+BODY_CHECK_STUDENT=$(echo "$RESP_CHECK_STUDENT" | sed '$d')
+assert_status "Cek status student setelah NIM terbit" "200" "$CODE_CHECK_STUDENT" "$BODY_CHECK_STUDENT"
+
+if echo "$BODY_CHECK_STUDENT" | grep -q '"status":"active"' && echo "$BODY_CHECK_STUDENT" | grep -q "$GENERATED_NIM"; then
+  log_pass "Status mahasiswa berhasil dimutasi menjadi 'active' dengan NIM terdaftar"
+else
+  log_fail "Data mahasiswa belum memuat status active / NIM: $BODY_CHECK_STUDENT"
+fi
+
+RESP_CHECK_ADMS=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_DIRECT_URL}/internal/applications/${APPLICATION_ID}" \
+  -H "X-Internal-Token: secret-internal-token")
+CODE_CHECK_ADMS=$(echo "$RESP_CHECK_ADMS" | tail -n1)
+BODY_CHECK_ADMS=$(echo "$RESP_CHECK_ADMS" | sed '$d')
+assert_status "Cek status pendaftaran setelah NIM terbit" "200" "$CODE_CHECK_ADMS" "$BODY_CHECK_ADMS"
+
+if echo "$BODY_CHECK_ADMS" | grep -q '"status":"enrolled"'; then
+  log_pass "Status pendaftaran pada Admission Service berhasil bertransisi menjadi 'enrolled'"
+else
+  log_fail "Status pendaftaran bukan enrolled: $BODY_CHECK_ADMS"
+fi
+
+# 112. Verifikasi Penambahan Role Mahasiswa & Sesi Login Ulang
+log_info "112. Menguji penambahan role 'mahasiswa' pada akun user pasca penerbitan NIM..."
+RESP_RELOGIN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{ \"email\": \"$TEST_EMAIL\", \"password\": \"$TEST_PASSWORD\" }")
+CODE_RELOGIN=$(echo "$RESP_RELOGIN" | tail -n1)
+BODY_RELOGIN=$(echo "$RESP_RELOGIN" | sed '$d')
+assert_status "Login ulang calon mahasiswa yang telah diterbitkan NIM" "200" "$CODE_RELOGIN" "$BODY_RELOGIN"
+
+NEW_STUDENT_TOKEN=$(echo "$BODY_RELOGIN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+RESP_CHECK_ROLES=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/me" \
+  -H "Authorization: Bearer $NEW_STUDENT_TOKEN")
+CODE_CHECK_ROLES=$(echo "$RESP_CHECK_ROLES" | tail -n1)
+BODY_CHECK_ROLES=$(echo "$RESP_CHECK_ROLES" | sed '$d')
+assert_status "Ambil profile user baru setelah NIM terbit" "200" "$CODE_CHECK_ROLES" "$BODY_CHECK_ROLES"
+
+if echo "$BODY_CHECK_ROLES" | grep -q '"role":"mahasiswa"'; then
+  log_pass "Token JWT pengguna berhasil memuat peran resmi 'mahasiswa'"
+else
+  log_fail "Peran 'mahasiswa' belum tercakup pada token baru pengguna: $BODY_CHECK_ROLES"
+fi
+
+# 113. Manajemen Format Template NIM oleh Superadmin
+log_info "113. Menguji manajemen format template NIM oleh Superadmin..."
+RESP_LIST_FORMATS=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/formats" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_LIST_FORMATS=$(echo "$RESP_LIST_FORMATS" | tail -n1)
+BODY_LIST_FORMATS=$(echo "$RESP_LIST_FORMATS" | sed '$d')
+assert_status "Superadmin melihat daftar template format NIM" "200" "$CODE_LIST_FORMATS" "$BODY_LIST_FORMATS"
+
+RESP_CREATE_FORMAT=$(curl -s -w "\n%{http_code}" -X POST "${NIM_URL}/admin/formats" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "study_program_code": "MI",
+    "pattern": "{YY}58{jalur_digit}{urut:4}",
+    "description": "Format Khusus D3 Manajemen Informatika",
+    "is_active": true
+  }')
+CODE_CREATE_FORMAT=$(echo "$RESP_CREATE_FORMAT" | tail -n1)
+BODY_CREATE_FORMAT=$(echo "$RESP_CREATE_FORMAT" | sed '$d')
+assert_status "Superadmin membuat template format NIM baru" "201" "$CODE_CREATE_FORMAT" "$BODY_CREATE_FORMAT"
+log_pass "Superadmin berhasil menambahkan template format NIM spesifik program studi"
+
+RESP_FAIL_ROLE_FORMAT=$(curl -s -w "\n%{http_code}" -X POST "${NIM_URL}/admin/formats" \
+  -H "Authorization: Bearer $NEW_STUDENT_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "study_program_code": "SI",
+    "pattern": "{YY}57{jalur_digit}{urut:4}",
+    "description": "Ilegal",
+    "is_active": true
+  }')
+CODE_FAIL_ROLE_FORMAT=$(echo "$RESP_FAIL_ROLE_FORMAT" | tail -n1)
+BODY_FAIL_ROLE_FORMAT=$(echo "$RESP_FAIL_ROLE_FORMAT" | sed '$d')
+
+if [ "$CODE_FAIL_ROLE_FORMAT" = "403" ]; then
+  log_pass "Proteksi role berhasil: Mahasiswa dilarang mengelola format template NIM (HTTP 403 Forbidden)"
+else
+  log_fail "Akses mahasiswa ke format NIM tidak ditolak 403 (HTTP $CODE_FAIL_ROLE_FORMAT): $BODY_FAIL_ROLE_FORMAT"
+fi
+
+# 114. Riwayat Penerbitan NIM Admin & Isolasi Wewenang Program Studi
+log_info "114. Menguji riwayat penerbitan NIM dan pembatasan isolasi wewenang prodi..."
+RESP_ADMIN_NIM_LIST=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/issuances" \
+  -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
+CODE_ADMIN_NIM_LIST=$(echo "$RESP_ADMIN_NIM_LIST" | tail -n1)
+BODY_ADMIN_NIM_LIST=$(echo "$RESP_ADMIN_NIM_LIST" | sed '$d')
+assert_status "Superadmin melihat seluruh riwayat penerbitan NIM" "200" "$CODE_ADMIN_NIM_LIST" "$BODY_ADMIN_NIM_LIST"
+
+RESP_PRODI_NIM_OK=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/issuances?study_program_code=TI" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+CODE_PRODI_NIM_OK=$(echo "$RESP_PRODI_NIM_OK" | tail -n1)
+BODY_PRODI_NIM_OK=$(echo "$RESP_PRODI_NIM_OK" | sed '$d')
+assert_status "Staf prodi TI melihat riwayat penerbitan NIM prodi TI" "200" "$CODE_PRODI_NIM_OK" "$BODY_PRODI_NIM_OK"
+
+RESP_PRODI_NIM_FAIL=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/issuances?study_program_code=SI" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+CODE_PRODI_NIM_FAIL=$(echo "$RESP_PRODI_NIM_FAIL" | tail -n1)
+BODY_PRODI_NIM_FAIL=$(echo "$RESP_PRODI_NIM_FAIL" | sed '$d')
+
+if [ "$CODE_PRODI_NIM_FAIL" = "403" ]; then
+  log_pass "Isolasi prodi berhasil: Akses prodi TI ke data penerbitan NIM prodi SI ditolak dengan HTTP 403 Forbidden"
+else
+  log_fail "Akses prodi lintas jurusan pada NIM tidak ditolak 403 (HTTP $CODE_PRODI_NIM_FAIL): $BODY_PRODI_NIM_FAIL"
 fi
 
 # ==============================================================================

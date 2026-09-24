@@ -26,6 +26,7 @@ type Config struct {
 	SelectionServiceURL    string
 	FinanceServiceURL      string
 	OrganizationServiceURL string
+	NIMServiceURL          string
 }
 
 func LoadConfig() (*Config, error) {
@@ -51,6 +52,7 @@ func LoadConfig() (*Config, error) {
 		SelectionServiceURL:    getEnv("SELECTION_SERVICE_URL", "http://localhost:8090"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://localhost:8085"),
 		OrganizationServiceURL: getEnv("ORGANIZATION_SERVICE_URL", "http://localhost:8081"),
+		NIMServiceURL:          getEnv("NIM_SERVICE_URL", "http://localhost:8092"),
 	}
 
 	return cfg, nil

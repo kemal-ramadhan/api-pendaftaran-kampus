@@ -2085,6 +2085,116 @@ Memperbarui nomor induk mahasiswa (NIM) dan mengubah status mahasiswa menjadi `a
   }
   ```
 
+#### 3. `POST /internal/outbox/process`
+Memicu pemrosesan manual antrean pesan outbox penerbitan NIM (`nim_issuance_requested`) ke NIM Service.
+- **Akses**: Internal (`X-Internal-Token`)
+- **Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Antrean outbox berhasil diproses",
+    "data": {
+      "processed_count": 1
+    }
+  }
+  ```
+
+---
+
+## 15. Layanan Nomor Induk Mahasiswa (NIM Service)
+
+Base Path Gateway: `/api/v1/nim`
+Base Path Internal: `/internal/nim`
+
+Layanan NIM bertanggung jawab atas konfigurasi format pola penomoran NIM, pencatatan sequence counter dengan penguncian pesimistik (`SELECT ... FOR UPDATE`), penerbitan NIM yang idempoten per `application_id`, dan orkestrasi integrasi pasca penerbitan (pembaruan tabel `students`, penambahan role `mahasiswa` di Auth, perubahan status `enrolled` di Admission, dan pengiriman notifikasi `nim_issued`).
+
+---
+
+### 15.1 Endpoint Inter-Service Internal (`/internal/nim/...`)
+Khusus dipanggil oleh Student Service (via background worker outbox) dengan header `X-Internal-Token`.
+
+#### 1. `POST /internal/nim/issue`
+Menerbitkan Nomor Induk Mahasiswa secara idempoten.
+- **Header**: `X-Internal-Token: secret-internal-token`
+- **Request Body**:
+  ```json
+  {
+    "application_id": "a0000000-0000-0000-0000-000000000001",
+    "user_id": "u0000000-0000-0000-0000-000000000001",
+    "study_program_code": "TI",
+    "entry_year": 2026,
+    "selection_path": "reguler"
+  }
+  ```
+- **Response `201 Created` (Penerbitan Baru)**:
+  ```json
+  {
+    "success": true,
+    "message": "NIM berhasil diterbitkan",
+    "data": {
+      "nim": "265510001",
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "user_id": "u0000000-0000-0000-0000-000000000001",
+      "study_program_code": "TI",
+      "entry_year": 2026,
+      "selection_path": "reguler",
+      "sequence_number": 1,
+      "issued_at": "2026-09-24T10:00:00Z",
+      "is_idempotent": false
+    }
+  }
+  ```
+- **Response `200 OK` (Idempoten / Sudah Pernah Diterbitkan)**:
+  ```json
+  {
+    "success": true,
+    "message": "NIM sudah pernah diterbitkan sebelumnya (idempoten)",
+    "data": {
+      "nim": "265510001",
+      "application_id": "a0000000-0000-0000-0000-000000000001",
+      "is_idempotent": true
+    }
+  }
+  ```
+
+#### 2. `GET /internal/nim/issuances/:application_id`
+Mengambil detail penerbitan NIM berdasarkan `application_id`.
+- **Response `200 OK`**: Mengembalikan objek data `NIMIssuance`.
+
+---
+
+### 15.2 Endpoint Administrasi (`/api/v1/nim/admin/...`)
+
+#### 1. `GET /api/v1/nim/admin/issuances`
+Melihat daftar riwayat penerbitan NIM.
+- **Akses**: `admin_pmb`, `superadmin`, `pimpinan`, `prodi` (terisolasi pada prodi scope-nya).
+- **Query Params**: `page`, `per_page`, `study_program_code`, `entry_year`, `search`.
+- **Response `200 OK`**: Paginasi data riwayat penerbitan NIM.
+
+#### 2. `GET /api/v1/nim/admin/formats`
+Melihat daftar template format penomoran NIM.
+- **Akses**: `superadmin`
+- **Response `200 OK`**: Array konfigurasi format template.
+
+#### 3. `POST /api/v1/nim/admin/formats`
+Menambahkan template format NIM baru (global atau per prodi).
+- **Akses**: `superadmin`
+- **Request Body**:
+  ```json
+  {
+    "study_program_code": "TI",
+    "pattern": "{YY}{nim_code_prodi}{jalur_digit}{urut:4}",
+    "description": "Format Khusus Sarjana Teknik Informatika",
+    "is_active": true
+  }
+  ```
+- **Response `201 Created`**: Objek data format yang dibuat.
+
+#### 4. `PUT /api/v1/nim/admin/formats/:id`
+Memperbarui pola atau status keaktifan template format NIM.
+- **Akses**: `superadmin`
+- **Response `200 OK`**: Objek format yang diperbarui.
+
 
 
 

@@ -33,6 +33,8 @@ func (d *dummyStudentRepo) GetStudentByApplicationID(_ context.Context, _ uuid.U
 func (d *dummyStudentRepo) ListStudents(_ context.Context, _ model.StudentFilter) ([]model.Student, int64, error) { return nil, 0, nil }
 func (d *dummyStudentRepo) UpdateStudentNIMInTx(_ *gorm.DB, _ uuid.UUID, _ string) error                      { return nil }
 func (d *dummyStudentRepo) CreateOutboxEventInTx(_ *gorm.DB, _ *model.OutboxEvent) error                      { return nil }
+func (d *dummyStudentRepo) GetPendingOutboxEvents(_ context.Context, _ int) ([]model.OutboxEvent, error)       { return nil, nil }
+func (d *dummyStudentRepo) UpdateOutboxEvent(_ context.Context, _ *model.OutboxEvent) error                     { return nil }
 
 func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
@@ -56,7 +58,7 @@ func TestStudentRouter(t *testing.T) {
 
 	repo := &dummyStudentRepo{}
 	exp := exporter.NewStudentExporter()
-	svc := service.NewStudentService(repo, exp, nil, nil, nil)
+	svc := service.NewStudentService(repo, exp, nil, nil, nil, nil)
 	ctrl := controller.NewStudentController(svc)
 	r := SetupRouter(cfg, ctrl)
 

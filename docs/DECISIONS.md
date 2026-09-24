@@ -386,6 +386,33 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Endpoint ekspor `GET /admin/students/export?format=xlsx` memproduksi berkas spreadsheet resmi Excel menggunakan library `excelize/v2` yang memuat header navy blue, border tabel rapi, serta rincian lengkap pendaftar.
 - **Rasional**: Menjamin integritas administratif pendaftaran mahasiswa baru, memastikan kepatuhan kewajiban finansial sebelum registrasi akademik dibuka, memfasilitasi integrasi asinkron penerbitan NIM yang andal dan idempoten, serta mengamankan hak akses data mahasiswa baru antar program studi.
 
+---
+
+## 28. Fase 2: NIM Service — Pencegahan Race Condition dengan SELECT FOR UPDATE, Idempotensi Penerbitan, Pengiriman Otomatis via Transactional Outbox Worker, dan Integrasi Lintas-Layanan (F2-M11 Bagian NIM)
+- **Status**: Diputuskan pada Tahap 11, 24 Sep 2026
+- **Keputusan**:
+  - **Arsitektur NIM Service Mandiri**:
+    - Layanan NIM Service (`pmb-nim-service`) beroperasi pada port `8092` dengan basis data terisolasi `pmb_nim`.
+    - Mengikuti standar keamanan ketat `docs/AGENT_RULES.md`: verifikasi HMAC API Gateway (`pkg/gatewayauth`), autentikasi token internal (`pkg/internalauth`), migrasi skema SQL terstruktur, dan format amplop respons JSON standar.
+  - **Pola Konfigurasi Format NIM Dinamis**:
+    - Template pola format default adalah `{YY}{nim_code_prodi}{jalur_digit}{urut:4}`, di mana `{YY}` adalah 2 digit tahun pendaftaran (2026 -> `26`), `{nim_code_prodi}` adalah kode prodi (mis. TI -> `55`, SI -> `57`), `{jalur_digit}` adalah digit jalur masuk (1=reguler, 2=prestasi, 3=beasiswa, 4=pindahan), dan `{urut:4}` adalah nomor urut zero-padded 4 digit.
+    - Superadmin dapat mengelola template pola format global maupun spesifik program studi melalui endpoint CRUD `/api/v1/nim/admin/formats`.
+  - **Pencegahan Race Condition & Jaminan Unik NIM (SELECT ... FOR UPDATE)**:
+    - Sequence counter per tahun dan program studi dikelola pada tabel `nim_sequences`.
+    - Pengambilan nomor urut dilakukan secara atomik di dalam database transaction dengan klausa pesimistik `SELECT ... FOR UPDATE`. Mekanisme ini menjamin tidak ada nomor urut/NIM yang terbit ganda (*zero duplicates*) walau 50 atau lebih permintaan masuk secara simultan/konkuren.
+  - **Idempotensi Penerbitan per Application ID**:
+    - Tabel `nim_issuances` memiliki indeks unik pada `application_id`. Pemanggilan berulang pada endpoint `POST /internal/nim/issue` untuk pendaftaran yang sama akan mengembalikan rekor NIM yang telah diterbitkan sebelumnya tanpa menambah counter sequence.
+  - **Publisher Worker Pola Transactional Outbox di Student Service**:
+    - Student Service mengimplementasikan background worker (goroutine ticker periodik) dan pemrosesan instan pada saat daftar ulang selesai untuk memproses tabel `outbox_events` (`nim_issuance_requested`).
+    - Event dikirimkan secara otomatis ke NIM Service, dan rekor outbox ditandai `processed` dengan timestamp `processed_at`.
+  - **Orkestrasi Pasca Penerbitan NIM**:
+    - Setelah NIM sah di-commit di basis data NIM, sistem secara otomatis mengeksekusi integrasi ke seluruh layanan terkait:
+      1. Memperbarui kolom `nim` dan mengubah status menjadi `active` pada Student Service (`PUT /internal/students/by-application/:id/nim`).
+      2. Menambahkan role `mahasiswa` ke akun user di Auth Service (`POST /internal/users/:id/roles`) dan mencabut sesi lama sehingga login baru calon mahasiswa langsung memuat peran mahasiswa aktif.
+      3. Memperbarui status pendaftaran di Admission Service menjadi `enrolled` (`PUT /internal/applications/:id/status`).
+      4. Mengirimkan notifikasi email/in-app penerbitan NIM ke Notification Service (`POST /internal/notifications`).
+- **Rasional**: Mencegah duplikasi nomor identitas akademik yang fatal bagi administrasi perguruan tinggi, menjamin ketersediaan sistem di bawah beban konkurensi tinggi, mengotomatiskan transisi peran calon mahasiswa menjadi mahasiswa aktif, dan memastikan konsistensi status di seluruh mikroservis tanpa ketergantungan transaksi terdistribusi yang rapuh.
+
 
 
 

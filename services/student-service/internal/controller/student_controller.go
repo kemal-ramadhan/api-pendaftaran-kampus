@@ -245,3 +245,14 @@ func (ctrl *StudentController) InternalUpdateNIM(c *gin.Context) {
 		"status":         model.StudentStatusActive,
 	})
 }
+
+func (ctrl *StudentController) ProcessOutbox(c *gin.Context) {
+	count, err := ctrl.svc.ProcessPendingOutboxEvents(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal memproses antrean outbox: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Antrean outbox berhasil diproses", gin.H{
+		"processed_count": count,
+	})
+}

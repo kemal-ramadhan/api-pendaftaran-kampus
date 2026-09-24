@@ -158,6 +158,7 @@ services:
       SCORING_SERVICE_URL: ${SCORING_SERVICE_URL:-http://scoring-service:8089}
       SELECTION_SERVICE_URL: ${SELECTION_SERVICE_URL:-http://selection-service:8090}
       STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:8091}
+      NIM_SERVICE_URL: ${NIM_SERVICE_URL:-http://nim-service:8092}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
@@ -181,6 +182,8 @@ services:
       selection-service:
         condition: service_healthy
       student-service:
+        condition: service_healthy
+      nim-service:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -459,6 +462,7 @@ services:
       SELECTION_SERVICE_URL: http://selection-service:8090
       FINANCE_SERVICE_URL: http://finance-service:8085
       ORGANIZATION_SERVICE_URL: http://organization-service:8081
+      NIM_SERVICE_URL: http://nim-service:8092
     depends_on:
       postgres:
         condition: service_healthy
@@ -470,6 +474,46 @@ services:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8091/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - pmb-network
+
+  nim-service:
+    build:
+      context: ..
+      dockerfile: services/nim-service/Dockerfile
+    container_name: pmb-nim-service
+    restart: unless-stopped
+    ports:
+      - "8092:8092"
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      PORT: 8092
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
+      DB_NAME: pmb_nim
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      STUDENT_SERVICE_URL: http://student-service:8091
+      AUTH_SERVICE_URL: http://auth-service:8080
+      ADMISSION_SERVICE_URL: http://admission-service:8084
+      NOTIFICATION_SERVICE_URL: http://notification-service:8083
+      ORGANIZATION_SERVICE_URL: http://organization-service:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      student-service:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+      admission-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8092/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5

@@ -37,8 +37,10 @@ services:
     url: ${STUDENT_SERVICE_URL}
     timeout: 15s
     max_body: 5MB
-  # slot service berikutnya (biarkan ter-comment sampai service dibuat)
-  # nim:          { url: ${NIM_SERVICE_URL} }                          # /api/v1/nim
+  nim:
+    url: ${NIM_SERVICE_URL}
+    timeout: 15s
+    max_body: 5MB
 
 routes:
   - prefix: /api/v1/auth/.well-known
@@ -193,6 +195,24 @@ routes:
     rewrite: /student/me
     auth: required
     roles: [calon_mahasiswa, admin_pmb, superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/nim/admin/formats
+    service: nim
+    rewrite: /nim/admin/formats
+    auth: required
+    roles: [superadmin]
+    max_body: 5MB
+  - prefix: /api/v1/nim/admin/issuances
+    service: nim
+    rewrite: /nim/admin/issuances
+    auth: required
+    roles: [admin_pmb, superadmin, prodi, pimpinan]
+    max_body: 5MB
+  - prefix: /api/v1/nim/admin
+    service: nim
+    rewrite: /nim/admin
+    auth: required
+    roles: [admin_pmb, superadmin, prodi, pimpinan]
     max_body: 5MB
 
 

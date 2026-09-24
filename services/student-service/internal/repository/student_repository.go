@@ -28,6 +28,8 @@ type StudentRepository interface {
 
 	// Outbox methods
 	CreateOutboxEventInTx(tx *gorm.DB, event *model.OutboxEvent) error
+	GetPendingOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error)
+	UpdateOutboxEvent(ctx context.Context, event *model.OutboxEvent) error
 }
 
 type studentRepository struct {
@@ -157,4 +159,21 @@ func (r *studentRepository) UpdateStudentNIMInTx(tx *gorm.DB, appID uuid.UUID, n
 
 func (r *studentRepository) CreateOutboxEventInTx(tx *gorm.DB, event *model.OutboxEvent) error {
 	return tx.Create(event).Error
+}
+
+func (r *studentRepository) GetPendingOutboxEvents(ctx context.Context, limit int) ([]model.OutboxEvent, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	var events []model.OutboxEvent
+	err := r.db.WithContext(ctx).
+		Where("status = ?", "pending").
+		Order("created_at ASC").
+		Limit(limit).
+		Find(&events).Error
+	return events, err
+}
+
+func (r *studentRepository) UpdateOutboxEvent(ctx context.Context, event *model.OutboxEvent) error {
+	return r.db.WithContext(ctx).Save(event).Error
 }

@@ -55,6 +55,10 @@ func main() {
 		BaseURL:       cfg.FinanceServiceURL,
 		InternalToken: cfg.InternalToken,
 	})
+	nimCli := internalclient.NewClient(internalclient.Config{
+		BaseURL:       cfg.NIMServiceURL,
+		InternalToken: cfg.InternalToken,
+	})
 
 	// 3. Inisialisasi Lapisan Repositori & Domain Service
 	studentRepo := repository.NewStudentRepository(db)
@@ -66,6 +70,7 @@ func main() {
 		admissionCli,
 		selectionCli,
 		financeCli,
+		nimCli,
 	)
 
 	studentCtrl := controller.NewStudentController(studentSvc)
@@ -80,6 +85,21 @@ func main() {
 		WriteTimeout: 15 * time.Second,
 	}
 
+	// 5. Background Outbox Worker (Kirim otomatis event nim_issuance_requested)
+	outboxStop := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(2 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-outboxStop:
+				return
+			case <-ticker.C:
+				_, _ = studentSvc.ProcessPendingOutboxEvents(context.Background())
+			}
+		}
+	}()
+
 	go func() {
 		log.Printf("[STUDENT-SERVICE] Server aktif dan mendengarkan pada port %s (env: %s)\n", cfg.Port, cfg.AppEnv)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -91,6 +111,8 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
+
+	close(outboxStop)
 
 	log.Println("[STUDENT-SERVICE] Menerima sinyal penghentian, mematikan server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

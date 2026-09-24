@@ -35,6 +35,7 @@ func SetupRouter(
 	{
 		internalGroup.GET("/students/by-application/:application_id", studentCtrl.InternalGetStudentByApplicationID)
 		internalGroup.PUT("/students/by-application/:application_id/nim", studentCtrl.InternalUpdateNIM)
+		internalGroup.POST("/outbox/process", studentCtrl.ProcessOutbox)
 	}
 
 	// 3. Downstream API Gateway endpoints

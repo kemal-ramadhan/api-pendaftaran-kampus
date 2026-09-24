@@ -15,4 +15,5 @@ use (
 	./services/scoring-service
 	./services/selection-service
 	./services/student-service
+	./services/nim-service
 )

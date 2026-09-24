@@ -33,6 +33,7 @@ type StudentService interface {
 	GetStudentByUserID(ctx context.Context, userID uuid.UUID) (*model.Student, error)
 	GetStudentByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Student, error)
 	UpdateStudentNIM(ctx context.Context, appID uuid.UUID, nim string) error
+	ProcessPendingOutboxEvents(ctx context.Context) (int, error)
 }
 
 type studentService struct {
@@ -41,6 +42,7 @@ type studentService struct {
 	admissionCli internalclient.Client
 	selectionCli internalclient.Client
 	financeCli   internalclient.Client
+	nimCli       internalclient.Client
 }
 
 func NewStudentService(
@@ -49,6 +51,7 @@ func NewStudentService(
 	admissionCli internalclient.Client,
 	selectionCli internalclient.Client,
 	financeCli internalclient.Client,
+	nimCli internalclient.Client,
 ) StudentService {
 	return &studentService{
 		repo:         repo,
@@ -56,6 +59,7 @@ func NewStudentService(
 		admissionCli: admissionCli,
 		selectionCli: selectionCli,
 		financeCli:   financeCli,
+		nimCli:       nimCli,
 	}
 }
 
@@ -272,11 +276,12 @@ func (s *studentService) CompleteReregistration(ctx context.Context, userID uuid
 		return nil, err
 	}
 
-	// Perbarui status di Admission Service menjadi 'reregistered' via internal API call
+	// Perbarui status di Admission Service menjadi 'reregistered' dan proses antrean outbox NIM
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = s.updateAdmissionStatus(bgCtx, reg.ApplicationID, "reregistered")
+		_, _ = s.ProcessPendingOutboxEvents(bgCtx)
 	}()
 
 	return student, nil
@@ -427,4 +432,51 @@ func (s *studentService) updateAdmissionStatus(ctx context.Context, appID uuid.U
 		"notes":  "Pendaftaran ulang selesai, siap penerbitan NIM",
 	}
 	return s.admissionCli.Put(ctx, fmt.Sprintf("/internal/applications/%s/status", appID.String()), payload, nil)
+}
+
+func (s *studentService) ProcessPendingOutboxEvents(ctx context.Context) (int, error) {
+	if s.nimCli == nil {
+		return 0, nil
+	}
+
+	events, err := s.repo.GetPendingOutboxEvents(ctx, 20)
+	if err != nil {
+		return 0, err
+	}
+
+	processedCount := 0
+	for _, evt := range events {
+		if evt.EventType == "nim_issuance_requested" {
+			var payload model.NIMIssuancePayload
+			if errUnmarshal := json.Unmarshal([]byte(evt.Payload), &payload); errUnmarshal != nil {
+				evt.RetryCount++
+				_ = s.repo.UpdateOutboxEvent(ctx, &evt)
+				continue
+			}
+
+			reqBody := map[string]interface{}{
+				"application_id":     payload.ApplicationID,
+				"user_id":            payload.UserID,
+				"study_program_code": payload.StudyProgramCode,
+				"entry_year":         payload.EntryYear,
+				"selection_path":     payload.EntryPath,
+			}
+
+			errCall := s.nimCli.Post(ctx, "/internal/nim/issue", reqBody, nil)
+			if errCall != nil {
+				evt.RetryCount++
+				_ = s.repo.UpdateOutboxEvent(ctx, &evt)
+				continue
+			}
+
+			now := time.Now()
+			evt.Status = "processed"
+			evt.ProcessedAt = &now
+			if errUpdate := s.repo.UpdateOutboxEvent(ctx, &evt); errUpdate == nil {
+				processedCount++
+			}
+		}
+	}
+
+	return processedCount, nil
 }
