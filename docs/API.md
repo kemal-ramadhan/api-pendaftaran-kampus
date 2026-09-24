@@ -2195,6 +2195,80 @@ Memperbarui pola atau status keaktifan template format NIM.
 - **Akses**: `superadmin`
 - **Response `200 OK`**: Objek format yang diperbarui.
 
+---
+
+## 16. Dashboard Statistik Pimpinan Eksekutif (UC-31)
+
+Dashboard Statistik Pimpinan (Executive Dashboard) mengintegrasikan visibilitas lintas layanan secara terpadu untuk peran `pimpinan` (Rektor, Wakil Rektor, Dekan) dan `superadmin`. Seluruh endpoint dilindungi dengan signature gateway dan role guard:
+
+### 16.1 Ringkasan Agregasi Statistik Pendaftaran PMB
+- **Endpoint**: `GET /api/v1/admission/admin/stats`
+- **Akses**: `pimpinan`, `admin_pmb`, `superadmin`, `prodi`
+- **Fungsi**: Menyajikan metrik total pendaftar, sebaran status pendaftaran (`awaiting_payment`, `form_open`, `submitted`, `verified`, `passed`, `enrolled`), sebaran per jalur masuk, dan sebaran per program studi.
+- **Contoh Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Statistik pendaftaran berhasil diambil",
+    "data": {
+      "total_applications": 1250,
+      "by_status": {
+        "awaiting_payment": 150,
+        "form_open": 200,
+        "submitted": 100,
+        "verified": 400,
+        "passed": 300,
+        "enrolled": 100
+      },
+      "by_admission_path": {
+        "1": 800,
+        "2": 450
+      },
+      "by_period": {
+        "1": 1250
+      },
+      "by_study_program": {
+        "11111111-1111-1111-1111-111111111111": 700,
+        "22222222-2222-2222-2222-222222222222": 550
+      }
+    }
+  }
+  ```
+
+### 16.2 Ringkasan Laporan Finansial & Penerimaan Pembayaran
+- **Endpoint**: `GET /api/v1/finance/admin/reports/summary`
+- **Akses**: `pimpinan`, `keuangan`, `superadmin`, `admin_pmb`
+- **Fungsi**: Menyajikan ringkasan total tagihan, nominal tagihan terbit, total tagihan lunas/sebagian, total nominal diterima (pendapatan kas masuk), dan ringkasan cicilan.
+- **Contoh Response `200 OK`**:
+  ```json
+  {
+    "success": true,
+    "message": "Laporan ringkasan keuangan berhasil diambil",
+    "data": {
+      "total_invoices": 850,
+      "total_amount_billed": 4250000000,
+      "total_amount_received": 3100000000,
+      "paid_invoices_count": 620,
+      "partially_paid_invoices_count": 80,
+      "unpaid_invoices_count": 150,
+      "installment_summary": {
+        "total_active_plans": 80,
+        "total_overdue_terms": 2
+      }
+    }
+  }
+  ```
+
+### 16.3 Monitoring Rekapitulasi Seleksi & Persetujuan Kelulusan
+- **Endpoint**: `GET /api/v1/scoring/program/recap` & `GET /api/v1/selection/approval/recommendations`
+- **Akses**: `pimpinan`, `superadmin`
+- **Fungsi**: Memantau perolehan skor nilai seleksi per program studi, ranking tertimbang, serta melakukan telaah (approve / return) atas usulan kelulusan dari program studi.
+
+### 16.4 Monitoring Mahasiswa Baru Terdaftar & Penerbitan NIM
+- **Endpoint**: `GET /api/v1/student/admin/students` & `GET /api/v1/nim/admin/issuances`
+- **Akses**: `pimpinan`, `admin_pmb`, `superadmin`, `prodi`
+- **Fungsi**: Memantau calon mahasiswa yang telah menyelesaikan daftar ulang hingga resmi berstatus mahasiswa aktif dengan Nomor Induk Mahasiswa (NIM) yang telah diterbitkan.
+
 
 
 

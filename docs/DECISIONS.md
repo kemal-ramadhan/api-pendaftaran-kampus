@@ -413,6 +413,22 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
       4. Mengirimkan notifikasi email/in-app penerbitan NIM ke Notification Service (`POST /internal/notifications`).
 - **Rasional**: Mencegah duplikasi nomor identitas akademik yang fatal bagi administrasi perguruan tinggi, menjamin ketersediaan sistem di bawah beban konkurensi tinggi, mengotomatiskan transisi peran calon mahasiswa menjadi mahasiswa aktif, dan memastikan konsistensi status di seluruh mikroservis tanpa ketergantungan transaksi terdistribusi yang rapuh.
 
+---
+
+## 29. Fase 2: Integrasi Akhir — Dashboard Statistik Pimpinan Eksekutif (UC-31), Alur Penuh End-to-End Tanpa Celah, dan Keterlacakan Use Case Lengkap (F2-M12)
+- **Status**: Diputuskan pada Tahap 11, 24 Sep 2026
+- **Keputusan**:
+  - **Dashboard Statistik Pimpinan Eksekutif (UC-31)**:
+    - Hak akses peran `pimpinan` (Rektorat/Dekanat) diaktifkan secara terpadu pada lapisan API Gateway (`services/api-gateway/config/routes.yaml`) dan layanan downstream Admission Service (`GET /api/v1/admission/admin/stats`), Finance Service (`GET /api/v1/finance/admin/reports/summary`), Scoring Service (`GET /api/v1/scoring/program/recap`), Selection Service (`GET /api/v1/selection/approval/recommendations`), Student Service (`GET /api/v1/student/admin/students`), dan NIM Service (`GET /api/v1/nim/admin/issuances`).
+    - Pimpinan universitas mendapatkan agregasi metrik pendaftaran (total aplikasi, sebaran status hingga `enrolled`, sebaran per jalur & prodi), kesehatan finansial penerimaan kas (total tagihan terbit, pembayaran lunas, ringkasan cicilan aktif), ranking hasil seleksi calon mahasiswa, serta monitoring registrasi ulang mahasiswa baru dan penomoran NIM.
+    - Hak akses dilindungi secara ketat: role non-pimpinan/non-admin (seperti `calon_mahasiswa` atau `dosen`) yang mencoba mengakses endpoint eksekutif ini ditolak seketika dengan status HTTP `403 Forbidden`.
+  - **Verifikasi Alur Menyeluruh (Full Flow End-to-End Suite)**:
+    - Skrip pengujian `scripts/e2e.sh` mencakup 118 skenario komprehensif yang menguji alur PMB dari registrasi akun awal, verifikasi OTP, pemilihan program studi & jalur, pembuatan dan pelunasan invoice tagihan pendaftaran, pengisian biodata terenkripsi AES-256-GCM & OCR KTP, pengunggahan dokumen persyaratan dengan validasi magic bytes, verifikasi berkas & revisi dokumen panitia, penjadwalan ujian & kartu peserta PDF dengan QR code, input nilai oleh dosen & kalkulasi rata-rata tertimbang, rekomendasi prodi dengan pembatasan kuota mutlak, persetujuan pimpinan (approve/return), pengumuman kelulusan resmi, penerbitan tagihan daftar ulang dan pengajuan termin cicilan presisi integer, pelunasan termin 1, formulir daftar ulang, penerbitan NIM dengan penguncian pesimistik `SELECT ... FOR UPDATE` bebas race condition, pembaruan role `mahasiswa` otomatis, hingga dashboard eksekutif pimpinan.
+  - **Penyelesaian Seluruh Use Case (UC-01 s/d UC-33)**:
+    - Seluruh use case pada tabel keterlacakan (PRD-fase-2.md Bagian 3) dinyatakan **Selesai**, termasuk ekspor laporan spreadsheet Excel .xlsx (UC-26), dashboard statistik pimpinan (UC-31), dan pengelolaan master data (UC-32).
+- **Rasional**: Memberikan visibilitas terpadu kepada para pengambil keputusan universitas tanpa melanggar prinsip desentralisasi basis data mikroservis, menjamin seluruh alur operasional PMB bebas hambatan dari hulu ke hilir, serta memverifikasi kesiapan produksi sistem backend PMB sesuai seluruh tolok ukur Definition of Done.
+
+
 
 
 

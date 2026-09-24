@@ -94,7 +94,7 @@ routes:
     service: admission
     rewrite: /admission/admin
     auth: required
-    roles: [admin_pmb, superadmin, prodi]
+    roles: [admin_pmb, superadmin, prodi, pimpinan]
   - prefix: /api/v1/admission
     service: admission
     rewrite: /admission

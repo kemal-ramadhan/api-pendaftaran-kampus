@@ -68,9 +68,9 @@ func SetupRouter(
 			userGroup.POST("/:id/submit", appCtrl.SubmitApplication)
 		}
 
-		// Admin & Staf Prodi endpoints
+		// Admin, Staf Prodi, & Pimpinan endpoints
 		adminGroup := authGroup.Group("/admission/admin")
-		adminGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb", "prodi"))
+		adminGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb", "prodi", "pimpinan"))
 		{
 			adminGroup.GET("/stats", adminCtrl.GetStats)
 			adminGroup.GET("/applications", adminCtrl.ListApplications)

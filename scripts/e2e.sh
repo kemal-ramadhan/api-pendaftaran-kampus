@@ -3072,6 +3072,67 @@ else
 fi
 
 # ==============================================================================
+# BAGIAN 16: INTEGRASI AKHIR & DASHBOARD STATISTIK PIMPINAN (F2-M12: UC-31)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 16: INTEGRASI AKHIR & DASHBOARD STATISTIK PIMPINAN (F2-M12: UC-31)${NC}"
+
+# 115. Pimpinan Mengakses Dashboard Statistik Pendaftaran PMB (UC-31)
+log_info "115. Pimpinan universitas mengakses dashboard agregasi statistik pendaftaran..."
+RESP_LEAD_STATS=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/stats" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_LEAD_STATS=$(echo "$RESP_LEAD_STATS" | tail -n1)
+BODY_LEAD_STATS=$(echo "$RESP_LEAD_STATS" | sed '$d')
+assert_status "Pimpinan mengakses statistik pendaftaran" "200" "$CODE_LEAD_STATS" "$BODY_LEAD_STATS"
+
+if echo "$BODY_LEAD_STATS" | grep -q '"total_applications":' && echo "$BODY_LEAD_STATS" | grep -q '"by_status":'; then
+  log_pass "Dashboard statistik pendaftaran berhasil memuat total pendaftar dan sebaran status pendaftaran"
+else
+  log_fail "Payload statistik pendaftaran tidak lengkap: $BODY_LEAD_STATS"
+fi
+
+# 116. Pimpinan Mengakses Ringkasan Laporan Keuangan Eksekutif (UC-31)
+log_info "116. Pimpinan universitas mengakses ringkasan laporan keuangan eksekutif..."
+RESP_LEAD_FIN=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/reports/summary" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_LEAD_FIN=$(echo "$RESP_LEAD_FIN" | tail -n1)
+BODY_LEAD_FIN=$(echo "$RESP_LEAD_FIN" | sed '$d')
+assert_status "Pimpinan mengakses laporan ringkasan keuangan" "200" "$CODE_LEAD_FIN" "$BODY_LEAD_FIN"
+
+if echo "$BODY_LEAD_FIN" | grep -q '"total_invoices":' && echo "$BODY_LEAD_FIN" | grep -q '"total_amount_received":'; then
+  log_pass "Laporan ringkasan eksekutif keuangan berhasil memuat total tagihan dan pendapatan"
+else
+  log_fail "Payload laporan keuangan pimpinan tidak lengkap: $BODY_LEAD_FIN"
+fi
+
+# 117. Pimpinan Mengakses Monitoring Mahasiswa Baru & Penerbitan NIM (UC-31)
+log_info "117. Pimpinan universitas memantau daftar mahasiswa baru dan riwayat penerbitan NIM..."
+RESP_LEAD_STUDENTS=$(curl -s -w "\n%{http_code}" -X GET "${STUDENT_ADMIN_URL}/students" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_LEAD_STUDENTS=$(echo "$RESP_LEAD_STUDENTS" | tail -n1)
+BODY_LEAD_STUDENTS=$(echo "$RESP_LEAD_STUDENTS" | sed '$d')
+assert_status "Pimpinan melihat daftar mahasiswa baru" "200" "$CODE_LEAD_STUDENTS" "$BODY_LEAD_STUDENTS"
+
+RESP_LEAD_NIM=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/issuances" \
+  -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
+CODE_LEAD_NIM=$(echo "$RESP_LEAD_NIM" | tail -n1)
+BODY_LEAD_NIM=$(echo "$RESP_LEAD_NIM" | sed '$d')
+assert_status "Pimpinan melihat riwayat penerbitan NIM" "200" "$CODE_LEAD_NIM" "$BODY_LEAD_NIM"
+log_pass "Pimpinan berhasil memantau daftar mahasiswa baru dan penerbitan NIM secara terpadu"
+
+# 118. [NEGATIF] Calon Mahasiswa Ditolak Mengakses Dashboard Statistik Pimpinan (HTTP 403 Forbidden)
+log_info "118. [NEGATIF] Menguji proteksi hak akses: Mahasiswa ditolak mengakses statistik pimpinan..."
+RESP_FAIL_LEAD_STATS=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/stats" \
+  -H "Authorization: Bearer $NEW_STUDENT_TOKEN")
+CODE_FAIL_LEAD_STATS=$(echo "$RESP_FAIL_LEAD_STATS" | tail -n1)
+BODY_FAIL_LEAD_STATS=$(echo "$RESP_FAIL_LEAD_STATS" | sed '$d')
+
+if [ "$CODE_FAIL_LEAD_STATS" = "403" ]; then
+  log_pass "Proteksi role berhasil: Mahasiswa ditolak mengakses statistik pimpinan (HTTP 403 Forbidden)"
+else
+  log_fail "Akses mahasiswa ke statistik pimpinan tidak ditolak 403 (HTTP $CODE_FAIL_LEAD_STATS): $BODY_FAIL_LEAD_STATS"
+fi
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 echo "------------------------------------------------------------------------------"

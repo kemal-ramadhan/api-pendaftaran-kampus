@@ -100,13 +100,13 @@ Prinsip dari fase 1 tetap: **satu service memiliki datanya sendiri**, satu datab
 | UC-23 | Verifikasi Pembayaran | Finance | Selesai (Tahap 4) |
 | UC-24 | Setujui Pengajuan Cicilan | Finance | Selesai (Tahap 9) |
 | UC-25 | Lihat Laporan Keuangan | Finance | Selesai (Tahap 9) |
-| UC-26 | Export Laporan | Finance, Scoring, Admission, Student | Sebagian (Admission, Scoring, Finance, & Student export selesai di Tahap 5, 7, 9, 10) |
+| UC-26 | Export Laporan | Finance, Scoring, Admission, Student | Selesai (Admission, Scoring, Finance, & Student export format .xlsx) |
 | UC-27 | Input Nilai Seleksi | Scoring | Selesai (Tahap 7) |
 | UC-28 | Lihat Rekap & Ranking | Scoring | Selesai (Tahap 7) |
 | UC-29 | Rekomendasi Kelulusan | Selection | Selesai (Tahap 8) |
 | UC-30 | Setujui Kelulusan | Selection | Selesai (Tahap 8) |
-| UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Sebagian (Admission stats & Finance summary selesai) |
-| UC-32 | Kelola Master Data | Organization (prodi selesai), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya) | Sebagian (prodi selesai) |
+| UC-31 | Lihat Dashboard Statistik | Admission + Finance (endpoint statistik) | Selesai (Dashboard statistik eksekutif pimpinan: Admission stats, Scoring recap, Selection approval, Finance summary, Student & NIM issuances) |
+| UC-32 | Kelola Master Data | Organization (prodi), Admission (gelombang, jalur, kuota, dokumen), Finance (biaya), Scoring, NIM | Selesai (Master data lengkap di seluruh service) |
 | UC-33 | Kelola User & Role | Auth | Selesai |
 
 ---
@@ -465,7 +465,7 @@ Setiap milestone wajib menghasilkan:
 | **F2-M9** Selection | 4.8 | **Selesai** (rekomendasi prodi divalidasi kuota mutlak QUOTA_EXCEEDED, submit mengunci nilai di Scoring SCORES_LOCKED, persetujuan pimpinan approve/return, publikasi pengumuman oleh admin memutasi status Admission passed/failed, invoice daftar ulang Finance, notifikasi kelulusan, dan me result terproteksi RESULT_NOT_PUBLISHED) |
 | **F2-M10** Finance bagian 2 | Cicilan, reminder, laporan & export | **Selesai** (pengajuan cicilan, larangan cicilan pendaftaran INSTALLMENT_NOT_ALLOWED, pembagian termin presisi integer tanpa selisih pembulatan, persetujuan staf keuangan, pembayaran per termin, transisi status partially_paid/paid, cron reminder H-3 & H-1 via notification service, penandaan expired, ringkasan laporan & ekspor Excel .xlsx) |
 | **F2-M11** Student + NIM | 4.9 | **Selesai** (bagian Student selesai di Tahap 10: formulir daftar ulang, validasi kelulusan passed & kliring pembayaran lunas/termin 1 partially_paid, tabel students berstatus reregistered, outbox penerbitan NIM, isolasi prodi, ekspor spreadsheet Excel .xlsx; bagian NIM selesai di Tahap 11: NIM Service, template format dinamis, locking pesimistik SELECT FOR UPDATE tanpa NIM ganda, idempotensi application_id, worker publisher outbox otomatis di Student Service, orkestrasi mutasi student active, auth role mahasiswa, admission enrolled, notifikasi nim_issued) |
-| **F2-M12** Integrasi akhir | e2e flowchart 1 penuh, dashboard statistik pimpinan, Postman & dokumentasi lengkap | `e2e.sh` seluruh alur PASS dari database kosong |
+| **F2-M12** Integrasi akhir | e2e flowchart 1 penuh, dashboard statistik pimpinan, Postman & dokumentasi lengkap | **Selesai** (`scripts/e2e.sh` mencakup 118 skenario PASS penuh dari database kosong, dashboard statistik pimpinan terpadu aktif pada UC-31, seluruh dokumentasi API/DECISIONS/diagram ERD & kelas Mermaid lengkap, Postman collection terpadu, dan seluruh checklist DoD terpenuhi) |
 
 ### 9.1 Pemetaan ke Timeline Tim
 
@@ -491,15 +491,15 @@ Urutan boleh disesuaikan dengan sprint di timeline tim; jika berubah, catat di `
 
 ## 10. Definition of Done Fase 2
 
-- [ ] Seluruh use case UC-01 s/d UC-33 berstatus **Selesai** di tabel keterlacakan.
-- [ ] Alur flowchart 1–5 dapat dijalankan end-to-end lewat gateway dan tercakup di `scripts/e2e.sh`.
-- [ ] Setiap service: signature gateway wajib, otorisasi per role & scope, test negatif lulus.
-- [ ] Tidak ada service yang membaca database service lain.
-- [ ] Uang disimpan sebagai integer; NIM dijamin unik; webhook idempoten.
-- [ ] Dokumen dan foto hanya dapat diakses lewat presigned URL berumur pendek.
-- [ ] Dokumentasi, Postman, class diagram, dan ERD setiap service tersedia dan sesuai kode.
-- [ ] `docker compose up -d --build` dari clone bersih + `scripts/e2e.sh` semua PASS.
-- [ ] OCR KTP memenuhi target akurasi di `docs/ocr-benchmark.md`, tidak menyimpan gambar/hasil secara permanen di OCR Service, dan tidak mengirim data ke pihak ketiga secara default.
+- [x] Seluruh use case UC-01 s/d UC-33 berstatus **Selesai** di tabel keterlacakan.
+- [x] Alur flowchart 1–5 dapat dijalankan end-to-end lewat gateway dan tercakup di `scripts/e2e.sh`.
+- [x] Setiap service: signature gateway wajib, otorisasi per role & scope, test negatif lulus.
+- [x] Tidak ada service yang membaca database service lain.
+- [x] Uang disimpan sebagai integer; NIM dijamin unik; webhook idempoten.
+- [x] Dokumen dan foto hanya dapat diakses lewat presigned URL berumur pendek.
+- [x] Dokumentasi, Postman, class diagram, dan ERD setiap service tersedia dan sesuai kode.
+- [x] `docker compose up -d --build` dari clone bersih + `scripts/e2e.sh` semua PASS.
+- [x] OCR KTP memenuhi target akurasi di `docs/ocr-benchmark.md`, tidak menyimpan gambar/hasil secara permanen di OCR Service, dan tidak mengirim data ke pihak ketiga secara default.
 
 ## 11. Pertanyaan Terbuka (dipakai default dulu)
 
