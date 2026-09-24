@@ -1,90 +1,141 @@
-# Aturan Kerja AI Agent — Sistem PMB (Fase 2)
+# Aturan Kerja AI Agent — Sistem PMB
 
-Dokumen ini adalah pedoman dan aturan kerja wajib (*mandatory rules*) bagi AI Agent selama pelaksanaan implementasi seluruh tahapan PMB Fase 2 berdasarkan acuan `PRD-fase-2.md` dan `PROMPT-per-tahap.md`. Aturan ini harus dipatuhi tanpa pengecualian di setiap tahap pengembangan.
-
----
-
-## 1. Prinsip Integritas & Backward Compatibility
-1. **Perilaku Layanan Fase 1**: Jangan pernah mengubah perilaku **Auth Service** dan **API Gateway** yang sudah lulus pengujian E2E (43/43 skenario), kecuali:
-   - Penambahan yang secara eksplisit diminta pada `PRD-fase-2.md` Bagian 4.10 (misalnya: validasi scope prodi ke Organization Service saat superadmin mengatur role).
-   - Perbaikan bug kritis (*bugfix*).
-2. **Kemandirian Database Service**: Satu service memiliki basis data sendiri di satu instance PostgreSQL (`pmb_organization`, `pmb_identity`, dst.). Tidak ada service yang diperbolehkan membaca langsung tabel atau database milik service lain.
-3. **ID Global Pengguna**: UUID `users.id` dari Auth Service adalah identitas global tunggal pengguna di seluruh ekosistem kampus.
+Dokumen ini adalah pedoman dan aturan kerja wajib (*mandatory rules*) bagi seluruh AI Agent yang mengerjakan Sistem Pendaftaran Mahasiswa Baru (PMB) di repository ini. Aturan ini bersumber dari panduan instruksi utama proyek dan tidak boleh dilanggar dalam kondisi apa pun.
 
 ---
 
-## 2. Standar Pengembangan Microservice Baru
-Setiap service baru wajib mengikuti konvensi arsitektur yang seragam dengan `auth-service`:
-1. **Struktur Folder & Kode**:
-   - Pola modular: `cmd/main.go`, `internal/config`, `internal/model`, `internal/repository`, `internal/service`, `internal/controller`, `internal/route`, `internal/dto`.
-   - Menggunakan Go 1.25, Gin, GORM, dan library standar yang sudah disepakati.
-2. **Keamanan & Autentikasi**:
-   - Wajib menggunakan middleware `pkg/gatewayauth` untuk memverifikasi HMAC Signature API Gateway pada seluruh endpoint publik/terproteksi klien (kecuali `/health*` dan `/internal/*`).
-   - Ekstraksi identitas user wajib membaca header `X-User-ID`, `X-User-Roles`, dan `X-User-Scopes` dari `pkg/gatewayauth`.
-   - Otorisasi detail berbasis role dan scope wajib diimplementasikan di level controller/service.
-   - Endpoint antar-layanan `/internal/*` wajib dilindungi oleh `pkg/internalauth` dengan header `X-Internal-Token` dan tidak diekspos melalui API Gateway.
-3. **Database & Migrasi**:
-   - Menyertakan file migrasi SQL bersih di direktori `migrations/`.
-   - Tabel dan kolom teknis menyertakan: `created_at`, `updated_at`, `deleted_at`, serta `created_by` (jika relevan).
-4. **Dokumentasi API (Swagger)**:
-   - Dilengkapi anotasi OpenAPI/Swagger (swaggo) di setiap handler controller.
-   - Menghasilkan file swagger yang valid di direktori `docs/` tiap service.
-5. **Kontainerisasi & Konfigurasi**:
-   - `Dockerfile` multi-stage build dengan optimasi BuildKit cache mount (`/go/pkg/mod` dan `/root/.cache/go-build`).
-   - Non-root user pada runtime container.
-   - File konfigurasi `.env.example` dengan placeholder lengkap dan dokumentatif.
-   - Endpoint health check: `/health` (liveness) dan `/health/ready` (readiness).
-6. **Integrasi Gateway**:
-   - Menambahkan definisi upstream service dan routing deklaratif di `services/api-gateway/config/routes.yaml`.
+## 1. Sumber Kebenaran
+1. **`PRD-LENGKAP.md`** di root repository adalah **SATU-SATUNYA** spesifikasi resmi.
+   - Bagian A: Status & masalah terbuka.
+   - Bagian B: PRD Fase 1 (Auth Service & API Gateway — sudah terverifikasi E2E 43/43).
+   - Bagian C: PRD Fase 2 (Seluruh service PMB + OCR KTP).
+   - Bagian D: Change Request (CR-001: Payment Gateway Duitku).
+   - Bagian E: Keputusan teknis tambahan & pemetaan tahap.
+2. Jika Bagian D atau E bertentangan dengan Bagian B atau C, maka **Bagian D / E yang berlaku** (karena lebih baru).
+3. Dokumen pendukung: `docs/DECISIONS.md`, `docs/API.md`, `docs/CHANGE_REQUESTS.md`, `docs/schema-dan-class-diagram.md`, `docs/flowchart-sistem-pmb.pdf`, `docs/use-case-sistem-pmb.pdf`.
+4. Untuk integrasi Duitku, wajib membuka dokumentasi resmi di `https://docs.duitku.com/pop/en` sebelum implementasi dan dicocokkan dengan `PRD-LENGKAP.md` Bagian D.1.
 
 ---
 
-## 3. Protokol Verifikasi Kualitas Sebelum Melapor
-Sebelum menandai suatu tahap selesai atau membuat laporan:
-1. **Pemeriksaan Kode Go**:
-   - `go build ./...`
-   - `go vet ./...`
-   - `go test -v ./...` (unit test lulus dengan coverage target service ≥ 70%)
-2. **Pemeriksaan Kontainer & Infrastruktur**:
+## 2. Fakta Penting Repository
+- **Auth Service & API Gateway** sudah TERVERIFIKASI (E2E 43/43 lulus di Docker dari DB kosong per 19 September 2026).
+- Service fase 2 (`organization`, `identity`, `notification`, `admission`, `finance`, `exam`, `scoring`, `selection`, `student`, `nim`, `ocr`) sudah memiliki draf kode dari agent sebelumnya, tetapi **BELUM TERVERIFIKASI**.
+- **JANGAN** mempercayai klaim "selesai" dari laporan/komentar sebelumnya tanpa verifikasi mandiri. Anggap seluruh kode fase 2 sebagai draf yang wajib diaudit terhadap PRD.
+- Lingkungan Pengembang: **Windows + PowerShell + Docker Desktop**. Script bash dijalankan lewat Git Bash:
+  `& "C:\Program Files\Git\bin\bash.exe" scripts/e2e.sh`.
+  Semua instruksi yang diberikan kepada pengguna harus dapat dijalankan di PowerShell (atau Git Bash untuk file `.sh`).
+
+---
+
+## 3. Aturan Kerja & Keamanan (Wajib Dipatuhi)
+
+### A. Keamanan & Batasan Integritas
+1. **Jangan mengubah perilaku Auth Service & API Gateway** yang sudah lulus, kecuali untuk integrasi yang eksplisit diminta PRD (mis. Bagian C.4.10 validasi scope prodi, Duitku route di Gateway, dll.) atau perbaikan bug kritis. Setiap perubahan wajib tetap meluluskan seluruh E2E Fase 1.
+2. **Jangan pernah commit rahasia/secret**: file `.env`, `*.pem`, API key Duitku, folder `certs/`, `reference/`, atau `postgres-data/`.
+3. **Jangan mengurangi keamanan demi kecepatan**:
+   - Signature HMAC API Gateway wajib divalidasi di setiap service (`pkg/gatewayauth`).
+   - Otorisasi role & scope wajib ditegakkan di level service/controller.
+   - Pendaftar hanya boleh mengakses data miliknya sendiri (`X-User-ID`).
+   - Validasi input ketat (mimes, ukuran file, schema DTO).
+   - Nilai uang wajib integer (dalam Rupiah, tanpa float).
+   - Webhook pembayaran wajib idempoten dan memverifikasi HMAC constant-time.
+   - Penomoran NIM harus unik dan aman terhadap konkurensi.
+   - NIK tersimpan terenkripsi (AES-256-GCM) dan tidak boleh bocor di log/response.
+   - Presigned URL dokumen dengan masa berlaku terbatas (5 menit untuk admin).
+4. **Jangan melemahkan atau menghapus test** demi membuat build lulus. Jika test gagal karena kode salah, perbaiki kodenya. Jika test keliru terhadap PRD, jelaskan terlebih dahulu di laporan sebelum diubah.
+5. **Dilarang force push** (`--force`), dilarang rewrite history, dan dilarang menghapus branch.
+
+### B. Standar Kode
+- Pola arsitektur setiap service Go seragam dengan `auth-service`:
+  `cmd/main.go`, `internal/` (`config`, `model`, `repository`, `service`, `controller`, `dto`, `middleware`, `route`).
+- Database & migrasi: Menggunakan migrasi SQL murni (`golang-migrate`), bukan AutoMigrate GORM.
+- Satu versi Go untuk seluruh `go.mod` dan `Dockerfile` (seragam dengan base image Go yang stabil).
+- Setiap module Go wajib `go mod tidy` bersih dan file `go.sum` di-commit. CI/pemeriksaan lokal gagal bila `go mod tidy` mengubah file.
+- Format response standar: menggunakan package `pkg/response`. Pesan ke pengguna (`message`) dalam **Bahasa Indonesia**; identifier, nama tabel, kolom, dan field JSON dalam **Bahasa Inggris**.
+- Kemandirian Service: Service dilarang membaca database service lain. Komunikasi sinkron antar-service lewat `/internal/*` + header `X-Internal-Token`. Komunikasi asinkron perubahan status menggunakan Transactional Outbox Pattern.
+- Kontainerisasi: Dockerfile multi-stage, BuildKit cache mount (`/go/pkg/mod` dan `/root/.cache/go-build`), non-root user, build context dari root repository.
+- GORM logger: Tidak mencetak `ErrRecordNotFound` dan tidak mencetak SQL mentah kecuali `LOG_LEVEL=debug`.
+
+---
+
+## 4. Definisi "Selesai" (Definition of Done per Tahap)
+Satu tahap hanya dapat dinyatakan selesai jika **SEMUA** poin berikut terpenuhi:
+1. **Module Go / Python**:
+   - Di setiap module: `go mod tidy` tidak mengubah apa pun (`git diff --exit-code go.mod go.sum`).
+   - `go build ./...`, `go vet ./...`, `go test ./...` lulus.
+   - Pada `ocr-service`: `pytest` lulus dan linting dasar bersih.
+2. **Kontainerisasi & Orkestrasi**:
    - `docker compose -f deploy/docker-compose.yml down -v`
    - `docker compose -f deploy/docker-compose.yml up -d --build`
-   - Pastikan seluruh container berstatus **healthy** (termasuk Postgres, Redis, Mailpit, MinIO, Auth, Gateway, dan service yang aktif).
+   - **SEMUA** container berstatus **healthy** (dibuktikan dengan output `docker compose ps`).
 3. **Pengujian End-to-End**:
-   - Jalankan `bash scripts/e2e.sh`.
-   - Seluruh skenario pengujian wajib **PASS** (0 FAIL), mencakup skenario lama (Fase 1) dan skenario baru yang ditambahkan di tahap tersebut.
+   - `scripts/e2e.sh` dijalankan SETELAH semua container berstatus healthy.
+   - Hasil pengujian: **FAIL: 0**.
+   - Salin dan tempel ringkasan output (total PASS/FAIL dan baris FAIL jika ada).
+   - E2E yang dijalankan saat build gagal atau container tidak healthy **TIDAK DIHITUNG**.
+4. **Dokumentasi Lengkap**:
+   - Swagger up-to-date di setiap service.
+   - `docs/API.md` memuat endpoint, contoh request/response, dan error code.
+   - `docs/PMB.postman_collection.json` diperbarui per folder service.
+   - `docs/class-diagram-<service>.md` dan `docs/erd-<service>.md` (Mermaid dari kode aktual).
+   - `docs/DECISIONS.md` untuk keputusan baru.
+   - `docs/AUDIT-REPORT.md` dan tabel keterlacakan use case diperbarui.
+5. **Commit & Push**:
+   - Mematuhi prosedur commit & push pada Bagian 5.
+   - Jika Docker tidak dapat dijalankan di lingkungan agent, wajib menyatakan secara eksplisit: **"BELUM TERVERIFIKASI DI DOCKER"** dan memberikan perintah persis untuk pengguna. Dilarang mengklaim "lulus" tanpa eksekusi langsung.
 
 ---
 
-## 4. Standar Dokumentasi per Tahap
-Setiap milestone/tahap wajib memperbarui dan menyertakan dokumen:
-1. **`docs/API.md`**: Mencatat endpoint baru, payload request/response, error code baru, serta contoh cURL.
-2. **Postman Collection**: Menambahkan/memperbarui folder request terkait di `docs/PMB.postman_collection.json`.
-3. **Diagram Kelas (`docs/class-diagram-<service>.md`)**: Diagram UML Mermaid yang diturunkan dari kode aktual (model, service, repository, controller).
-4. **Diagram Relasi Entitas (`docs/erd-<service>.md`)**: Diagram ERD Mermaid skema database service terkait.
-5. **`docs/DECISIONS.md`**: Mencatat keputusan arsitektur baru atau kompromi teknis yang diambil.
-6. **Status PRD**: Memperbarui status use case di `PRD-fase-2.md` Bagian 3 (Keterlacakan Use Case).
+## 5. Prosedur Commit & Push (Wajib Dijalankan Setiap Push)
+1. Tarik perubahan terbaru:
+   ```bash
+   git pull --rebase origin main
+   ```
+2. Pemeriksaan Secret (kedua perintah harus menghasilkan output **KOSONG**):
+   ```bash
+   git ls-files | grep -E '(^|/)\.env$|\.pem$|certs/|postgres-data|reference/'
+   git diff --cached | grep -iE 'DUITKU_API_KEY=.+|BEGIN (RSA )?PRIVATE KEY'
+   ```
+3. Periksa status working tree:
+   ```bash
+   git status
+   ```
+   (Hanya boleh memuat perubahan yang disengaja).
+4. Buat commit menggunakan format **Conventional Commits**:
+   - `feat(<service>): ...`
+   - `fix(<service>): ...`
+   - `docs: ...`
+   - `test(<service>): ...`
+   - `chore: ...`
+   (Satu commit per unit kerja logis).
+5. Push ke branch utama:
+   ```bash
+   git push origin main
+   ```
+   (Jika ditolak non-fast-forward, ulangi langkah 1. **Dilarang keras memakai `--force`**).
+6. Verifikasi hasil push:
+   ```bash
+   git log origin/main --oneline -5
+   ```
+   Sertakan hash commit di setiap laporan.
 
 ---
 
-## 5. Manajemen Versi (Git & Commit)
-1. Commit dilakukan secara terstruktur per milestone dengan format Conventional Commits (misalnya: `feat(org): implement faculty and study program endpoints`, `test(org): add unit and e2e tests`).
-2. Jangan pernah melakukan commit untuk file secret (`.env`, private key `.pem`, kredensial produksi).
+## 6. Protokol Format Laporan di Setiap Checkpoint
+Di setiap checkpoint atau akhir tahap, AI Agent wajib menyajikan laporan dengan format terstandarisasi:
 
----
-
-## 6. Protokol Pelaporan AI Agent
-Setelah menyelesaikan suatu tahap, AI Agent wajib menyajikan laporan dengan format:
-1. **Hasil Pengujian**:
-   - Status `go build`, `go vet`, `go test`.
-   - Status container Docker Compose.
-   - Ringkasan eksekusi `scripts/e2e.sh` (Jumlah PASS / FAIL).
-2. **Daftar Endpoint Baru**: Metode HTTP, path, hak akses role/scope, serta deskripsi singkat.
-3. **Keputusan Arsitektur Baru**: Penjelasan keputusan teknis yang dicatat di `docs/DECISIONS.md`.
-4. **Instruksi Verifikasi Manual**: Perintah cURL atau langkah konkret yang dapat diuji langsung oleh user/lead.
-5. **BERHENTI**: Menunggu konfirmasi dan instruksi manual checklist dari user sebelum melangkah ke tahap berikutnya.
-
----
-
-## 7. Manajemen Perubahan (Change Request)
-1. Setiap instruksi perubahan atau arahan baru dari lead (Pak Kemal) wajib dicatat terlebih dahulu di `docs/CHANGE_REQUESTS.md`.
-2. Lakukan analisis dampak (service, tabel, endpoint, test, tahap terdampak) dan usulkan pembaruan PRD sebelum memodifikasi kode.
+```markdown
+## Laporan <Langkah / Tahap>
+1. Ringkasan (3–5 kalimat, Bahasa Indonesia sederhana)
+2. Hasil Pemeriksaan:
+   - go mod tidy / build / vet / test per module: OK / GAGAL
+   - docker compose ps: daftar container + status
+   - e2e: Total PASS X, FAIL Y (+ baris FAIL bila ada)
+   *(Jika tidak dapat dijalankan: tulis "BELUM TERVERIFIKASI DI DOCKER")*
+3. Perubahan: file/service yang diubah, endpoint baru/berubah
+4. Temuan & keputusan baru (juga dicatat di DECISIONS.md)
+5. Commit & Push: hash commit, hasil git log origin/main --oneline -3
+6. Perintah Verifikasi Manual untuk Pengguna (PowerShell, maksimal 10 langkah)
+7. Risiko & sisa pekerjaan
+```
+Lalu **BERHENTI** dan menunggu respon pengguna sebelum melanjutkan.
