@@ -277,6 +277,7 @@ func (s *ktpScanService) ConfirmKTPScan(ctx context.Context, scanID, userID uuid
 
 	editedJSON, _ := json.Marshal(editedFields)
 	scan.FieldsEditedByUser = string(editedJSON)
+	scan.OCRDataRaw = "" // Sesuai PRD C.4.11 & UU PDP: data mentah OCR tidak disimpan permanen
 	now := time.Now()
 	scan.ConfirmedAt = &now
 	scan.UpdatedAt = now

@@ -66,11 +66,8 @@ routes:
       - POST /forgot-password
       - POST /reset-password
     rate_limit: { requests: 60, window: 1m }
-  - prefix: /api/v1/ocr
-    service: ocr
-    rewrite: /internal/ocr
-    auth: required
-    max_body: 10MB
+  # OCR Service berstatus internal-only (PRD C.4.11), tidak diekspos di Gateway.
+  # Calon mahasiswa mengakses OCR KTP melalui Identity Service (/api/v1/identity/me/ktp-scan).
   - prefix: /api/v1/organization/admin
     service: organization
     rewrite: /organization/admin
