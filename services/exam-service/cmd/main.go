@@ -48,17 +48,25 @@ func main() {
 		log.Fatal("Gagal terhubung ke basis data exam", zap.Error(err))
 	}
 
-	// Auto-migrate tabel exam
+	// Auto-migrate tabel exam & CBT (CR-003)
 	err = db.AutoMigrate(
 		&model.ExamSession{},
 		&model.SessionExaminer{},
 		&model.Participant{},
 		&model.ExamCard{},
+		&model.QuestionBank{},
+		&model.Question{},
+		&model.QuestionOption{},
+		&model.CBTExam{},
+		&model.CBTExamRule{},
+		&model.CBTAttempt{},
+		&model.CBTAnswer{},
+		&model.CBTEvent{},
 	)
 	if err != nil {
-		log.Fatal("Gagal migrasi skema tabel exam", zap.Error(err))
+		log.Fatal("Gagal migrasi skema tabel exam dan CBT", zap.Error(err))
 	}
-	log.Info("Migrasi basis data exam berhasil disiapkan")
+	log.Info("Migrasi basis data exam dan CBT berhasil disiapkan")
 
 	// 4. Jalankan Seeder
 	ctxSeed, cancelSeed := context.WithTimeout(context.Background(), 10*time.Second)
@@ -115,9 +123,19 @@ func main() {
 		})
 	}
 
+	var scoringCli internalclient.Client
+	if cfg.ScoringServiceURL != "" {
+		scoringCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.ScoringServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
 	// 7. Inisialisasi Repository & Service Layer
 	sessionRepo := repository.NewSessionRepository(db)
 	participantRepo := repository.NewParticipantRepository(db)
+	cbtRepo := repository.NewCBTRepository(db)
 
 	examSvc := service.NewExamService(
 		cfg,
@@ -128,6 +146,7 @@ func main() {
 		identityCli,
 		notificationCli,
 	)
+	cbtSvc := service.NewCBTService(cbtRepo, sessionRepo, participantRepo, scoringCli)
 
 	// 8. Inisialisasi Controller
 	healthCtrl := controller.NewHealthController()
@@ -136,6 +155,7 @@ func main() {
 	studentCtrl := controller.NewStudentController(examSvc)
 	examinerCtrl := controller.NewExaminerController(examSvc)
 	internalCtrl := controller.NewInternalController(examSvc)
+	cbtCtrl := controller.NewCBTController(cbtSvc)
 
 	// 9. Inisialisasi HTTP Router
 	routerCfg := route.RouterConfig{
@@ -151,6 +171,7 @@ func main() {
 		studentCtrl,
 		examinerCtrl,
 		internalCtrl,
+		cbtCtrl,
 	)
 
 	// 10. Start Server dengan Graceful Shutdown

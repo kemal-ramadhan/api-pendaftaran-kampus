@@ -139,6 +139,16 @@ routes:
     auth: required
     roles: [dosen, admin_pmb, superadmin]
     max_body: 5MB
+  - prefix: /api/v1/exam/time
+    service: exam
+    rewrite: /exam/time
+    auth: public
+  - prefix: /api/v1/exam/cbt/me
+    service: exam
+    rewrite: /exam/cbt/me
+    auth: required
+    roles: [calon_mahasiswa, admin_pmb, superadmin]
+    max_body: 5MB
   - prefix: /api/v1/exam/me
     service: exam
     rewrite: /exam/me

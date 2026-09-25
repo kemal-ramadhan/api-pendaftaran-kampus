@@ -27,6 +27,7 @@ type Config struct {
 	AdmissionServiceURL    string
 	IdentityServiceURL     string
 	NotificationServiceURL string
+	ScoringServiceURL      string
 }
 
 func LoadConfig() *Config {
@@ -54,6 +55,7 @@ func LoadConfig() *Config {
 		AdmissionServiceURL:    getEnv("ADMISSION_SERVICE_URL", "http://localhost:8086"),
 		IdentityServiceURL:     getEnv("IDENTITY_SERVICE_URL", "http://localhost:8083"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8084"),
+		ScoringServiceURL:      getEnv("SCORING_SERVICE_URL", "http://localhost:8088"),
 	}
 }
 

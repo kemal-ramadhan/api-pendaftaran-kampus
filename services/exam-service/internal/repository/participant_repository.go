@@ -10,11 +10,16 @@ import (
 	"gorm.io/gorm"
 )
 
+var (
+	ErrParticipantNotFound = errors.New("peserta ujian tidak ditemukan")
+)
+
 type ParticipantRepository interface {
 	AddParticipant(ctx context.Context, p *model.Participant) error
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Participant, error)
 	FindByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Participant, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Participant, error)
+	FindBySessionAndUser(ctx context.Context, sessionID, userID uuid.UUID) (*model.Participant, error)
 	FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]model.Participant, error)
 	CountBySessionID(ctx context.Context, sessionID uuid.UUID) (int64, error)
 	UpdateAttendance(ctx context.Context, participantID uuid.UUID, attendance string) error
@@ -76,6 +81,22 @@ func (r *participantRepository) FindByUserID(ctx context.Context, userID uuid.UU
 		Order("created_at DESC").
 		Find(&participants).Error
 	return participants, err
+}
+
+func (r *participantRepository) FindBySessionAndUser(ctx context.Context, sessionID, userID uuid.UUID) (*model.Participant, error) {
+	var p model.Participant
+	err := r.db.WithContext(ctx).
+		Preload("Session").
+		Preload("ExamCard").
+		Where("session_id = ? AND user_id = ?", sessionID, userID).
+		First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrParticipantNotFound
+		}
+		return nil, err
+	}
+	return &p, nil
 }
 
 func (r *participantRepository) FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]model.Participant, error) {

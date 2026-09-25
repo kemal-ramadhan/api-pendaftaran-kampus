@@ -21,13 +21,16 @@ func SetupRouter(
 	studentCtrl *controller.StudentController,
 	examinerCtrl *controller.ExaminerController,
 	internalCtrl *controller.InternalController,
+	cbtCtrl *controller.CBTController,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// 1. Health check publik
+	// 1. Health check publik & sinkronisasi waktu server
 	r.GET("/health", healthCtrl.HealthCheck)
 	r.GET("/health/ready", healthCtrl.ReadinessCheck)
+	r.GET("/time", cbtCtrl.GetServerTime)
+	r.GET("/exam/time", cbtCtrl.GetServerTime)
 
 	// 2. Internal endpoints (dilindungi X-Internal-Token)
 	internalGroup := r.Group("/internal")
@@ -48,12 +51,31 @@ func SetupRouter(
 			meGroup.GET("/card", studentCtrl.GetMyCard)
 		}
 
+		// CBT Peserta (mendukung prefix /exam/cbt/me maupun /cbt/me)
+		registerCBTParticipantRoutes := func(prefix string) {
+			cbtGroup := authGroup.Group(prefix)
+			{
+				cbtGroup.GET("/exams", cbtCtrl.GetMyCBTExams)
+				cbtGroup.GET("/exams/:id", cbtCtrl.GetCBTExamDetail)
+				cbtGroup.POST("/exams/:id/start", cbtCtrl.StartAttempt)
+				cbtGroup.GET("/attempts/:id", cbtCtrl.GetAttemptQuestions)
+				cbtGroup.PUT("/attempts/:id/answers/:question_id", cbtCtrl.SaveAnswer)
+				cbtGroup.POST("/attempts/:id/events", cbtCtrl.RecordEvent)
+				cbtGroup.POST("/attempts/:id/submit", cbtCtrl.SubmitAttempt)
+				cbtGroup.GET("/attempts/:id/result", cbtCtrl.GetAttemptResult)
+			}
+		}
+		registerCBTParticipantRoutes("/exam/cbt/me")
+		registerCBTParticipantRoutes("/cbt/me")
+
 		// Endpoint Dosen Penguji
 		examinerGroup := authGroup.Group("/exam/examiner")
 		examinerGroup.Use(gatewayauth.RequireRole("dosen", "admin_pmb", "superadmin"))
 		{
 			examinerGroup.GET("/sessions", examinerCtrl.GetMyAssignedSessions)
 			examinerGroup.GET("/sessions/:id/participants", examinerCtrl.GetMySessionParticipants)
+			examinerGroup.GET("/cbt/essays", cbtCtrl.ListUngradedEssays)
+			examinerGroup.PUT("/cbt/answers/:id/grade", cbtCtrl.GradeEssay)
 		}
 
 		// Presensi Kehadiran (Dapat diakses oleh Dosen bertugas atau Admin PMB)
@@ -78,6 +100,16 @@ func SetupRouter(
 			adminGroup.POST("/sessions/:id/participants", participantCtrl.AddParticipant)
 			adminGroup.POST("/sessions/:id/auto-assign", participantCtrl.AutoAssignParticipants)
 			adminGroup.GET("/sessions/:id/participants", participantCtrl.GetSessionParticipants)
+
+			// Admin CBT
+			adminGroup.POST("/cbt/banks", cbtCtrl.CreateQuestionBank)
+			adminGroup.GET("/cbt/banks", cbtCtrl.ListQuestionBanks)
+			adminGroup.POST("/cbt/questions", cbtCtrl.CreateQuestion)
+			adminGroup.GET("/cbt/questions", cbtCtrl.ListQuestions)
+			adminGroup.POST("/cbt/exams", cbtCtrl.CreateCBTExam)
+			adminGroup.POST("/cbt/exams/:id/publish", cbtCtrl.PublishCBTExam)
+			adminGroup.POST("/cbt/attempts/:id/reset", cbtCtrl.ResetAttempt)
+			adminGroup.POST("/cbt/attempts/:id/extend", cbtCtrl.ExtendAttempt)
 		}
 	}
 

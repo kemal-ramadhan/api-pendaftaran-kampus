@@ -156,6 +156,15 @@ func (m *mockParticipantRepo) FindByUserID(ctx context.Context, userID uuid.UUID
 	return list, nil
 }
 
+func (m *mockParticipantRepo) FindBySessionAndUser(ctx context.Context, sessionID, userID uuid.UUID) (*model.Participant, error) {
+	for _, p := range m.participants {
+		if p.SessionID == sessionID && p.UserID == userID {
+			return p, nil
+		}
+	}
+	return nil, nil
+}
+
 func (m *mockParticipantRepo) FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]model.Participant, error) {
 	var list []model.Participant
 	for _, p := range m.participants {

@@ -60,6 +60,9 @@ func (d *dummyParticipantRepo) FindByApplicationID(ctx context.Context, appID uu
 func (d *dummyParticipantRepo) FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Participant, error) {
 	return []model.Participant{}, nil
 }
+func (d *dummyParticipantRepo) FindBySessionAndUser(ctx context.Context, sessionID, userID uuid.UUID) (*model.Participant, error) {
+	return &model.Participant{SessionID: sessionID, UserID: userID}, nil
+}
 func (d *dummyParticipantRepo) FindBySessionID(ctx context.Context, sessionID uuid.UUID) ([]model.Participant, error) {
 	return []model.Participant{}, nil
 }
@@ -112,12 +115,19 @@ func TestExamRouter_AuthAndPublicEndpoints(t *testing.T) {
 	studentCtrl := controller.NewStudentController(examSvc)
 	examinerCtrl := controller.NewExaminerController(examSvc)
 	internalCtrl := controller.NewInternalController(examSvc)
+	cbtCtrl := controller.NewCBTController(nil)
 
-	router := SetupRouter(cfg, healthCtrl, sessionCtrl, partCtrl, studentCtrl, examinerCtrl, internalCtrl)
+	router := SetupRouter(cfg, healthCtrl, sessionCtrl, partCtrl, studentCtrl, examinerCtrl, internalCtrl, cbtCtrl)
 
 	// 1. Health check tanpa auth -> HTTP 200
 	req, _ := http.NewRequest(http.MethodGet, "/health", nil)
 	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// 1b. Time check publik tanpa auth (CR-003) -> HTTP 200
+	req, _ = http.NewRequest(http.MethodGet, "/time", nil)
+	w = httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 	assert.Equal(t, http.StatusOK, w.Code)
 
