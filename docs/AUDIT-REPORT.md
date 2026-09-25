@@ -167,21 +167,21 @@ File `scripts/e2e.sh` telah dirancang mencakup 16 Bagian Pengujian (118 langkah 
 
 ## 6. Realisasi & Status Perbaikan (Tahap 1 s/d 11)
 
-Seluruh 11 tahap pengerjaan telah berhasil diselesaikan, diaudit, dan diverifikasi unit test lokalnya (100% PASS pada 13 module Go):
+Seluruh 11 tahap pengerjaan serta Change Request CR-001 s/d CR-004 telah berhasil diselesaikan, diaudit, dan diverifikasi unit test lokalnya (100% PASS pada seluruh modul Go):
 
 | Tahap | Service / Modul | Ringkasan Pekerjaan | Status Unit Test | Status Docker |
 |---|---|---|---|---|
 | **Tahap 1** | Organization Service & Auth | Isolasi scope prodi di Auth, validasi signature gateway, filter CRUD | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
 | **Tahap 2** | Identity Service & OCR KTP | Pembersihan kolom mentah `ocr_data_raw` (patuh UU PDP), isolasi rute OCR internal di gateway, benchmark sintetis OCR | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 3** | Notification & Admission 1 | Penambahan endpoint readiness `/health/ready`, validasi state machine pendaftaran (`PERIOD_CLOSED`, `DUPLICATE_APPLICATION`, `INVALID_STATE`) | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 4** | Finance 1 & CR-001 (Duitku) | Adapter Duitku POP (`createInvoice`, HMAC-SHA256, callback webhook verification, checkStatus), migration kolom Duitku, fee schemes admin CRUD | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 3** | Notification & Admission 1 (+ CR-002 & CR-004) | Readiness `/health/ready`, state machine pendaftaran, **CR-002**: pembatalan pendaftaran (`POST /me/cancel`), riwayat (`GET /me/history`), kelayakan daftar baru (`GET /me/eligibility`), guard status; **CR-004**: stepper progress (`GET /me/progress`) | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 4** | Finance 1 & CR-001 Duitku (+ CR-002 & CR-004) | **CR-001**: Adapter Duitku POP (`createInvoice`, HMAC-SHA256, callback webhook verification, checkStatus); **CR-002**: pembatalan invoice (`POST /internal/invoices/:id/cancel` & cancel-by-application), penanganan status `paid_after_cancel`; **CR-004**: detail pembayaran (`GET /invoices/me/:id`) & polling status (`GET /invoices/me/:id/payments/:payment_id/status`) | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
 | **Tahap 5** | Admission Service 2 | Presigned URL dokumen MinIO, validasi magic bytes MIME (PDF, JPG, PNG), alur verifikasi & revisi dokumen, ekspor XLSX, CRUD master data | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 6** | Exam Service | Penambahan `/health/ready`, penjadwalan ujian bagi status `verified`, alur penugasan dosen penguji, kartu ujian PDF, presensi kehadiran | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 7** | Scoring Service | Penambahan `/health/ready`, validasi pembobotan 100%, penguncian nilai peserta (`is_locked`), rekap ranking program studi & ekspor | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 8** | Selection Service | Penambahan `/health/ready`, validasi kuota prodi, persetujuan & pengembalian rekomendasi pimpinan, publikasi pengumuman kelulusan | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 6** | Exam Service (+ CR-003 CBT) | Readiness `/health/ready`, penjadwalan & penugasan dosen; **CR-003 CBT Lengkap**: bank soal, timer server anti-curang, autosave per butir soal, pencegahan kebocoran kunci jawaban (tanpa `is_correct` di response), penilaian otomatis objektif & esai | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 7** | Scoring Service | Readiness `/health/ready`, validasi pembobotan 100%, penguncian nilai peserta (`is_locked`), integrasi skor CBT, rekap ranking program studi & ekspor | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 8** | Selection Service | Readiness `/health/ready`, validasi kuota prodi, guard `ALREADY_ACCEPTED`, persetujuan & pengembalian rekomendasi pimpinan, publikasi pengumuman kelulusan | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
 | **Tahap 9** | Finance Service 2 | Validasi cicilan exact sum termin (maks 4 termin, min 25% termin 1), rekonsiliasi pembayaran Duitku `POST /reconcile`, cron jatuh tempo | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
 | **Tahap 10** | Student Service | Validasi kelayakan daftar ulang (`passed`), update data tambahan mahasiswa, outbox event `student.reregistered`, ekspor rekap XLSX | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
-| **Tahap 11** | NIM Service & Integrasi Akhir | Konkurensi nomor urut NIM anti-race condition (`SELECT FOR UPDATE`), alur event penerbitan NIM & penambahan role mahasiswa | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
+| **Tahap 11** | NIM Service & Integrasi Akhir | Konkurensi nomor urut NIM anti-race condition (`SELECT FOR UPDATE`), alur event penerbitan NIM, satu NIM per user, penambahan role mahasiswa | ✅ PASS (100%) | BELUM TERVERIFIKASI DI DOCKER |
 
 ---
 

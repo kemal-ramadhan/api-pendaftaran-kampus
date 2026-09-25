@@ -2269,6 +2269,73 @@ Dashboard Statistik Pimpinan (Executive Dashboard) mengintegrasikan visibilitas 
 - **Akses**: `pimpinan`, `admin_pmb`, `superadmin`, `prodi`
 - **Fungsi**: Memantau calon mahasiswa yang telah menyelesaikan daftar ulang hingga resmi berstatus mahasiswa aktif dengan Nomor Induk Mahasiswa (NIM) yang telah diterbitkan.
 
+---
+
+## 17. Endpoints Tambahan Change Requests (CR-002, CR-003, CR-004)
+
+### 17.1 CR-002: Pembatalan Pendaftaran, Riwayat & Kelayakan Pendaftaran Baru
+- **`POST /api/v1/admission/applications/me/cancel`**
+  - **Akses**: `calon_mahasiswa` (pendaftar pemilik berkas)
+  - **Request Body**: `{"reason": "Pindah ke perguruan tinggi lain"}` (opsional)
+  - **Keterangan**: Membatalkan pendaftaran aktif sebelum biaya pendaftaran dibayarkan. Secara sinkron membatalkan tagihan di Finance Service. Jika pembayaran sudah lunas / sedang diverifikasi, menghasilkan error `409 CANCEL_NOT_ALLOWED`.
+- **`GET /api/v1/admission/applications/me/history`**
+  - **Akses**: `calon_mahasiswa`
+  - **Keterangan**: Mengembalikan seluruh daftar pendaftaran milik pengguna (termasuk status `cancelled` dan `failed`), diurutkan dari yang terbaru.
+- **`GET /api/v1/admission/applications/me/eligibility`**
+  - **Akses**: `calon_mahasiswa`
+  - **Response 200 OK**:
+    ```json
+    {
+      "success": true,
+      "message": "Status kelayakan pendaftaran berhasil diambil",
+      "data": {
+        "can_create_new": true,
+        "reason": "Anda memenuhi syarat untuk membuat pendaftaran baru",
+        "blocked_choices": []
+      }
+    }
+    ```
+
+### 17.2 CR-003: Computer Based Test (CBT)
+- **`GET /api/v1/exam/time`**
+  - **Akses**: Publik
+  - **Fungsi**: Sinkronisasi timer clock server dengan frontend CBT.
+- **`GET /api/v1/exam/cbt/me/exams`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Menampilkan daftar ujian CBT yang dijadwalkan untuk peserta beserta statusnya.
+- **`GET /api/v1/exam/cbt/me/exams/:id`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Menampilkan halaman detail persiapan ujian (instruksi, durasi, jumlah soal, status kesiapan tombol mulai).
+- **`POST /api/v1/exam/cbt/me/exams/:id/start`**
+  - **Akses**: `calon_mahasiswa`
+  - **Request Body**: `{"access_token": "TOKEN_SESI"}` (bila ujian mewajibkan token)
+  - **Fungsi**: Memulai pengerjaan ujian, mengunci urutan soal snapshot, dan menetapkan batas waktu deadline server.
+- **`GET /api/v1/exam/cbt/me/attempts/:id`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengambil lembar soal ujian beserta opsi jawaban yang tersanitasi (kunci jawaban `is_correct` TIDAK PERNAH dikirim demi keamanan).
+- **`PUT /api/v1/exam/cbt/me/attempts/:id/answers/:question_id`**
+  - **Akses**: `calon_mahasiswa`
+  - **Request Body**: `{"selected_option_ids": ["uuid"], "essay_text": "...", "is_flagged": false}`
+  - **Fungsi**: Autosave jawaban per butir soal. Menolak penyimpanan dengan `409 ATTEMPT_TIME_UP` jika waktu pengerjaan telah lewat.
+- **`POST /api/v1/exam/cbt/me/attempts/:id/submit`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengumpulkan hasil ujian. Sistem otomatis menghitung skor objektif dan meneruskan nilai tertimbang ke Scoring Service.
+- **`CRUD /api/v1/exam/admin/cbt/banks` & `/questions`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Pengelolaan bank soal, butir pertanyaan, dan pilihan jawaban.
+- **`PUT /api/v1/exam/examiner/cbt/answers/:id/grade`**
+  - **Akses**: `dosen` (penguji sesi)
+  - **Fungsi**: Penilaian manual untuk butir soal esai.
+
+### 17.3 CR-004: Penyelarasan Frontend & Polling Status Pembayaran
+- **`GET /api/v1/admission/applications/me/progress`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Stepper alur pendaftaran untuk dashboard pelamar, memuat status tiap langkah (`done`, `current`, `locked`).
+- **`GET /api/v1/finance/invoices/me/:id/payments/:payment_id/status`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Polling status pembayaran realtime setelah kembali dari portal Duitku sandbox/production.
+
+
 
 
 

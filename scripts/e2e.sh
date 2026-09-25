@@ -3135,8 +3135,13 @@ fi
 # ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
-echo "------------------------------------------------------------------------------"
-echo -e "${GREEN}SELURUH PENGUJIAN END-TO-END BERHASIL! (Total PASS: $pass_count, FAIL: $fail_count)${NC}"
-echo "=============================================================================="
-exit 0
+if [ "$fail_count" -gt 0 ]; then
+  echo -e "${RED}PENGUJIAN END-TO-END GAGAL! (Total PASS: $pass_count, FAIL: $fail_count)${NC}"
+  echo "=============================================================================="
+  exit 1
+else
+  echo -e "${GREEN}SELURUH PENGUJIAN END-TO-END BERHASIL! (Total PASS: $pass_count, FAIL: $fail_count)${NC}"
+  echo "=============================================================================="
+  exit 0
+fi
 
