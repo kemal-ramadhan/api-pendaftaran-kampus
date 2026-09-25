@@ -50,3 +50,5 @@ __pycache__/
 *$py.class
 .pytest_cache/
 services/ocr-service/tests/fixtures/
+
+final-check-report.txt

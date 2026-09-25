@@ -7,7 +7,7 @@
 | **Backend** | Diar — Go, Gin, microservice |
 | **Frontend** | Wahhed — Vue 3 murni (dikerjakan terpisah, bukan scope dokumen ini) |
 | **Repository** | `https://github.com/diaricakarsa/pmb-backend` (private, branch `main`) |
-| **Versi dokumen** | Konsolidasi v3 — 24 September 2026 |
+| **Versi dokumen** | Konsolidasi v3.2 — 25 September 2026 (tambah CR-002, CR-003 CBT, CR-004 penyesuaian frontend) |
 | **Isi** | Bagian A: konteks & status · Bagian B: PRD Fase 1 (Auth + Gateway) · Bagian C: PRD Fase 2 (semua service PMB + OCR KTP) · Bagian D: Change Request (Duitku) · Bagian E: keputusan tambahan & masalah yang diketahui |
 
 > **Dokumen ini adalah satu-satunya sumber kebenaran.** Dokumen ini menggantikan `PRD.md`, `PRD-pmb-auth-gateway-v2.md`, dan `PRD-fase-2.md`. Di dalam Bagian B dan C masih ada rujukan lama; baca dengan pemetaan berikut:
@@ -37,6 +37,9 @@ Dokumen desain di repo: `docs/flowchart-sistem-pmb.pdf`, `docs/use-case-sistem-p
 | API Gateway | ✅ **Terverifikasi** | termasuk perbaikan bypass gateway (`GATEWAY_SIGNATURE_INVALID`) |
 | Organization, Identity, Notification, Admission, Finance, Exam, Scoring, Selection, Student, NIM, OCR | ⚠️ **Kode ada, BELUM terverifikasi** | Agent sebelumnya melaporkan tahap 1–11 selesai, tetapi `docker compose up --build` **gagal** (lihat A.4). Semua service ini wajib diaudit dan diverifikasi ulang |
 | Payment gateway | 🔄 **Berubah** | Lead memutuskan **Duitku** (CR-001, Bagian D) |
+| Batalkan & daftar ulang pendaftaran | 🆕 **CR-002** | Bagian D.5–D.8 |
+| CBT (ujian online) | 🆕 **CR-003** | Bagian D.9–D.12 |
+| Penyesuaian dengan desain Figma | 🆕 **CR-004** | Bagian D.13 + `docs/FE-BE-GAP.md` |
 | Frontend | Dikerjakan terpisah oleh Wahhed | Kontrak API di `docs/API.md` |
 
 ## A.3 Lingkungan pengembang
@@ -1252,6 +1255,160 @@ DUITKU_HTTP_TIMEOUT=15s
 - Script manual `scripts/duitku-sandbox-check.sh` (opsional dijalankan manusia): membuat invoice sandbox sungguhan dan mencetak `paymentUrl` untuk dibuka di browser. Hanya berjalan bila env Duitku terisi.
 - Checklist manual (untuk Diar): daftar merchant sandbox di dashboard Duitku → isi env → buat pembayaran lewat Postman → buka `paymentUrl` → bayar dengan simulator VA sandbox Duitku → status di sistem menjadi lunas (via callback lewat tunnel atau via rekonsiliasi).
 
+## CR-002 — Batalkan pendaftaran & daftar ulang setelah tidak lulus (25 Sep 2026, dari lead)
+
+**Pesan lead:** "Bikin kondisi tampilannya jika dibatalkan pendaftarannya dia bisa pilih lagi, sama kalau dia dinyatakan tidak lulus dia bisa tambah pendaftaran untuk daftar ke jalur dan pilihan lain. Jadi ada fitur batalkan pendaftaran dengan syarat fitur itu aktif sebelum dia bayar biaya pendaftaran; kalau sudah bayar biaya pendaftaran udah gak bisa dibatalkan."
+
+**Dampak:** Admission (C.4.4), Finance (C.4.5), Notification (C.4.3), Student/NIM (C.4.9), e2e. Aturan C.4.4 "satu user hanya boleh punya satu pendaftaran aktif per gelombang" **diubah** menjadi aturan di D.5.
+
+### D.5 Aturan bisnis
+
+1. **Status baru `cancelled`** pada state machine pendaftaran. Transisi hanya dari `draft` atau `awaiting_payment`:
+   ```
+   draft | awaiting_payment ──(user batalkan, tagihan pendaftaran BELUM dibayar)──> cancelled
+   ```
+   Dari status lain (termasuk `form_open`, yaitu sudah bayar) → tolak `409 CANCEL_NOT_ALLOWED`.
+2. **Syarat batal diperiksa di Finance, bukan hanya di Admission.** Admission memanggil Finance `POST /internal/invoices/:id/cancel` secara **sinkron**. Finance membatalkan tagihan secara atomik **hanya jika** tidak ada pembayaran berstatus `success`/`awaiting_verification`. Jika sudah ada → Finance menolak, dan Admission membalas `409 CANCEL_NOT_ALLOWED` ("Pendaftaran tidak dapat dibatalkan karena biaya pendaftaran sudah dibayar atau sedang diverifikasi").
+3. **Pembayaran Duitku yang masih `pending` saat dibatalkan:** Finance menandai pembayaran itu `cancelled` di sistem. Jika callback sukses Duitku ternyata datang **setelah** pembatalan (user membayar VA lama), jangan hidupkan pendaftaran yang dibatalkan: tandai pembayaran `paid_after_cancel`, catat di log webhook, kirim notifikasi ke role `keuangan` untuk ditangani manual (refund di luar sistem, sesuai keputusan "tidak ada refund di sistem"), dan tampilkan di laporan keuangan.
+4. **Pendaftaran aktif** = status selain `cancelled`, `failed`, dan status akhir lain yang ditetapkan tidak aktif. Aturan baru: **satu user hanya boleh punya SATU pendaftaran aktif pada satu waktu** (lintas gelombang). Pendaftaran `cancelled` dan `failed` tetap tersimpan sebagai riwayat.
+5. **Setelah dibatalkan:** user boleh langsung membuat pendaftaran baru (gelombang/jalur/prodi bebas, selama periode pendaftaran masih buka). Tagihan pendaftaran baru dibuat untuk pendaftaran baru.
+6. **Setelah tidak lulus (`failed`, sesudah pengumuman dipublikasikan):** user boleh membuat pendaftaran baru ke **jalur dan/atau pilihan prodi lain**:
+   - Pada gelombang yang **sama**: kombinasi `path_id` + `first_choice_program` tidak boleh sama dengan pendaftaran yang sudah `failed` → tolak `409 SAME_CHOICE_ALREADY_FAILED`.
+   - Pada gelombang **berbeda** yang masih buka: bebas.
+   - Periode pendaftaran harus masih buka (`PERIOD_CLOSED` bila tidak).
+   - Wajib membayar biaya pendaftaran lagi (tagihan baru).
+7. **Status `waitlist`** (dari Selection) belum final → belum boleh membuat pendaftaran baru, kecuali setelah dinyatakan `failed`.
+8. **Sudah `passed`/`reregistered`/`enrolled`** → tidak boleh membuat pendaftaran baru (`409 ALREADY_ACCEPTED`). NIM Service dan Student Service menolak penerbitan kedua untuk `user_id` yang sama (satu user satu NIM di PMB ini).
+9. Kuota (C.4.4 `quotas`) dan rekap Scoring/Selection **tidak menghitung** pendaftaran `cancelled`.
+10. Biodata (Identity) dipakai ulang untuk pendaftaran baru. Dokumen bersifat per pendaftaran; sediakan kemudahan **salin dokumen** dari pendaftaran sebelumnya (status dokumen hasil salinan kembali ke `uploaded`, tetap diverifikasi ulang admin). Prioritas: rendah, boleh menyusul.
+
+### D.6 Perubahan API Admission (kompatibel dengan frontend yang sudah ada)
+
+Endpoint `/applications/me/...` yang sudah ada **tetap**, dan artinya menjadi "pendaftaran **aktif** milik user". Tambahan:
+
+| Method | Path | Keterangan |
+|---|---|---|
+| GET | `/applications/me` | Pendaftaran aktif (atau `null` + flag `can_create_new`, `reason`) — respons diperluas, field lama tetap |
+| GET | `/applications/me/history` | Semua pendaftaran user (termasuk `cancelled`, `failed`), terbaru dulu |
+| GET | `/applications/me/eligibility` | `{ "can_create_new": bool, "reason": "...", "blocked_choices": [{"period_id","path_id","first_choice_program"}] }` — dipakai frontend untuk menampilkan tombol "Daftar lagi" dan menonaktifkan pilihan yang tidak boleh |
+| POST | `/applications/me/cancel` | Batalkan pendaftaran aktif. Body opsional `{ "reason": "..." }` |
+| POST | `/applications/me/documents/copy-from/:application_id` | Salin dokumen dari pendaftaran lama (prioritas rendah) |
+
+Respons pendaftaran menambah field `can_cancel` (bool) agar frontend tahu kapan tombol "Batalkan" ditampilkan.
+
+Finance internal baru: `POST /internal/invoices/:id/cancel` (idempoten). Status tagihan `cancelled` sudah ada di C.4.5; status pembayaran tambah `cancelled` dan `paid_after_cancel`.
+
+Notification template baru: `application_cancelled`, `new_application_available` (setelah hasil `failed`, berisi ajakan mendaftar ke jalur/pilihan lain bila masih ada gelombang buka).
+
+Error code baru (tambahkan ke `docs/API.md`): `CANCEL_NOT_ALLOWED`, `ACTIVE_APPLICATION_EXISTS`, `SAME_CHOICE_ALREADY_FAILED`, `ALREADY_ACCEPTED`.
+
+### D.7 Pengujian CR-002
+
+- Unit test state machine: `draft`→`cancelled` OK; `awaiting_payment`→`cancelled` OK; `form_open`→`cancelled` ditolak; transisi apa pun dari `cancelled` ditolak.
+- Race condition: pembatalan dan callback pembayaran sukses bersamaan → hasil akhirnya konsisten (salah satu menang; tidak pernah pendaftaran `cancelled` dengan tagihan `paid` tanpa tanda `paid_after_cancel`).
+- e2e:
+  1. Daftar → batalkan sebelum bayar → status `cancelled`, tagihan `cancelled` → buat pendaftaran baru → berhasil.
+  2. Daftar → bayar (mock) → batalkan → `409 CANCEL_NOT_ALLOWED`.
+  3. Punya pendaftaran aktif → buat pendaftaran kedua → `409 ACTIVE_APPLICATION_EXISTS`.
+  4. Alur sampai `failed` → daftar lagi dengan jalur+prodi sama di gelombang sama → `SAME_CHOICE_ALREADY_FAILED`; dengan jalur/prodi lain → berhasil, tagihan baru terbentuk.
+  5. Sudah `passed` → daftar lagi → `ALREADY_ACCEPTED`.
+  6. Callback sukses untuk pembayaran yang sudah dibatalkan → `paid_after_cancel`, pendaftaran tetap `cancelled`, notifikasi ke keuangan.
+- Tahap pelaksanaan: Admission (Tahap 3 & 5), Finance (Tahap 4), Selection/Student/NIM guard (Tahap 8, 10, 11).
+
+### D.8 Catatan frontend (bukan scope backend, untuk koordinasi)
+
+- Tampilkan tombol **Batalkan pendaftaran** hanya bila `can_cancel = true`, dengan dialog konfirmasi.
+- Setelah dibatalkan atau tidak lulus, tampilkan tombol **Daftar lagi** berdasarkan `GET /applications/me/eligibility`, dan nonaktifkan pilihan jalur/prodi di `blocked_choices`.
+- Lead juga meminta **tampilan responsif untuk mobile** (banyak pengguna memakai HP). Ini sepenuhnya pekerjaan frontend; backend tidak berubah.
+
+## CR-003 — CBT (Computer Based Test) (25 Sep 2026, dari lead)
+
+**Pesan lead (review Figma frontend):** "Tinggal halaman detail CBT-nya yang belum, itu kan baru awal CBT-nya, ini yang ada soal dan lain-lainnya."
+
+**Dampak:** Non-tujuan di C.1 ("Ujian online berbasis soal (CBT)") **dicabut**. Exam Service (C.4.6) diperluas dengan modul CBT; Scoring (C.4.7) menerima nilai otomatis dari CBT. Dikerjakan di **Tahap 6 (Exam)**.
+
+### D.9 Ruang lingkup CBT
+
+- Sesi ujian bertipe `written_test` dapat berjalan dalam mode `cbt` (online) atau `offline` (nilai diinput dosen seperti sebelumnya).
+- Tipe soal: `single_choice`, `multiple_choice` (lebih dari satu jawaban benar), `true_false`, `essay` (dinilai manual oleh dosen).
+- Soal boleh memiliki gambar (MinIO, presigned URL); pilihan jawaban boleh berupa teks atau gambar.
+- Soal dan urutan pilihan **diacak per peserta** (bisa dimatikan per ujian).
+- **Timer berjalan di server.** Batas waktu = `min(started_at + duration, session.end_at)`. Jawaban setelah batas waktu ditolak. Ujian yang belum dikirim saat batas waktu → **otomatis dikumpulkan** oleh job.
+- Jawaban tersimpan otomatis (autosave per soal); peserta dapat menandai "ragu-ragu".
+- Penilaian objektif otomatis saat submit; esai dinilai dosen; nilai akhir CBT dikirim ke Scoring sebagai komponen `written_test` lewat outbox.
+- Kunci jawaban **tidak pernah** dikirim ke peserta, termasuk di respons ujian maupun hasil.
+
+### D.10 Tabel baru (Exam Service, database `pmb_exam`)
+
+- `question_banks`: `id`, `name`, `subject` (mis. Matematika, Bahasa Inggris, TPA), `path_id` (nullable), `study_program_code` (nullable), `is_active`.
+- `questions`: `id`, `bank_id`, `type`, `content` (teks/Markdown aman, disanitasi), `image_object_key` (nullable), `points` (integer), `difficulty` (`easy|medium|hard`), `explanation` (nullable, hanya untuk admin), `is_active`.
+- `question_options`: `id`, `question_id`, `label` (A–E), `content`, `image_object_key` (nullable), `is_correct`.
+- `cbt_exams`: `id`, `session_id` (FK `exam_sessions`), `title`, `instructions`, `duration_minutes`, `question_count`, `randomize_questions`, `randomize_options`, `show_result_to_participant` (default false), `requires_access_token` (default true), `access_token_hash`, `status` (`draft|published|closed`).
+- `cbt_exam_rules`: aturan pengambilan soal per ujian: `cbt_exam_id`, `bank_id`, `difficulty` (nullable), `count`.
+- `cbt_attempts`: `id`, `cbt_exam_id`, `participant_id`, `user_id`, `status` (`not_started|in_progress|submitted|auto_submitted|disqualified`), `started_at`, `deadline_at`, `submitted_at`, `question_order` (jsonb snapshot: urutan soal & pilihan), `objective_score`, `essay_score`, `final_score`, `graded_at`. Unik `(cbt_exam_id, participant_id)`.
+- `cbt_answers`: `attempt_id`, `question_id`, `selected_option_ids` (uuid[]), `essay_text` (nullable), `is_flagged`, `is_correct` (nullable), `points_awarded`, `answered_at`, `graded_by` (nullable). Unik `(attempt_id, question_id)`.
+- `cbt_events`: `attempt_id`, `type` (`start|resume|focus_lost|focus_back|fullscreen_exit|submit|auto_submit|reset`), `client_time`, `server_time`, `metadata` (jsonb) — untuk pengawasan, bukan untuk menghukum otomatis.
+
+### D.11 Endpoint CBT (lewat gateway `/api/v1/exam`)
+
+**Calon mahasiswa**
+| Method | Path | Keterangan |
+|---|---|---|
+| GET | `/cbt/me/exams` | Daftar ujian CBT miliknya + status (belum mulai / sedang / selesai), jadwal |
+| GET | `/cbt/me/exams/:id` | **Halaman detail CBT**: judul, petunjuk, durasi, jumlah soal, jadwal, lokasi/link, status, tombol mulai aktif atau tidak (`can_start`, `reason`) |
+| POST | `/cbt/me/exams/:id/start` | Body `{ "access_token": "..." }` bila diwajibkan → membuat/melanjutkan attempt, mengembalikan `attempt_id`, `deadline_at`, `server_time` |
+| GET | `/cbt/me/attempts/:id` | Daftar soal (tanpa kunci), pilihan, jawaban tersimpan, flag, `remaining_seconds`, `server_time` |
+| GET | `/cbt/me/attempts/:id/questions/:no` | Satu soal (untuk koneksi lambat) |
+| PUT | `/cbt/me/attempts/:id/answers/:question_id` | Autosave jawaban/flag (idempoten) |
+| POST | `/cbt/me/attempts/:id/events` | Catat event (fokus hilang, dsb.), maks 60/menit |
+| POST | `/cbt/me/attempts/:id/submit` | Kumpulkan; ringkasan jumlah terjawab/ragu-ragu |
+| GET | `/cbt/me/attempts/:id/result` | Hanya bila `show_result_to_participant = true` |
+| GET | `/time` | Waktu server (untuk sinkronisasi timer frontend) |
+
+**Admin PMB** (`admin_pmb`, baca juga `superadmin`)
+| Method | Path | Keterangan |
+|---|---|---|
+| CRUD | `/admin/cbt/banks`, `/admin/cbt/questions` | Bank soal & soal (termasuk upload gambar) |
+| POST | `/admin/cbt/questions/import` | Import soal dari xlsx (template disediakan di `docs/templates/`) |
+| CRUD | `/admin/cbt/exams` | Buat ujian CBT untuk sesi, aturan pengambilan soal, publish/close, generate access token |
+| GET | `/admin/cbt/exams/:id/monitor` | Pemantauan langsung: peserta mulai/belum, progres jawaban, event fokus hilang |
+| POST | `/admin/cbt/attempts/:id/reset` | Reset attempt dengan alasan wajib (audit log) — mis. peserta mati listrik |
+| POST | `/admin/cbt/attempts/:id/extend` | Tambah waktu (menit) dengan alasan wajib |
+| GET | `/admin/cbt/exams/:id/results/export` | xlsx hasil |
+
+**Dosen** (`dosen`, hanya sesi yang ditugaskan)
+| Method | Path | Keterangan |
+|---|---|---|
+| GET | `/examiner/cbt/essays?exam_id=` | Daftar jawaban esai yang belum dinilai |
+| PUT | `/examiner/cbt/answers/:id/grade` | Beri nilai esai (0 s/d poin soal) |
+
+### D.12 Aturan non-fungsional CBT
+
+- Target beban: **500 peserta mengerjakan bersamaan** dengan autosave tiap jawaban; p95 autosave < 300 ms. Paket soal per attempt di-cache di Redis; tulis jawaban memakai upsert.
+- Keamanan: peserta hanya bisa mengakses attempt miliknya; ujian hanya bisa dimulai dalam jendela sesi dan bila pendaftaran berstatus `exam_scheduled`; access token ujian di-hash; semua reset/extend tercatat di audit.
+- Error code baru: `EXAM_NOT_STARTED`, `EXAM_ENDED`, `EXAM_ACCESS_TOKEN_INVALID`, `ATTEMPT_ALREADY_SUBMITTED`, `ATTEMPT_TIME_UP`, `QUESTION_NOT_IN_ATTEMPT`.
+- Test: timer server (jawaban setelah deadline ditolak), auto-submit oleh job, acak soal konsisten per attempt (refresh tidak mengubah urutan), kunci jawaban tidak bocor di respons mana pun (test yang memeriksa JSON respons), penilaian objektif benar untuk `single_choice`, `multiple_choice` (semua benar dan tidak ada yang salah = poin penuh; selain itu 0), `true_false`; esai dinilai dosen lalu nilai akhir terkirim ke Scoring; reset & extend tercatat; uji beban ringan (skrip k6 atau Go) 200 autosave paralel.
+- e2e: admin buat bank soal + soal + ujian CBT → peserta terjadwal membuka detail → mulai dengan token → jawab → submit → nilai objektif muncul di Scoring; skenario token salah, sebelum jadwal, setelah submit.
+
+## CR-004 — Penyesuaian backend dengan desain frontend (Figma)
+
+**Arahan lead:** "Backend-nya dikejar dan disesuaikan, koordinasi" dengan desain frontend di Figma (file `PMB`).
+
+**Aturan:** Figma (desain Wahhed yang sudah disetujui lead) adalah acuan **tampilan dan data yang dibutuhkan**. Jika sebuah halaman membutuhkan data/aksi yang belum ada di API, backend yang menyesuaikan, **selama tidak melanggar aturan keamanan dan kepemilikan data di PRD ini**. Konflik (mis. halaman meminta data milik service lain dalam satu request) diselesaikan dengan endpoint agregasi di service pemilik halaman, bukan dengan melanggar batas service.
+
+**Daftar kesenjangan (gap list):** diisi di `docs/FE-BE-GAP.md` dengan format: halaman Figma → data/aksi yang dibutuhkan → endpoint yang ada → kekurangan → keputusan → tahap. Daftar awal akan ditambahkan ke Bagian D ini setelah desain Figma dibaca (lihat D.13). Revisi dan komentar lead di Figma (termasuk **halaman detail pembayaran**) wajib ditinjau dan dimasukkan.
+
+### D.13 Kesenjangan yang sudah diketahui
+
+| Halaman | Kebutuhan | Tindakan backend |
+|---|---|---|
+| Detail CBT & pengerjaan soal | Seluruh alur CBT | CR-003 |
+| Batalkan / daftar lagi | Tombol batalkan, riwayat, eligibility | CR-002 |
+| Detail pembayaran (dikomentari lead di Figma) | Akan diperinci dari Figma: minimal rincian tagihan, metode, nomor VA/link Duitku, batas waktu, status real-time, riwayat pembayaran, unduh kwitansi | Pastikan `GET /invoices/me/:id` mengembalikan: rincian item, total, dibayar, sisa, status, `due_date`, pembayaran aktif (`payment_url`, `va_number`, `payment_method`, `expired_at`), riwayat pembayaran, link kwitansi, dan info cicilan bila ada. Tambahkan `GET /invoices/me/:id/payments/:payment_id/status` untuk polling status setelah user kembali dari halaman Duitku |
+| Semua halaman daftar | Paginasi, pencarian, filter, jumlah total | Konsisten memakai `meta` (C.5.6) |
+| Dashboard calon mahasiswa | Ringkasan langkah (stepper) & status tiap langkah | `GET /admission/applications/me/progress`: daftar langkah flowchart 1 dengan status `done|current|locked` dan tautan aksi berikutnya (agregasi di Admission) |
+| Tampilan mobile | Responsif | Frontend saja; backend memastikan respons ringkas (tanpa data berlebihan) |
+
 ---
 
 # BAGIAN E — KEPUTUSAN TAMBAHAN & MASALAH YANG DIKETAHUI
@@ -1265,6 +1422,9 @@ DUITKU_HTTP_TIMEOUT=15s
 | Payment gateway: Duitku | Lead, 24 Sep (CR-001) |
 | Tambahan fitur: OCR KTP + peningkatan kualitas gambar | Lead, 21 Sep (Bagian C.4.11) |
 | Schema database & class diagram tiap service diminta untuk review | Lead, 22 Sep |
+| Fitur batalkan pendaftaran (sebelum bayar) & daftar lagi setelah tidak lulus | Lead, 25 Sep (CR-002) |
+| CBT (ujian online berisi soal) masuk scope | Lead, 25 Sep (CR-003) |
+| Backend menyesuaikan desain frontend Figma | Lead, 25 Sep (CR-004) |
 
 ## E.2 Aturan teknis tambahan (berlaku untuk semua service)
 
@@ -1285,10 +1445,10 @@ DUITKU_HTTP_TIMEOUT=15s
 |---|---|---|
 | 1 | Organization Service | Fondasi bersama (C.9 F2-M0) + Organization (C.4.1) |
 | 2 | Identity Service | Identity (C.4.2) + OCR KTP (C.4.11) |
-| 3 | Admission Service (1) | Notification (C.4.3) + Admission bagian 1 |
-| 4 | Finance Service (1) | Finance bagian 1 + **CR-001 Duitku** |
+| 3 | Admission Service (1) | Notification (C.4.3) + Admission bagian 1 + **CR-002 (batal & riwayat pendaftaran)** |
+| 4 | Finance Service (1) | Finance bagian 1 + **CR-001 Duitku** + **CR-002 (batal tagihan, paid_after_cancel)** |
 | 5 | Admission Service (2) | Admission bagian 2 |
-| 6 | Exam Service | C.4.6 |
+| 6 | Exam Service | C.4.6 + **CR-003 CBT** |
 | 7 | Scoring Service | C.4.7 |
 | 8 | Selection Service | C.4.8 |
 | 9 | Finance Service (2) | Finance bagian 2 (cicilan, laporan) |
