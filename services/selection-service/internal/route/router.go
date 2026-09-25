@@ -27,6 +27,7 @@ func SetupRouter(
 
 	// 1. Health check publik
 	r.GET("/health", healthCtrl.HealthCheck)
+	r.GET("/health/ready", healthCtrl.ReadinessCheck)
 
 	// 2. Internal endpoints (dilindungi X-Internal-Token)
 	internalGroup := r.Group("/internal")

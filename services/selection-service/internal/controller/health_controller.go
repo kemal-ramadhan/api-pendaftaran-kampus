@@ -19,3 +19,11 @@ func (h *HealthController) HealthCheck(c *gin.Context) {
 		"status":  "healthy",
 	})
 }
+
+func (h *HealthController) ReadinessCheck(c *gin.Context) {
+	response.Success(c, http.StatusOK, "selection-service is ready", gin.H{
+		"service": "selection-service",
+		"status":  "ready",
+	})
+}
+
