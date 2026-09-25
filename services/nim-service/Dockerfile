@@ -1,41 +1,39 @@
-# Multi-stage Dockerfile for PMB NIM Service
-FROM golang:1.25-alpine AS builder
+# Build stage
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
-# Install git and certificates
-RUN apk add --no-cache git ca-certificates tzdata
-
-# Copy pkg and nim-service go.mod
-COPY pkg/ ./pkg/
+# Copy dependency files
+COPY pkg/go.mod pkg/go.sum* ./pkg/
 COPY services/nim-service/go.mod services/nim-service/go.sum* ./services/nim-service/
 
-WORKDIR /app/services/nim-service
-
 # Download dependencies
-RUN go mod download
+WORKDIR /app/services/nim-service
+RUN --mount=type=cache,target=/go/pkg/mod go mod download
 
 # Copy source code
-COPY services/nim-service/ .
+WORKDIR /app
+COPY pkg/ ./pkg/
+COPY services/nim-service/ ./services/nim-service/
 
 # Build binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/nim-service ./cmd/main.go
+WORKDIR /app/services/nim-service
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /app/bin/nim-service ./cmd/main.go
 
-# Final Runtime Image
+# Production stage
 FROM alpine:3.20
+
+RUN apk --no-cache add ca-certificates tzdata wget curl
 
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata curl wget
-
-# Create non-root user
-RUN addgroup -S pmb && adduser -S -G pmb pmb
-
-COPY --from=builder /app/bin/nim-service /app/nim-service
-COPY --from=builder /app/services/nim-service/migrations /app/migrations
-
-USER pmb
+COPY --from=builder /app/bin/nim-service .
 
 EXPOSE 8092
 
-CMD ["/app/nim-service"]
+RUN adduser -D -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+CMD ["./nim-service"]

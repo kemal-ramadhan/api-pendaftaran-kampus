@@ -10,10 +10,10 @@ use (
 	./services/exam-service
 	./services/finance-service
 	./services/identity-service
+	./services/nim-service
 	./services/notification-service
 	./services/organization-service
 	./services/scoring-service
 	./services/selection-service
 	./services/student-service
-	./services/nim-service
 )

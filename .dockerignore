@@ -20,6 +20,15 @@ tmp/
 temp/
 coverage/
 
+# Data and secrets (PRD Bagian E.2.4)
+postgres-data/
+postgres_data/
+certs/
+**/*.pem
+**/.env
+**/.env.*
+!**/.env.example
+
 # IDE and OS files
 .idea/
 .vscode/
