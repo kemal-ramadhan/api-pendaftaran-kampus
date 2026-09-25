@@ -141,6 +141,15 @@ func (m *mockAppRepo) FindByUserIDAndPeriod(ctx context.Context, userID uuid.UUI
 	return nil, repository.ErrApplicationNotFound
 }
 
+func (m *mockAppRepo) FindActiveByUserID(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
+	for _, app := range m.apps {
+		if app.UserID == userID && app.IsActive() {
+			return app, nil
+		}
+	}
+	return nil, repository.ErrApplicationNotFound
+}
+
 func (m *mockAppRepo) FindByID(ctx context.Context, id uuid.UUID) (*model.Application, error) {
 	if app, ok := m.apps[id]; ok {
 		return app, nil

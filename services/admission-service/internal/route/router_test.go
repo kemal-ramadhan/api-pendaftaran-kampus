@@ -47,6 +47,22 @@ func (d *dummyAdmissionSvc) GetMyApplications(ctx context.Context, userID uuid.U
 	return []model.Application{}, nil
 }
 
+func (d *dummyAdmissionSvc) GetMyActiveApplication(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
+	return nil, repository.ErrApplicationNotFound
+}
+
+func (d *dummyAdmissionSvc) CancelMyApplication(ctx context.Context, userID uuid.UUID, reason string) error {
+	return nil
+}
+
+func (d *dummyAdmissionSvc) GetEligibility(ctx context.Context, userID uuid.UUID) (*service.EligibilityResponse, error) {
+	return &service.EligibilityResponse{CanCreateNew: true}, nil
+}
+
+func (d *dummyAdmissionSvc) GetProgress(ctx context.Context, userID uuid.UUID) (*service.ProgressResponse, error) {
+	return &service.ProgressResponse{CurrentStep: "step_choice"}, nil
+}
+
 func (d *dummyAdmissionSvc) ListApplicationsAdmin(ctx context.Context, filter repository.ApplicationFilter) ([]model.Application, int64, error) {
 	return []model.Application{}, 0, nil
 }

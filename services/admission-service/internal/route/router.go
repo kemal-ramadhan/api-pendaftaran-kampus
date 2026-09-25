@@ -50,23 +50,32 @@ func SetupRouter(
 	authGroup.Use(gatewayauth.Middleware(cfg.GatewaySecret))
 	{
 		// Pendaftar endpoints
-		userGroup := authGroup.Group("/admission/applications")
-		{
-			userGroup.POST("", appCtrl.CreateApplication)
-			userGroup.GET("/me", appCtrl.GetMyApplications)
-			userGroup.POST("/me/documents", appCtrl.UploadDocument)
-			userGroup.DELETE("/me/documents/:code", appCtrl.DeleteDocument)
-			userGroup.GET("/me/documents/:code/url", appCtrl.GetDocumentURL)
-			userGroup.POST("/me/submit", appCtrl.SubmitApplication)
+		registerUserRoutes := func(prefix string) {
+			userGroup := authGroup.Group(prefix)
+			{
+				userGroup.POST("", appCtrl.CreateApplication)
+				userGroup.GET("/me", appCtrl.GetMyActiveApplication)
+				userGroup.GET("/me/history", appCtrl.GetMyApplications)
+				userGroup.GET("/me/eligibility", appCtrl.GetEligibility)
+				userGroup.POST("/me/cancel", appCtrl.CancelApplication)
+				userGroup.GET("/me/progress", appCtrl.GetProgress)
+				userGroup.POST("/me/documents", appCtrl.UploadDocument)
+				userGroup.DELETE("/me/documents/:code", appCtrl.DeleteDocument)
+				userGroup.GET("/me/documents/:code/url", appCtrl.GetDocumentURL)
+				userGroup.POST("/me/submit", appCtrl.SubmitApplication)
 
-			// Menggunakan ID pendaftaran eksplisit
-			userGroup.GET("/:id", appCtrl.GetApplicationDetail)
-			userGroup.PUT("/:id/choices", appCtrl.ChangeChoices)
-			userGroup.POST("/:id/documents", appCtrl.UploadDocument)
-			userGroup.DELETE("/:id/documents/:code", appCtrl.DeleteDocument)
-			userGroup.GET("/:id/documents/:code/url", appCtrl.GetDocumentURL)
-			userGroup.POST("/:id/submit", appCtrl.SubmitApplication)
+				// Menggunakan ID pendaftaran eksplisit
+				userGroup.GET("/:id", appCtrl.GetApplicationDetail)
+				userGroup.PUT("/:id/choices", appCtrl.ChangeChoices)
+				userGroup.POST("/:id/documents", appCtrl.UploadDocument)
+				userGroup.DELETE("/:id/documents/:code", appCtrl.DeleteDocument)
+				userGroup.GET("/:id/documents/:code/url", appCtrl.GetDocumentURL)
+				userGroup.POST("/:id/submit", appCtrl.SubmitApplication)
+			}
 		}
+
+		registerUserRoutes("/admission/applications")
+		registerUserRoutes("/applications")
 
 		// Admin, Staf Prodi, & Pimpinan endpoints
 		adminGroup := authGroup.Group("/admission/admin")

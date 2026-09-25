@@ -85,11 +85,113 @@ func (ctrl *ApplicationController) CreateApplication(c *gin.Context) {
 			response.Conflict(c, "DUPLICATE_APPLICATION", err.Error())
 			return
 		}
+		if errors.Is(err, service.ErrActiveApplicationExists) {
+			response.Conflict(c, "ACTIVE_APPLICATION_EXISTS", err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrSameChoiceAlreadyFailed) {
+			response.Conflict(c, "SAME_CHOICE_ALREADY_FAILED", err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrAlreadyAccepted) {
+			response.Conflict(c, "ALREADY_ACCEPTED", err.Error())
+			return
+		}
 		response.InternalServerError(c, "Gagal membuat formulir pendaftaran: "+err.Error())
 		return
 	}
 
 	response.Success(c, http.StatusCreated, "Pendaftaran berhasil dibuat, silakan lakukan pembayaran", app)
+}
+
+func (ctrl *ApplicationController) GetMyActiveApplication(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	app, err := ctrl.svc.GetMyActiveApplication(c.Request.Context(), userID)
+	if err != nil {
+		if errors.Is(err, repository.ErrApplicationNotFound) {
+			response.Success(c, http.StatusOK, "Tidak ada pendaftaran aktif", gin.H{
+				"active_application": nil,
+				"can_create_new":    true,
+			})
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil pendaftaran aktif: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Pendaftaran aktif berhasil diambil", app)
+}
+
+func (ctrl *ApplicationController) CancelApplication(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	var reqBody struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&reqBody)
+	if reqBody.Reason == "" {
+		reqBody.Reason = "Dibatalkan atas permintaan calon mahasiswa"
+	}
+
+	err = ctrl.svc.CancelMyApplication(c.Request.Context(), userID, reqBody.Reason)
+	if err != nil {
+		if errors.Is(err, repository.ErrApplicationNotFound) {
+			response.NotFound(c, "Tidak ada pendaftaran aktif yang dapat dibatalkan")
+			return
+		}
+		if errors.Is(err, service.ErrCancelNotAllowed) || strings.Contains(err.Error(), "CANCEL_NOT_ALLOWED") {
+			response.Conflict(c, "CANCEL_NOT_ALLOWED", "Pendaftaran tidak dapat dibatalkan karena biaya pendaftaran sudah dibayar atau sedang diverifikasi")
+			return
+		}
+		response.InternalServerError(c, "Gagal membatalkan pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Pendaftaran berhasil dibatalkan", gin.H{
+		"cancelled": true,
+		"reason":    reqBody.Reason,
+	})
+}
+
+func (ctrl *ApplicationController) GetEligibility(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	eligibility, err := ctrl.svc.GetEligibility(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memeriksa kelayakan pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Status kelayakan pendaftaran berhasil diambil", eligibility)
+}
+
+func (ctrl *ApplicationController) GetProgress(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	prog, err := ctrl.svc.GetProgress(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil tahapan progres pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Tahapan progres pendaftaran berhasil diambil", prog)
 }
 
 func (ctrl *ApplicationController) GetMyApplications(c *gin.Context) {

@@ -33,6 +33,10 @@ var (
 	ErrBiodataIncomplete       = errors.New("BIODATA_INCOMPLETE: biodata diri calon mahasiswa belum lengkap")
 	ErrDocumentRequired        = errors.New("DOCUMENT_REQUIRED: seluruh dokumen persyaratan wajib harus diunggah")
 	ErrApplicationNotSubmitted = errors.New("berkas pendaftaran belum disubmit untuk verifikasi")
+	ErrActiveApplicationExists = errors.New("ACTIVE_APPLICATION_EXISTS: Anda memiliki pendaftaran yang sedang aktif")
+	ErrCancelNotAllowed        = errors.New("CANCEL_NOT_ALLOWED: pendaftaran tidak dapat dibatalkan pada status saat ini atau biaya sudah dibayar")
+	ErrSameChoiceAlreadyFailed = errors.New("SAME_CHOICE_ALREADY_FAILED: Anda tidak dapat memilih jalur dan program studi yang sama setelah dinyatakan tidak lulus pada gelombang ini")
+	ErrAlreadyAccepted         = errors.New("ALREADY_ACCEPTED: Anda sudah dinyatakan lulus atau terdaftar pada seleksi sebelumnya")
 )
 
 type CreateApplicationRequest struct {
@@ -58,10 +62,49 @@ type DocumentReviewItem struct {
 	Notes        string `json:"notes"`
 }
 
+type BlockedChoice struct {
+	PeriodID           uint      `json:"period_id"`
+	AdmissionPathID    uint      `json:"path_id"`
+	FirstChoiceProgram uuid.UUID `json:"first_choice_program"`
+}
+
+type EligibilityResponse struct {
+	CanCreateNew   bool            `json:"can_create_new"`
+	Reason         string          `json:"reason"`
+	BlockedChoices []BlockedChoice `json:"blocked_choices"`
+}
+
+type StepStatus string
+
+const (
+	StepDone    StepStatus = "done"
+	StepCurrent StepStatus = "current"
+	StepLocked  StepStatus = "locked"
+)
+
+type ProgressStep struct {
+	ID          string     `json:"id"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Status      StepStatus `json:"status"`
+	ActionURL   string     `json:"action_url,omitempty"`
+}
+
+type ProgressResponse struct {
+	ActiveApplicationID *uuid.UUID     `json:"active_application_id,omitempty"`
+	Status              string         `json:"status,omitempty"`
+	CurrentStep         string         `json:"current_step"`
+	Steps               []ProgressStep `json:"steps"`
+}
+
 type AdmissionService interface {
 	CreateApplication(ctx context.Context, req *CreateApplicationRequest) (*model.Application, error)
 	ChangeChoices(ctx context.Context, req *ChangeChoicesRequest) error
 	GetMyApplications(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
+	GetMyActiveApplication(ctx context.Context, userID uuid.UUID) (*model.Application, error)
+	CancelMyApplication(ctx context.Context, userID uuid.UUID, reason string) error
+	GetEligibility(ctx context.Context, userID uuid.UUID) (*EligibilityResponse, error)
+	GetProgress(ctx context.Context, userID uuid.UUID) (*ProgressResponse, error)
 	GetApplicationDetail(ctx context.Context, id uuid.UUID, requesterID uuid.UUID, role string, prodiID *uuid.UUID) (*model.Application, error)
 	ListApplicationsAdmin(ctx context.Context, filter repository.ApplicationFilter) ([]model.Application, int64, error)
 	GetActivePeriod(ctx context.Context) (*model.Period, error)
@@ -144,10 +187,25 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 		return nil, errors.New("jalur pendaftaran tidak valid atau sedang nonaktif")
 	}
 
-	// 3. Cek Duplikasi Pendaftaran
-	existing, err := s.appRepo.FindByUserIDAndPeriod(ctx, req.UserID, req.PeriodID)
-	if err == nil && existing != nil {
-		return nil, ErrDuplicateApplication
+	// 3. Cek Duplikasi & Validasi Pendaftaran Aktif (CR-002)
+	activeApp, err := s.appRepo.FindActiveByUserID(ctx, req.UserID)
+	if err == nil && activeApp != nil {
+		return nil, ErrActiveApplicationExists
+	}
+
+	// Cek Riwayat Pendaftaran Sebelumnya (CR-002 D.5 point 6 & 8)
+	history, err := s.appRepo.FindByUserID(ctx, req.UserID)
+	if err == nil {
+		for _, prevApp := range history {
+			// Jika sudah pernah dinyatakan lulus / daftar ulang / mahasiswa, tidak boleh mendaftar lagi
+			if prevApp.Status == model.StatusPassed || prevApp.Status == model.StatusReregistered || prevApp.Status == model.StatusEnrolled {
+				return nil, ErrAlreadyAccepted
+			}
+			// Jika gagal di gelombang yang sama, tidak boleh pilih kombinasi jalur + prodi 1 yang sama
+			if prevApp.Status == model.StatusFailed && prevApp.PeriodID == req.PeriodID && prevApp.AdmissionPathID == req.AdmissionPathID && prevApp.Choice1ID == req.Choice1ID {
+				return nil, ErrSameChoiceAlreadyFailed
+			}
+		}
 	}
 
 	var newApp *model.Application
@@ -257,6 +315,252 @@ func (s *admissionService) ChangeChoices(ctx context.Context, req *ChangeChoices
 
 func (s *admissionService) GetMyApplications(ctx context.Context, userID uuid.UUID) ([]model.Application, error) {
 	return s.appRepo.FindByUserID(ctx, userID)
+}
+
+func (s *admissionService) GetMyActiveApplication(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
+	app, err := s.appRepo.FindActiveByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	app.CanCancel = app.IsCancellable()
+	return app, nil
+}
+
+func (s *admissionService) CancelMyApplication(ctx context.Context, userID uuid.UUID, reason string) error {
+	app, err := s.appRepo.FindActiveByUserID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if !app.IsCancellable() {
+		return ErrCancelNotAllowed
+	}
+
+	// Pembatalan tagihan di Finance Service secara sinkron (CR-002 D.5 point 2)
+	if s.financeCli != nil {
+		var cancelResp struct {
+			Success bool   `json:"success"`
+			Message string `json:"message"`
+		}
+		cancelPayload := map[string]string{
+			"reason": reason,
+		}
+		// Panggil pembatalan berdasarkan application_id
+		err := s.financeCli.Post(ctx, fmt.Sprintf("/internal/invoices/cancel-by-application/%s", app.ID.String()), cancelPayload, &cancelResp)
+		if err != nil {
+			log.Printf("[ADMISSION] Finance cancel returned error for app %s: %v", app.ID, err)
+			return fmt.Errorf("%w: pembayaran sudah berhasil atau sedang diverifikasi", ErrCancelNotAllowed)
+		}
+	}
+
+	// Update status pendaftaran menjadi cancelled di basis data
+	err = s.appRepo.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		now := time.Now()
+		if err := tx.Model(&model.Application{}).Where("id = ?", app.ID).Updates(map[string]interface{}{
+			"status":     model.StatusCancelled,
+			"notes":      reason,
+			"updated_at": now,
+		}).Error; err != nil {
+			return err
+		}
+
+		statusLog := &model.ApplicationStatusLog{
+			ID:            uuid.New(),
+			ApplicationID: app.ID,
+			FromStatus:    app.Status,
+			ToStatus:      model.StatusCancelled,
+			ChangedBy:     &userID,
+			Notes:         "Pendaftaran dibatalkan oleh calon mahasiswa. Alasan: " + reason,
+		}
+		if err := s.appRepo.CreateStatusLog(tx, statusLog); err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return err
+	}
+
+	// Kirim notifikasi async pembatalan (CR-002)
+	if s.notifCli != nil {
+		go func() {
+			notifPayload := map[string]interface{}{
+				"channel":  "email",
+				"template": "application_cancelled",
+				"data": map[string]interface{}{
+					"registration_no": app.RegistrationNo,
+					"reason":          reason,
+				},
+			}
+			var resp interface{}
+			_ = s.notifCli.Post(context.Background(), "/internal/notifications", notifPayload, &resp)
+		}()
+	}
+
+	return nil
+}
+
+func (s *admissionService) GetEligibility(ctx context.Context, userID uuid.UUID) (*EligibilityResponse, error) {
+	resp := &EligibilityResponse{
+		CanCreateNew:   true,
+		BlockedChoices: []BlockedChoice{},
+	}
+
+	// 1. Cek pendaftaran aktif
+	activeApp, err := s.appRepo.FindActiveByUserID(ctx, userID)
+	if err == nil && activeApp != nil {
+		resp.CanCreateNew = false
+		resp.Reason = "Anda memiliki pendaftaran yang sedang aktif"
+		return resp, nil
+	}
+
+	// 2. Cek apakah ada gelombang pendaftaran buka
+	period, err := s.periodRepo.FindActive(ctx)
+	if err != nil || !period.IsOpenNow() {
+		resp.CanCreateNew = false
+		resp.Reason = "Tidak ada gelombang pendaftaran yang sedang dibuka"
+		return resp, nil
+	}
+
+	// 3. Cek riwayat pendaftaran
+	history, err := s.appRepo.FindByUserID(ctx, userID)
+	if err == nil {
+		for _, prevApp := range history {
+			if prevApp.Status == model.StatusPassed || prevApp.Status == model.StatusReregistered || prevApp.Status == model.StatusEnrolled {
+				resp.CanCreateNew = false
+				resp.Reason = "Anda sudah dinyatakan lulus seleksi atau terdaftar sebagai mahasiswa"
+				return resp, nil
+			}
+			if prevApp.Status == model.StatusFailed && prevApp.PeriodID == period.ID {
+				resp.BlockedChoices = append(resp.BlockedChoices, BlockedChoice{
+					PeriodID:           prevApp.PeriodID,
+					AdmissionPathID:    prevApp.AdmissionPathID,
+					FirstChoiceProgram: prevApp.Choice1ID,
+				})
+			}
+		}
+	}
+
+	resp.Reason = "Anda memenuhi syarat untuk membuat pendaftaran baru"
+	return resp, nil
+}
+
+func (s *admissionService) GetProgress(ctx context.Context, userID uuid.UUID) (*ProgressResponse, error) {
+	app, err := s.appRepo.FindActiveByUserID(ctx, userID)
+	if err != nil && !errors.Is(err, repository.ErrApplicationNotFound) {
+		return nil, err
+	}
+
+	resp := &ProgressResponse{
+		CurrentStep: "step_choice",
+		Steps: []ProgressStep{
+			{
+				ID:          "step_account",
+				Title:       "Pendaftaran Akun",
+				Description: "Pembuatan akun pendaftaran dan verifikasi email",
+				Status:      StepDone,
+			},
+			{
+				ID:          "step_choice",
+				Title:       "Pilihan Program Studi",
+				Description: "Pemilihan gelombang, jalur, dan program studi yang dituju",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_payment",
+				Title:       "Pembayaran Biaya Pendaftaran",
+				Description: "Pembayaran tagihan pendaftaran melalui Duitku / VA",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_biodata_docs",
+				Title:       "Isi Biodata & Unggah Berkas",
+				Description: "Pengisian formulir biodata lengkap dan unggah dokumen persyaratan",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_verification",
+				Title:       "Verifikasi Berkas",
+				Description: "Pemeriksaan dan validasi berkas oleh tim administrasi PMB",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_exam",
+				Title:       "Ujian Seleksi / CBT",
+				Description: "Pelaksanaan tes tertulis online (CBT) atau wawancara seleksi",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_announcement",
+				Title:       "Pengumuman Kelulusan",
+				Description: "Pemberitahuan hasil seleksi penerimaan mahasiswa baru",
+				Status:      StepLocked,
+			},
+			{
+				ID:          "step_reregistration",
+				Title:       "Daftar Ulang & NIM",
+				Description: "Pembayaran uang kuliah dan penerbitan Nomor Induk Mahasiswa",
+				Status:      StepLocked,
+			},
+		},
+	}
+
+	if app == nil {
+		resp.Steps[1].Status = StepCurrent
+		resp.CurrentStep = "step_choice"
+		return resp, nil
+	}
+
+	resp.ActiveApplicationID = &app.ID
+	resp.Status = string(app.Status)
+	resp.Steps[1].Status = StepDone
+
+	switch app.Status {
+	case model.StatusDraft, model.StatusAwaitingPayment:
+		resp.Steps[2].Status = StepCurrent
+		resp.CurrentStep = "step_payment"
+	case model.StatusFormOpen, model.StatusRevisionRequired:
+		resp.Steps[2].Status = StepDone
+		resp.Steps[3].Status = StepCurrent
+		resp.CurrentStep = "step_biodata_docs"
+	case model.StatusSubmitted:
+		resp.Steps[2].Status = StepDone
+		resp.Steps[3].Status = StepDone
+		resp.Steps[4].Status = StepCurrent
+		resp.CurrentStep = "step_verification"
+	case model.StatusVerified, model.StatusExamScheduled, model.StatusInterviewScheduled:
+		resp.Steps[2].Status = StepDone
+		resp.Steps[3].Status = StepDone
+		resp.Steps[4].Status = StepDone
+		resp.Steps[5].Status = StepCurrent
+		resp.CurrentStep = "step_exam"
+	case model.StatusDirectDecision:
+		resp.Steps[2].Status = StepDone
+		resp.Steps[3].Status = StepDone
+		resp.Steps[4].Status = StepDone
+		resp.Steps[5].Status = StepDone
+		resp.Steps[6].Status = StepCurrent
+		resp.CurrentStep = "step_announcement"
+	case model.StatusPassed:
+		resp.Steps[2].Status = StepDone
+		resp.Steps[3].Status = StepDone
+		resp.Steps[4].Status = StepDone
+		resp.Steps[5].Status = StepDone
+		resp.Steps[6].Status = StepDone
+		resp.Steps[7].Status = StepCurrent
+		resp.CurrentStep = "step_reregistration"
+	case model.StatusReregistered, model.StatusEnrolled:
+		for i := range resp.Steps {
+			resp.Steps[i].Status = StepDone
+		}
+		resp.CurrentStep = "completed"
+	default:
+		resp.CurrentStep = string(app.Status)
+	}
+
+	return resp, nil
 }
 
 func (s *admissionService) GetApplicationDetail(

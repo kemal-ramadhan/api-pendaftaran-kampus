@@ -48,6 +48,7 @@ type Application struct {
 	StatusLogs      []ApplicationStatusLog `gorm:"foreignKey:ApplicationID" json:"status_logs,omitempty"`
 	PersonData      interface{}            `gorm:"-" json:"person_data,omitempty"`
 	InvoiceData     interface{}            `gorm:"-" json:"invoice_data,omitempty"`
+	CanCancel       bool                   `gorm:"-" json:"can_cancel"`
 	CreatedAt       time.Time              `json:"created_at"`
 	UpdatedAt       time.Time              `json:"updated_at"`
 }
@@ -57,6 +58,16 @@ func (a *Application) BeforeCreate(tx *gorm.DB) error {
 		a.ID = uuid.New()
 	}
 	return nil
+}
+
+// IsCancellable memeriksa apakah pendaftaran diizinkan untuk dibatalkan (CR-002)
+func (a *Application) IsCancellable() bool {
+	return a.Status == StatusDraft || a.Status == StatusAwaitingPayment
+}
+
+// IsActive memeriksa apakah pendaftaran masih aktif
+func (a *Application) IsActive() bool {
+	return a.Status != StatusCancelled && a.Status != StatusFailed && a.Status != StatusExpired
 }
 
 // CanChangeMajor memeriksa apakah pendaftar diizinkan mengubah pilihan prodi

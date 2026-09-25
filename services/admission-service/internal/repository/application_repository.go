@@ -30,6 +30,7 @@ type ApplicationRepository interface {
 	DB() *gorm.DB
 	CreateInTx(tx *gorm.DB, app *model.Application) error
 	FindByUserIDAndPeriod(ctx context.Context, userID uuid.UUID, periodID uint) (*model.Application, error)
+	FindActiveByUserID(ctx context.Context, userID uuid.UUID) (*model.Application, error)
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Application, error)
 	FindByRegistrationNo(ctx context.Context, regNo string) (*model.Application, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
@@ -67,7 +68,25 @@ func (r *applicationRepository) FindByUserIDAndPeriod(ctx context.Context, userI
 	err := r.db.WithContext(ctx).
 		Preload("Period").
 		Preload("AdmissionPath").
-		Where("user_id = ? AND period_id = ?", userID, periodID).
+		Where("user_id = ? AND period_id = ? AND status NOT IN (?, ?, ?)", userID, periodID, model.StatusCancelled, model.StatusFailed, model.StatusExpired).
+		First(&app).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrApplicationNotFound
+		}
+		return nil, err
+	}
+	return &app, nil
+}
+
+func (r *applicationRepository) FindActiveByUserID(ctx context.Context, userID uuid.UUID) (*model.Application, error) {
+	var app model.Application
+	err := r.db.WithContext(ctx).
+		Preload("Period").
+		Preload("AdmissionPath").
+		Preload("Documents").
+		Preload("StatusLogs").
+		Where("user_id = ? AND status NOT IN (?, ?, ?)", userID, model.StatusCancelled, model.StatusFailed, model.StatusExpired).
 		First(&app).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
