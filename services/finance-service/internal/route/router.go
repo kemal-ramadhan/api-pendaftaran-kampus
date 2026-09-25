@@ -47,6 +47,8 @@ func SetupRouter(
 	{
 		internalGroup.POST("/invoices", internalCtrl.CreateInvoice)
 		internalGroup.GET("/invoices", internalCtrl.GetInvoices)
+		internalGroup.POST("/invoices/:id/cancel", internalCtrl.CancelInvoice)
+		internalGroup.POST("/invoices/cancel-by-application/:application_id", internalCtrl.CancelInvoiceByApplication)
 	}
 
 	// 5. Downstream endpoints dari API Gateway
@@ -61,6 +63,7 @@ func SetupRouter(
 			invGroup.POST("/:id/pay", payCtrl.PayWithVirtualAccount)
 			invGroup.POST("/:id/manual-transfer", payCtrl.PayWithManualTransfer)
 			invGroup.GET("/:id/payments/:payment_id", payCtrl.GetPaymentDetail)
+			invGroup.GET("/:id/payments/:payment_id/status", payCtrl.GetPaymentStatus)
 			invGroup.POST("/:id/installment-request", installmentCtrl.RequestInstallment)
 			invGroup.GET("/:id/installments", installmentCtrl.GetInstallmentSchedule)
 		}

@@ -56,7 +56,7 @@ func (ctrl *InvoiceController) GetInvoiceDetail(c *gin.Context) {
 		role = roles[0]
 	}
 
-	inv, err := ctrl.svc.GetInvoiceDetail(c.Request.Context(), invID, userID, role)
+	inv, err := ctrl.svc.GetInvoiceDetailDTO(c.Request.Context(), invID, userID, role)
 	if err != nil {
 		if errors.Is(err, repository.ErrInvoiceNotFound) {
 			response.NotFound(c, "Data tagihan tidak ditemukan")

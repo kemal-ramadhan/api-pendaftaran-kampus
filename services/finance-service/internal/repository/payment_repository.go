@@ -22,6 +22,7 @@ type PaymentRepository interface {
 	ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error)
 	FindPendingWithProviderRef(ctx context.Context, limit int) ([]model.Payment, error)
 	UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status model.PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error
+	Update(ctx context.Context, payment *model.Payment) error
 }
 
 type paymentRepository struct {
@@ -126,5 +127,9 @@ func (r *paymentRepository) FindPendingWithProviderRef(ctx context.Context, limi
 		Limit(limit).
 		Find(&list).Error
 	return list, err
+}
+
+func (r *paymentRepository) Update(ctx context.Context, payment *model.Payment) error {
+	return r.db.WithContext(ctx).Save(payment).Error
 }
 

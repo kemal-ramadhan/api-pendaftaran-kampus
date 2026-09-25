@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -99,4 +100,46 @@ func (ctrl *InternalController) GetInvoices(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Invoice berhasil ditemukan", inv)
+}
+
+func (ctrl *InternalController) CancelInvoice(c *gin.Context) {
+	idStr := c.Param("id")
+	invID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID invoice tidak valid")
+		return
+	}
+
+	err = ctrl.svc.CancelInvoice(c.Request.Context(), invID)
+	if err != nil {
+		if errors.Is(err, service.ErrCancelNotAllowed) {
+			response.Conflict(c, "CANCEL_NOT_ALLOWED", err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal membatalkan tagihan: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Tagihan berhasil dibatalkan", gin.H{"cancelled": true})
+}
+
+func (ctrl *InternalController) CancelInvoiceByApplication(c *gin.Context) {
+	appIDStr := c.Param("application_id")
+	appID, err := uuid.Parse(appIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format application_id tidak valid")
+		return
+	}
+
+	err = ctrl.svc.CancelInvoiceByApplicationID(c.Request.Context(), appID)
+	if err != nil {
+		if errors.Is(err, service.ErrCancelNotAllowed) {
+			response.Conflict(c, "CANCEL_NOT_ALLOWED", err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal membatalkan tagihan pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Tagihan pendaftaran berhasil dibatalkan", gin.H{"cancelled": true})
 }

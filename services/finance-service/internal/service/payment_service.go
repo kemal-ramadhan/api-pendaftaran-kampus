@@ -263,7 +263,44 @@ func (s *paymentService) ProcessWebhook(ctx context.Context, providerName string
 		return err
 	}
 
-	// 5. Finalisasi Pelunasan Pembayaran
+	// 5. Penanganan Pembayaran Pasca Pembatalan (CR-002 D.5 point 3)
+	if payment.Status == model.PaymentStatusCancelled || inv.Status == model.InvoiceStatusCancelled {
+		log.Printf("[WEBHOOK] Pembayaran %s diterima setelah pembatalan. Menandai paid_after_cancel.", payment.ID)
+		now := time.Now()
+		payment.Status = model.PaymentStatusPaidAfterCancel
+		payment.PaidAt = &now
+		payment.Notes = "Pembayaran sukses diterima setelah tagihan dibatalkan (perlu penanganan manual/refund)"
+		_ = s.paymentRepo.Update(ctx, payment)
+
+		_ = s.webhookLogRepo.Create(ctx, &model.PaymentWebhookLog{
+			Provider:    providerName,
+			ProviderRef: payload.ProviderRef,
+			Payload:     string(payloadBytes),
+			Signature:   signature,
+			Status:      "paid_after_cancel",
+		})
+
+		// Kirim notifikasi ke tim keuangan untuk ditindaklanjuti secara manual
+		if s.notifCli != nil {
+			go func() {
+				notifPayload := map[string]interface{}{
+					"channel":  "email",
+					"template": "payment_paid_after_cancel",
+					"data": map[string]interface{}{
+						"invoice_number": inv.InvoiceNumber,
+						"payment_id":     payment.ID.String(),
+						"amount":         payment.Amount,
+						"provider_ref":   payment.ProviderRef,
+					},
+				}
+				var resp interface{}
+				_ = s.notifCli.Post(context.Background(), "/internal/notifications", notifPayload, &resp)
+			}()
+		}
+		return nil
+	}
+
+	// 6. Finalisasi Pelunasan Pembayaran Normal
 	_, err = s.finalizePaymentSuccess(ctx, payment, inv)
 	if err != nil {
 		return err

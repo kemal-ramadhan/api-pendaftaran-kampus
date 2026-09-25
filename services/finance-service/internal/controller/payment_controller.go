@@ -150,3 +150,48 @@ func (ctrl *PaymentController) GetPaymentDetail(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Detail pembayaran berhasil diambil", payment)
 }
+
+func (ctrl *PaymentController) GetPaymentStatus(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	pIDStr := c.Param("payment_id")
+	paymentID, err := uuid.Parse(pIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID pembayaran tidak valid")
+		return
+	}
+
+	roles := gatewayauth.GetUserRoles(c)
+	role := "user"
+	if len(roles) > 0 {
+		role = roles[0]
+	}
+
+	payment, err := ctrl.svc.GetPaymentByID(c.Request.Context(), paymentID, userID, role)
+	if err != nil {
+		if errors.Is(err, repository.ErrPaymentNotFound) {
+			response.NotFound(c, "Data pembayaran tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrForbiddenAccess) {
+			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak memiliki akses ke data pembayaran ini")
+			return
+		}
+		response.InternalServerError(c, "Gagal memeriksa status pembayaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Status pembayaran berhasil diambil", gin.H{
+		"payment_id": payment.ID,
+		"invoice_id": payment.InvoiceID,
+		"status":     payment.Status,
+		"is_paid":    payment.Status == "success",
+		"paid_at":    payment.PaidAt,
+		"method":     payment.Method,
+		"amount":     payment.Amount,
+	})
+}

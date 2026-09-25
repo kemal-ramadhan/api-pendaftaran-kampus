@@ -16,6 +16,8 @@ const (
 	PaymentStatusExpired             PaymentStatus = "expired"
 	PaymentStatusAwaitingVerification PaymentStatus = "awaiting_verification"
 	PaymentStatusRejected            PaymentStatus = "rejected"
+	PaymentStatusCancelled           PaymentStatus = "cancelled"
+	PaymentStatusPaidAfterCancel     PaymentStatus = "paid_after_cancel"
 )
 
 type PaymentMethod string
