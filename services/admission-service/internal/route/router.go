@@ -78,6 +78,16 @@ func SetupRouter(
 			adminGroup.GET("/applications/:id", adminCtrl.GetApplicationDetail)
 			adminGroup.POST("/applications/:id/verify", adminCtrl.VerifyDocuments)
 			adminGroup.GET("/applications/:id/documents/:code/url", adminCtrl.GetDocumentURL)
+
+			// Master data management (PRD C.4.4 / TINGGI-1)
+			adminGroup.GET("/periods", adminCtrl.ListPeriods)
+			adminGroup.POST("/periods", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePeriod)
+			adminGroup.GET("/paths", adminCtrl.ListPaths)
+			adminGroup.POST("/paths", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePath)
+			adminGroup.GET("/quotas", adminCtrl.ListQuotas)
+			adminGroup.POST("/quotas", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateQuota)
+			adminGroup.GET("/requirements", adminCtrl.ListRequirements)
+			adminGroup.POST("/requirements", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateRequirement)
 		}
 	}
 

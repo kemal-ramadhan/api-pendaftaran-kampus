@@ -46,6 +46,9 @@ func (m *mockPeriodRepo) FindAll(ctx context.Context) ([]model.Period, error) {
 	return nil, nil
 }
 
+func (m *mockPeriodRepo) Create(ctx context.Context, p *model.Period) error { return nil }
+func (m *mockPeriodRepo) Update(ctx context.Context, p *model.Period) error { return nil }
+
 type mockPathRepo struct {
 	paths map[uint]*model.AdmissionPath
 }
@@ -67,6 +70,13 @@ func (m *mockPathRepo) FindByID(ctx context.Context, id uint) (*model.AdmissionP
 	return nil, repository.ErrPathNotFound
 }
 
+func (m *mockPathRepo) FindAll(ctx context.Context) ([]model.AdmissionPath, error) {
+	return nil, nil
+}
+
+func (m *mockPathRepo) Create(ctx context.Context, p *model.AdmissionPath) error { return nil }
+func (m *mockPathRepo) Update(ctx context.Context, p *model.AdmissionPath) error { return nil }
+
 type mockQuotaRepo struct{}
 
 func (m *mockQuotaRepo) FindByPeriodAndPath(ctx context.Context, pID, pathID uint) ([]model.Quota, error) {
@@ -76,6 +86,9 @@ func (m *mockQuotaRepo) FindByPeriodAndPath(ctx context.Context, pID, pathID uin
 func (m *mockQuotaRepo) IncrementFilled(ctx context.Context, pID, pathID uint, sID uuid.UUID) error {
 	return nil
 }
+
+func (m *mockQuotaRepo) FindAll(ctx context.Context) ([]model.Quota, error) { return nil, nil }
+func (m *mockQuotaRepo) Create(ctx context.Context, q *model.Quota) error    { return nil }
 
 type mockOutboxRepo struct {
 	events []*outbox.Event

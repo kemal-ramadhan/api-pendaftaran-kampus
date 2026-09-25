@@ -11,16 +11,33 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/service"
 )
 
 type AdminController struct {
-	svc service.AdmissionService
+	svc       service.AdmissionService
+	periodRepo repository.PeriodRepository
+	pathRepo   repository.AdmissionPathRepository
+	quotaRepo  repository.QuotaRepository
+	reqRepo    repository.DocumentRequirementRepository
 }
 
-func NewAdminController(svc service.AdmissionService) *AdminController {
-	return &AdminController{svc: svc}
+func NewAdminController(
+	svc service.AdmissionService,
+	periodRepo repository.PeriodRepository,
+	pathRepo repository.AdmissionPathRepository,
+	quotaRepo repository.QuotaRepository,
+	reqRepo repository.DocumentRequirementRepository,
+) *AdminController {
+	return &AdminController{
+		svc:        svc,
+		periodRepo: periodRepo,
+		pathRepo:   pathRepo,
+		quotaRepo:  quotaRepo,
+		reqRepo:    reqRepo,
+	}
 }
 
 type VerifyDocumentsInput struct {
@@ -285,3 +302,94 @@ func (ctrl *AdminController) GetStats(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Statistik pendaftaran berhasil diambil", stats)
 }
+
+// Master Data Handlers (PRD C.4.4 / TINGGI-1)
+
+func (ctrl *AdminController) ListPeriods(c *gin.Context) {
+	periods, err := ctrl.periodRepo.FindAll(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar gelombang pendaftaran: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar gelombang berhasil diambil", periods)
+}
+
+func (ctrl *AdminController) CreatePeriod(c *gin.Context) {
+	var input model.Period
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data gelombang tidak valid: "+err.Error())
+		return
+	}
+	if err := ctrl.periodRepo.Create(c.Request.Context(), &input); err != nil {
+		response.InternalServerError(c, "Gagal membuat gelombang: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Gelombang pendaftaran berhasil dibuat", input)
+}
+
+func (ctrl *AdminController) ListPaths(c *gin.Context) {
+	paths, err := ctrl.pathRepo.FindAll(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar jalur pendaftaran: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar jalur pendaftaran berhasil diambil", paths)
+}
+
+func (ctrl *AdminController) CreatePath(c *gin.Context) {
+	var input model.AdmissionPath
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data jalur pendaftaran tidak valid: "+err.Error())
+		return
+	}
+	if err := ctrl.pathRepo.Create(c.Request.Context(), &input); err != nil {
+		response.InternalServerError(c, "Gagal membuat jalur pendaftaran: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Jalur pendaftaran berhasil dibuat", input)
+}
+
+func (ctrl *AdminController) ListQuotas(c *gin.Context) {
+	quotas, err := ctrl.quotaRepo.FindAll(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar kuota: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar kuota berhasil diambil", quotas)
+}
+
+func (ctrl *AdminController) CreateQuota(c *gin.Context) {
+	var input model.Quota
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data kuota tidak valid: "+err.Error())
+		return
+	}
+	if err := ctrl.quotaRepo.Create(c.Request.Context(), &input); err != nil {
+		response.InternalServerError(c, "Gagal membuat kuota: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Kuota berhasil dibuat", input)
+}
+
+func (ctrl *AdminController) ListRequirements(c *gin.Context) {
+	reqs, err := ctrl.reqRepo.FindAll(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar syarat berkas: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar persyaratan dokumen berhasil diambil", reqs)
+}
+
+func (ctrl *AdminController) CreateRequirement(c *gin.Context) {
+	var input model.DocumentRequirement
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data syarat berkas tidak valid: "+err.Error())
+		return
+	}
+	if err := ctrl.reqRepo.Create(c.Request.Context(), &input); err != nil {
+		response.InternalServerError(c, "Gagal membuat persyaratan dokumen: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Persyaratan dokumen berhasil dibuat", input)
+}
+

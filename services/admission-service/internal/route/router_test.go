@@ -62,7 +62,7 @@ func setupTestAdmissionRouter(gatewaySecret string) *gin.Engine {
 	healthCtrl := controller.NewHealthController(nil)
 	publicCtrl := controller.NewPublicController(dummySvc)
 	appCtrl := controller.NewApplicationController(dummySvc)
-	adminCtrl := controller.NewAdminController(dummySvc)
+	adminCtrl := controller.NewAdminController(dummySvc, nil, nil, nil, nil)
 	internalCtrl := controller.NewInternalController(dummySvc)
 
 	return SetupRouter(cfg, healthCtrl, publicCtrl, appCtrl, adminCtrl, internalCtrl)

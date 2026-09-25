@@ -141,6 +141,7 @@ func main() {
 	quotaRepo := repository.NewQuotaRepository(db)
 	appRepo := repository.NewApplicationRepository(db)
 	docRepo := repository.NewApplicationDocumentRepository(db)
+	reqRepo := repository.NewDocumentRequirementRepository(db)
 
 	// 8. Inisialisasi Service
 	admissionSvc := service.NewAdmissionService(
@@ -161,7 +162,7 @@ func main() {
 	healthCtrl := controller.NewHealthController(db)
 	publicCtrl := controller.NewPublicController(admissionSvc)
 	appCtrl := controller.NewApplicationController(admissionSvc)
-	adminCtrl := controller.NewAdminController(admissionSvc)
+	adminCtrl := controller.NewAdminController(admissionSvc, periodRepo, pathRepo, quotaRepo, reqRepo)
 	internalCtrl := controller.NewInternalController(admissionSvc)
 
 	// 10. Setup Router Gin

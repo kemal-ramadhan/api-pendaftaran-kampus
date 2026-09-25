@@ -17,6 +17,8 @@ type PeriodRepository interface {
 	FindActive(ctx context.Context) (*model.Period, error)
 	FindByID(ctx context.Context, id uint) (*model.Period, error)
 	FindAll(ctx context.Context) ([]model.Period, error)
+	Create(ctx context.Context, p *model.Period) error
+	Update(ctx context.Context, p *model.Period) error
 }
 
 type periodRepository struct {
@@ -59,4 +61,12 @@ func (r *periodRepository) FindAll(ctx context.Context) ([]model.Period, error) 
 	var list []model.Period
 	err := r.db.WithContext(ctx).Order("id desc").Find(&list).Error
 	return list, err
+}
+
+func (r *periodRepository) Create(ctx context.Context, p *model.Period) error {
+	return r.db.WithContext(ctx).Create(p).Error
+}
+
+func (r *periodRepository) Update(ctx context.Context, p *model.Period) error {
+	return r.db.WithContext(ctx).Save(p).Error
 }

@@ -15,6 +15,9 @@ var (
 type AdmissionPathRepository interface {
 	FindAllActive(ctx context.Context) ([]model.AdmissionPath, error)
 	FindByID(ctx context.Context, id uint) (*model.AdmissionPath, error)
+	FindAll(ctx context.Context) ([]model.AdmissionPath, error)
+	Create(ctx context.Context, p *model.AdmissionPath) error
+	Update(ctx context.Context, p *model.AdmissionPath) error
 }
 
 type admissionPathRepository struct {
@@ -47,4 +50,21 @@ func (r *admissionPathRepository) FindByID(ctx context.Context, id uint) (*model
 		return nil, err
 	}
 	return &path, nil
+}
+
+func (r *admissionPathRepository) FindAll(ctx context.Context) ([]model.AdmissionPath, error) {
+	var paths []model.AdmissionPath
+	err := r.db.WithContext(ctx).
+		Preload("Requirements").
+		Order("id asc").
+		Find(&paths).Error
+	return paths, err
+}
+
+func (r *admissionPathRepository) Create(ctx context.Context, p *model.AdmissionPath) error {
+	return r.db.WithContext(ctx).Create(p).Error
+}
+
+func (r *admissionPathRepository) Update(ctx context.Context, p *model.AdmissionPath) error {
+	return r.db.WithContext(ctx).Save(p).Error
 }
