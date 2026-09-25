@@ -21,6 +21,14 @@ type Config struct {
 	AdmissionServiceURL    string
 	NotificationServiceURL string
 	PaymentWebhookSecret   string
+	PaymentProvider        string // mock | duitku
+	DuitkuEnv              string // sandbox | production
+	DuitkuMerchantCode     string
+	DuitkuApiKey           string
+	DuitkuExpiryMinutes    int
+	DuitkuCallbackURL      string
+	DuitkuReturnURL        string
+	DuitkuHTTPTimeout      string
 	MinioEndpoint          string
 	MinioAccessKey         string
 	MinioSecretKey         string
@@ -44,6 +52,14 @@ func LoadConfig() (*Config, error) {
 		AdmissionServiceURL:    getEnv("ADMISSION_SERVICE_URL", "http://localhost:8084"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
 		PaymentWebhookSecret:   getEnv("PAYMENT_WEBHOOK_SECRET", "secret-payment-webhook"),
+		PaymentProvider:        getEnv("PAYMENT_PROVIDER", "mock"),
+		DuitkuEnv:              getEnv("DUITKU_ENV", "sandbox"),
+		DuitkuMerchantCode:     getEnv("DUITKU_MERCHANT_CODE", ""),
+		DuitkuApiKey:           getEnv("DUITKU_API_KEY", ""),
+		DuitkuExpiryMinutes:    getEnvAsInt("DUITKU_EXPIRY_MINUTES", 1440),
+		DuitkuCallbackURL:      getEnv("DUITKU_CALLBACK_URL", ""),
+		DuitkuReturnURL:        getEnv("DUITKU_RETURN_URL", ""),
+		DuitkuHTTPTimeout:      getEnv("DUITKU_HTTP_TIMEOUT", "15s"),
 		MinioEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinioAccessKey:         getEnv("MINIO_ACCESS_KEY", "minioadmin"),
 		MinioSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),

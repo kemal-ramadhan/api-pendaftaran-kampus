@@ -9,16 +9,21 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/service"
 )
 
 type AdminController struct {
-	paymentSvc service.PaymentService
+	paymentSvc    service.PaymentService
+	feeSchemeRepo repository.FeeSchemeRepository
 }
 
-func NewAdminController(paymentSvc service.PaymentService) *AdminController {
-	return &AdminController{paymentSvc: paymentSvc}
+func NewAdminController(paymentSvc service.PaymentService, feeSchemeRepo repository.FeeSchemeRepository) *AdminController {
+	return &AdminController{
+		paymentSvc:    paymentSvc,
+		feeSchemeRepo: feeSchemeRepo,
+	}
 }
 
 type VerifyPaymentInput struct {
@@ -102,3 +107,26 @@ func (ctrl *AdminController) VerifyPayment(c *gin.Context) {
 		"action":     input.Action,
 	})
 }
+
+func (ctrl *AdminController) ListFeeSchemes(c *gin.Context) {
+	schemes, err := ctrl.feeSchemeRepo.FindAll(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar skema tarif: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar skema biaya berhasil diambil", schemes)
+}
+
+func (ctrl *AdminController) CreateFeeScheme(c *gin.Context) {
+	var input model.FeeScheme
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data skema biaya tidak valid: "+err.Error())
+		return
+	}
+	if err := ctrl.feeSchemeRepo.Create(c.Request.Context(), &input); err != nil {
+		response.InternalServerError(c, "Gagal membuat skema biaya: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Skema biaya berhasil dibuat", input)
+}
+

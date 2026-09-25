@@ -84,6 +84,8 @@ func SetupRouter(
 					keuanganOnly.GET("/installment-requests", installmentCtrl.ListInstallmentRequests)
 					keuanganOnly.POST("/installment-requests/:id/review", installmentCtrl.ReviewInstallmentRequest)
 					keuanganOnly.POST("/cron/process-due-dates", reportCtrl.ProcessDueDatesCron)
+					keuanganOnly.GET("/fee-schemes", adminCtrl.ListFeeSchemes)
+					keuanganOnly.POST("/fee-schemes", adminCtrl.CreateFeeScheme)
 				}
 
 				// Laporan ringkasan & ekspor excel: role keuangan, pimpinan, superadmin

@@ -8,7 +8,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
 
 | No. CR | Tanggal Pengajuan | Ringkasan Perubahan | Sumber / Pengaju | Service / Komponen Terdampak | Tahap Terdampak | Status | Dokumen Terkait |
 |---|---|---|---|---|---|---|---|
-| **CR-001** | 2026-09-24 | Integrasi Payment Gateway Duitku (Duitku POP / `createInvoice`) menggantikan mock-only; MockProvider tetap dipertahankan untuk pengujian otomatis | Pak Kemal Ramadhan (Lead / Product Owner) | Finance Service (`services/finance-service`), API Gateway (`services/api-gateway`), Compose (`deploy/docker-compose.yml`), Scripts (`scripts/e2e.sh`) | Tahap 4 (Finance 1) & Tahap 9 (Finance 2) | **Open** | `PRD-LENGKAP.md` Bagian D, `docs/DECISIONS.md` |
+| **CR-001** | 2026-09-24 | Integrasi Payment Gateway Duitku (Duitku POP / `createInvoice`) menggantikan mock-only; MockProvider tetap dipertahankan untuk pengujian otomatis | Pak Kemal Ramadhan (Lead / Product Owner) | Finance Service (`services/finance-service`), API Gateway (`services/api-gateway`), Compose (`deploy/docker-compose.yml`), Scripts (`scripts/e2e.sh`) | Tahap 4 (Finance 1) & Tahap 9 (Finance 2) | **Implemented (Tahap 4)** | `PRD-LENGKAP.md` Bagian D, `docs/DECISIONS.md` |
 
 ---
 

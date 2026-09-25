@@ -21,10 +21,8 @@ func NewMockProvider() PaymentProvider {
 }
 
 func (m *mockProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amount int64) (*VACreationResult, error) {
-	// Format VA Bank PMB: 98800 + 8 digit acak
 	randomSuffix := 10000000 + rand.Intn(90000000)
 	vaNumber := fmt.Sprintf("98800%d", randomSuffix)
-
 	providerRef := fmt.Sprintf("MOCK-VA-%s", uuid.New().String()[:8])
 	expiresAt := time.Now().Add(24 * time.Hour)
 
@@ -32,6 +30,27 @@ func (m *mockProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amount
 		ProviderRef: providerRef,
 		VANumber:    vaNumber,
 		ExpiresAt:   expiresAt,
+	}, nil
+}
+
+func (m *mockProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResult, error) {
+	randomSuffix := 10000000 + rand.Intn(90000000)
+	vaNumber := fmt.Sprintf("98800%d", randomSuffix)
+	providerRef := req.MerchantOrderID
+	if providerRef == "" {
+		providerRef = fmt.Sprintf("MOCK-PAY-%s", uuid.New().String()[:8])
+	}
+	expiresAt := time.Now().Add(24 * time.Hour)
+	paymentURL := fmt.Sprintf("https://mock-payment.pmb.local/pay/%s", providerRef)
+
+	return &PaymentResult{
+		ProviderRef:      providerRef,
+		PaymentURL:       paymentURL,
+		VANumber:         vaNumber,
+		PaymentCode:      vaNumber,
+		PublisherOrderID: fmt.Sprintf("PUB-%s", providerRef),
+		Amount:           req.Amount,
+		ExpiresAt:        expiresAt,
 	}, nil
 }
 
@@ -64,7 +83,17 @@ func (m *mockProvider) VerifySignature(secret string, signatureHeader string, bo
 	mac.Write(body)
 	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
-	// Bersihkan prefix jika ada (misal "sha256=")
 	cleanSig := strings.TrimPrefix(strings.TrimSpace(signatureHeader), "sha256=")
 	return hmac.Equal([]byte(cleanSig), []byte(expectedSignature))
+}
+
+func (m *mockProvider) CheckStatus(ctx context.Context, merchantOrderID string) (*PaymentStatusResult, error) {
+	return &PaymentStatusResult{
+		MerchantOrderID: merchantOrderID,
+		StatusCode:      "00",
+		StatusMessage:   "Success",
+		Amount:          0,
+		Reference:       fmt.Sprintf("REF-%s", merchantOrderID),
+		PaidAt:          time.Now(),
+	}, nil
 }

@@ -115,7 +115,25 @@ func main() {
 	}
 
 	// 7. Inisialisasi Payment Provider & Exporter
-	mockProvider := provider.NewMockProvider()
+	var paymentProvider provider.PaymentProvider
+	if cfg.PaymentProvider == "duitku" {
+		dProvider, dErr := provider.NewDuitkuProvider(provider.DuitkuConfig{
+			Env:           cfg.DuitkuEnv,
+			MerchantCode:  cfg.DuitkuMerchantCode,
+			APIKey:        cfg.DuitkuApiKey,
+			ExpiryMinutes: cfg.DuitkuExpiryMinutes,
+			CallbackURL:   cfg.DuitkuCallbackURL,
+			ReturnURL:     cfg.DuitkuReturnURL,
+		})
+		if dErr != nil {
+			log.Fatal("Gagal inisialisasi Duitku payment provider", zap.Error(dErr))
+		}
+		paymentProvider = dProvider
+		log.Info("Menggunakan Payment Provider: Duitku POP", zap.String("env", cfg.DuitkuEnv))
+	} else {
+		paymentProvider = provider.NewMockProvider()
+		log.Info("Menggunakan Payment Provider: MockProvider (Development/Testing)")
+	}
 	reportExp := exporter.NewReportExporter()
 
 	// 8. Inisialisasi Repository
@@ -134,7 +152,7 @@ func main() {
 		invRepo,
 		rcRepo,
 		webhookLogRepo,
-		mockProvider,
+		paymentProvider,
 		storageCli,
 		admissionCli,
 		notifCli,
@@ -152,7 +170,7 @@ func main() {
 	rcCtrl := controller.NewReceiptController(paySvc)
 	webhookCtrl := controller.NewWebhookController(paySvc)
 	devCtrl := controller.NewDevController(paySvc, cfg)
-	adminCtrl := controller.NewAdminController(paySvc)
+	adminCtrl := controller.NewAdminController(paySvc, feeSchemeRepo)
 	internalCtrl := controller.NewInternalController(invSvc)
 	installmentCtrl := controller.NewInstallmentController(installmentSvc)
 	reportCtrl := controller.NewReportController(reportSvc, installmentSvc)
