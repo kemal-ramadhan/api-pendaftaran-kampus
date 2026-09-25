@@ -20,6 +20,7 @@ func SetupRouter(
 
 	// Health check publik untuk docker / load balancer
 	r.GET("/health", healthCtrl.Health)
+	r.GET("/health/ready", healthCtrl.Readiness)
 
 	// Internal endpoints (dilindungi internal token)
 	internalGroup := r.Group("/internal")

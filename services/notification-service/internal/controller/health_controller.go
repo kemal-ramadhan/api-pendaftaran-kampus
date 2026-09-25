@@ -19,3 +19,10 @@ func (h *HealthController) Health(c *gin.Context) {
 		"status":  "ok",
 	})
 }
+
+func (h *HealthController) Readiness(c *gin.Context) {
+	response.Success(c, http.StatusOK, "pmb-notification-service is ready", gin.H{
+		"service": "pmb-notification-service",
+		"status":  "ready",
+	})
+}
