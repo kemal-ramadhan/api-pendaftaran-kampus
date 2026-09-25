@@ -35,6 +35,7 @@ type PaymentService interface {
 	GetPaymentByID(ctx context.Context, id uuid.UUID, requesterID uuid.UUID, role string) (*model.Payment, error)
 	GetReceiptByPaymentID(ctx context.Context, paymentID uuid.UUID, requesterID uuid.UUID, role string) (*model.Receipt, []byte, error)
 	ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error)
+	ReconcilePendingPayments(ctx context.Context) (int, error)
 }
 
 type paymentService struct {
@@ -519,3 +520,32 @@ func (s *paymentService) GetReceiptByPaymentID(ctx context.Context, paymentID uu
 func (s *paymentService) ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error) {
 	return s.paymentRepo.ListAwaitingVerification(ctx, limit, offset)
 }
+
+func (s *paymentService) ReconcilePendingPayments(ctx context.Context) (int, error) {
+	pendingPayments, err := s.paymentRepo.FindPendingWithProviderRef(ctx, 50)
+	if err != nil {
+		return 0, err
+	}
+
+	reconciled := 0
+	for _, p := range pendingPayments {
+		statusResult, err := s.provider.CheckStatus(ctx, p.ProviderRef)
+		if err != nil || statusResult == nil {
+			continue
+		}
+
+		if statusResult.StatusCode == "00" { // Sukses terbayar di provider
+			inv, err := s.invoiceRepo.FindByID(ctx, p.InvoiceID)
+			if err != nil {
+				continue
+			}
+			pCopy := p
+			_, err = s.finalizePaymentSuccess(ctx, &pCopy, inv)
+			if err == nil {
+				reconciled++
+			}
+		}
+	}
+	return reconciled, nil
+}
+

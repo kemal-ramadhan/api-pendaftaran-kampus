@@ -84,6 +84,16 @@ func (m *mockPaymentRepo) ListAwaitingVerification(ctx context.Context, limit, o
 	return m.ListByStatus(ctx, model.PaymentStatusAwaitingVerification, limit, offset)
 }
 
+func (m *mockPaymentRepo) FindPendingWithProviderRef(ctx context.Context, limit int) ([]model.Payment, error) {
+	var list []model.Payment
+	for _, p := range m.payments {
+		if p.Status == model.PaymentStatusPending && p.ProviderRef != "" {
+			list = append(list, *p)
+		}
+	}
+	return list, nil
+}
+
 func (m *mockPaymentRepo) UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status model.PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error {
 	if p, ok := m.payments[paymentID]; ok {
 		p.Status = status

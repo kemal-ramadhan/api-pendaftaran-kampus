@@ -20,6 +20,7 @@ type PaymentRepository interface {
 	FindByID(ctx context.Context, id uuid.UUID) (*model.Payment, error)
 	FindByProviderRef(ctx context.Context, providerRef string) (*model.Payment, error)
 	ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error)
+	FindPendingWithProviderRef(ctx context.Context, limit int) ([]model.Payment, error)
 	UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status model.PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error
 }
 
@@ -114,3 +115,16 @@ func (r *paymentRepository) UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, s
 	}
 	return tx.Model(&model.Payment{}).Where("id = ?", paymentID).Updates(updates).Error
 }
+
+func (r *paymentRepository) FindPendingWithProviderRef(ctx context.Context, limit int) ([]model.Payment, error) {
+	var list []model.Payment
+	if limit <= 0 {
+		limit = 50
+	}
+	err := r.db.WithContext(ctx).
+		Where("status = ? AND provider_ref != '' AND provider_ref IS NOT NULL", model.PaymentStatusPending).
+		Limit(limit).
+		Find(&list).Error
+	return list, err
+}
+

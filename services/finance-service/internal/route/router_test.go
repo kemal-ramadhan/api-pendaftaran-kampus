@@ -41,6 +41,10 @@ func (d *dummyPaymentSvc) SimulatePaid(ctx context.Context, paymentID uuid.UUID)
 	}, nil
 }
 
+func (d *dummyPaymentSvc) ReconcilePendingPayments(ctx context.Context) (int, error) {
+	return 0, nil
+}
+
 func setupTestFinanceRouter(gatewaySecret string, isDev bool) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	cfg := RouterConfig{

@@ -130,3 +130,15 @@ func (ctrl *AdminController) CreateFeeScheme(c *gin.Context) {
 	response.Success(c, http.StatusCreated, "Skema biaya berhasil dibuat", input)
 }
 
+func (ctrl *AdminController) ReconcilePayments(c *gin.Context) {
+	reconciledCount, err := ctrl.paymentSvc.ReconcilePendingPayments(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal melakukan rekonsiliasi pembayaran: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Rekonsiliasi pembayaran selesai diproses", gin.H{
+		"reconciled_count": reconciledCount,
+	})
+}
+
+
