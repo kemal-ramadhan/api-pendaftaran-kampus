@@ -1,4 +1,4 @@
-﻿<#
+<#
   final-check.ps1 - Pengecekan akhir backend PMB (tanpa cek manual)
   Jalankan dari root repo:
       powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1
@@ -65,7 +65,7 @@ foreach ($m in $modules) {
         $tidyOk = ($LASTEXITCODE -eq 0)
         if (-not $tidyOk) { git checkout -- "$m/go.mod" "$m/go.sum" 2>$null }
         Push-Location $m
-        $out = (go build ./... 2>&1; go vet ./... 2>&1; go test -count=1 ./... 2>&1) | Out-String
+        $out = $(go build ./... 2>&1; go vet ./... 2>&1; go test -count=1 ./... 2>&1) | Out-String
         $testOk = ($LASTEXITCODE -eq 0) -and ($out -notmatch "FAIL|cannot|undefined|missing go.sum")
         Pop-Location
     } else {
