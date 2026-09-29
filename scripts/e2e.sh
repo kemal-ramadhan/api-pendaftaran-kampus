@@ -679,6 +679,15 @@ fi
 # ==============================================================================
 echo -e "\n${CYAN}>>> BAGIAN 4: PENGUJIAN TAHAP 1 — ORGANIZATION SERVICE & SCOPE VALIDATION${NC}"
 
+# Login kembali calon mahasiswa setelah pengujian logout pada Bagian 1
+RESP_LOGIN_MHS=$(curl -s -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$MHS_EMAIL\",
+    \"password\": \"$MHS_PASSWORD\"
+  }")
+ACCESS_TOKEN=$(echo "$RESP_LOGIN_MHS" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
 # 21. Daftar Prodi Publik Tanpa Login
 log_info "21. Mengambil daftar program studi publik tanpa autentikasi..."
 RESP=$(curl -s -w "\n%{http_code}" -X GET "${ORG_URL}/study-programs")

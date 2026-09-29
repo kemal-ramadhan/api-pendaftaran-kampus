@@ -56,6 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel selection", zap.Error(err))
 	}
+	_ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_recommendations_lookup ON recommendations(period_id, path_id, study_program_code)`).Error
 	log.Info("Migrasi basis data selection berhasil disiapkan")
 
 	// 4. Inisialisasi Client Inter-Service

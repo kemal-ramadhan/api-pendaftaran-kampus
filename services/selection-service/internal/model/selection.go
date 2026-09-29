@@ -28,9 +28,9 @@ const (
 // Recommendation merepresentasikan usulan kelulusan program studi
 type Recommendation struct {
 	ID               uuid.UUID            `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	PeriodID         uuid.UUID            `gorm:"type:uuid;not null;index:idx_recommendations_lookup" json:"period_id"`
-	PathID           uuid.UUID            `gorm:"type:uuid;not null;index:idx_recommendations_lookup" json:"path_id"`
-	StudyProgramCode string               `gorm:"type:varchar(50);not null;index:idx_recommendations_lookup" json:"study_program_code"`
+	PeriodID         uuid.UUID            `gorm:"type:uuid;not null;uniqueIndex:idx_recommendations_lookup" json:"period_id"`
+	PathID           uuid.UUID            `gorm:"type:uuid;not null;uniqueIndex:idx_recommendations_lookup" json:"path_id"`
+	StudyProgramCode string               `gorm:"type:varchar(50);not null;uniqueIndex:idx_recommendations_lookup" json:"study_program_code"`
 	Status           RecommendationStatus `gorm:"type:varchar(20);not null;default:'draft';index:idx_recommendations_status" json:"status"`
 	SubmittedBy      *uuid.UUID           `gorm:"type:uuid" json:"submitted_by,omitempty"`
 	SubmittedAt      *time.Time           `json:"submitted_at,omitempty"`

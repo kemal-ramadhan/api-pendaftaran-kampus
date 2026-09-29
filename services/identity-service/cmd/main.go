@@ -60,6 +60,8 @@ func main() {
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel identity", zap.Error(err))
 	}
+	_ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_addresses_user_type ON addresses(user_id, type)`).Error
+	_ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_guardians_user_relation ON guardians(user_id, relation)`).Error
 	log.Info("Migrasi basis data identity berhasil disiapkan")
 
 	// 4. Inisialisasi Kunci Kriptografi

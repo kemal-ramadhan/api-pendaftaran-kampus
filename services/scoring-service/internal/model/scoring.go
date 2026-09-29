@@ -27,8 +27,8 @@ func (ScoreComponent) TableName() string {
 // Score mencatat nilai komponen per pendaftar yang diinput penguji
 type Score struct {
 	ID            uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	ApplicationID uuid.UUID `gorm:"type:uuid;not null;index:idx_scores_app" json:"application_id"`
-	ComponentCode string    `gorm:"type:varchar(50);not null" json:"component_code"`
+	ApplicationID uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:idx_scores_app_comp" json:"application_id"`
+	ComponentCode string    `gorm:"type:varchar(50);not null;uniqueIndex:idx_scores_app_comp" json:"component_code"`
 	Score         float64   `gorm:"type:numeric(5,2);not null" json:"score"`
 	InputBy       uuid.UUID `gorm:"type:uuid;not null" json:"input_by"`
 	InputAt       time.Time `gorm:"not null;default:now()" json:"input_at"`
@@ -64,9 +64,9 @@ func (ScoreSummary) TableName() string {
 // ProgramLock mengunci pengubahan nilai pada program studi dan periode tertentu
 type ProgramLock struct {
 	ID               uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	PeriodID         uuid.UUID  `gorm:"type:uuid;not null" json:"period_id"`
-	PathID           uuid.UUID  `gorm:"type:uuid;not null" json:"path_id"`
-	StudyProgramCode string     `gorm:"type:varchar(50);not null" json:"study_program_code"`
+	PeriodID         uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:idx_program_locks_lookup" json:"period_id"`
+	PathID           uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:idx_program_locks_lookup" json:"path_id"`
+	StudyProgramCode string     `gorm:"type:varchar(50);not null;uniqueIndex:idx_program_locks_lookup" json:"study_program_code"`
 	IsLocked         bool       `gorm:"not null;default:false" json:"is_locked"`
 	LockedBy         *uuid.UUID `gorm:"type:uuid" json:"locked_by,omitempty"`
 	LockedAt         *time.Time `json:"locked_at,omitempty"`

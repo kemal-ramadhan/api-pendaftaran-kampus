@@ -10,8 +10,8 @@ import (
 // Address menyimpan alamat KTP maupun domisili calon mahasiswa.
 type Address struct {
 	ID         uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID     uuid.UUID      `gorm:"type:uuid;index;not null" json:"user_id"`
-	Type       string         `gorm:"type:varchar(20);not null" json:"type"` // "ktp" / "domisili"
+	UserID     uuid.UUID      `gorm:"type:uuid;uniqueIndex:idx_addresses_user_id_type;not null" json:"user_id"`
+	Type       string         `gorm:"type:varchar(20);uniqueIndex:idx_addresses_user_id_type;not null" json:"type"` // "ktp" / "domisili"
 	Street     string         `gorm:"type:text" json:"street"`
 	RT         string         `gorm:"type:varchar(10)" json:"rt"`
 	RW         string         `gorm:"type:varchar(10)" json:"rw"`

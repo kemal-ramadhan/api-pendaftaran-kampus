@@ -10,8 +10,8 @@ import (
 // Guardian menyimpan data orang tua atau wali calon mahasiswa.
 type Guardian struct {
 	ID          uuid.UUID      `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID      uuid.UUID      `gorm:"type:uuid;index;not null" json:"user_id"`
-	Relation    string         `gorm:"type:varchar(20);not null" json:"relation"` // "ayah", "ibu", "wali"
+	UserID      uuid.UUID      `gorm:"type:uuid;uniqueIndex:idx_guardians_user_id_relation;not null" json:"user_id"`
+	Relation    string         `gorm:"type:varchar(20);uniqueIndex:idx_guardians_user_id_relation;not null" json:"relation"` // "ayah", "ibu", "wali"
 	Name        string         `gorm:"type:varchar(255);not null" json:"name"`
 	Occupation  string         `gorm:"type:varchar(100)" json:"occupation"`
 	IncomeRange string         `gorm:"type:varchar(100)" json:"income_range"`

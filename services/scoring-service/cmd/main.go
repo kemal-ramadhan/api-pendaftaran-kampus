@@ -58,6 +58,8 @@ func main() {
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel scoring", zap.Error(err))
 	}
+	_ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_scores_app_comp ON scores(application_id, component_code)`).Error
+	_ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_program_locks_lookup ON program_locks(period_id, path_id, study_program_code)`).Error
 	log.Info("Migrasi basis data scoring berhasil disiapkan")
 
 	// 4. Jalankan Seeder
