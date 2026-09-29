@@ -56,7 +56,7 @@ Contoh baris konfigurasi di `.env`:
 PAYMENT_PROVIDER=duitku
 DUITKU_ENV=sandbox
 DUITKU_MERCHANT_CODE=DXXXX
-DUITKU_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+DUITKU_API_KEY=<isi_api_key_sandbox_anda>
 DUITKU_EXPIRY_MINUTES=1440
 DUITKU_RECONCILE_INTERVAL=1m
 ```
