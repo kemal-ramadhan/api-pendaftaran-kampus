@@ -50,7 +50,7 @@ func main() {
 		log.Fatal("Gagal terhubung ke basis data admission", zap.Error(err))
 	}
 
-	// Auto-migrate tabel admission & outbox
+	// Auto-migrate tabel admission, outbox, & CR-006 riwayat
 	err = db.AutoMigrate(
 		&model.Period{},
 		&model.AdmissionPath{},
@@ -59,12 +59,20 @@ func main() {
 		&model.Application{},
 		&model.ApplicationDocument{},
 		&model.ApplicationStatusLog{},
+		&model.ApplicationChange{},
+		&model.PathChangeRequest{},
 		&outbox.Event{},
 	)
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel admission", zap.Error(err))
 	}
 	log.Info("Migrasi basis data admission berhasil disiapkan")
+
+	// Inisialisasi DB trigger & backfill riwayat CR-006
+	changeRepo := repository.NewChangeRepository(db)
+	if err := changeRepo.InitApplicationChangesTriggersAndBackfill(db); err != nil {
+		log.Warn("Peringatan saat inisialisasi triggers/backfill riwayat", zap.Error(err))
+	}
 
 	// 4. Jalankan Seeder Data Awal
 	ctxSeed, cancelSeed := context.WithTimeout(context.Background(), 10*time.Second)

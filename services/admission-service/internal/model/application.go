@@ -24,33 +24,39 @@ const (
 	StatusReregistered       ApplicationStatus = "reregistered"
 	StatusEnrolled           ApplicationStatus = "enrolled"
 	StatusCancelled          ApplicationStatus = "cancelled"
+	StatusWithdrawn          ApplicationStatus = "withdrawn"
 	StatusExpired            ApplicationStatus = "expired"
 )
 
 type Application struct {
-	ID              uuid.UUID              `gorm:"type:uuid;primaryKey" json:"id"`
-	RegistrationNo  string                 `gorm:"type:varchar(50);uniqueIndex;not null" json:"registration_no"`
-	UserID          uuid.UUID              `gorm:"type:uuid;index;not null" json:"user_id"`
-	PeriodID        uint                   `gorm:"not null;index" json:"period_id"`
-	AdmissionPathID uint                   `gorm:"not null;index" json:"admission_path_id"`
-	Choice1ID       uuid.UUID              `gorm:"type:uuid;not null;index" json:"choice_1_id"`
-	Choice2ID       *uuid.UUID             `gorm:"type:uuid;index" json:"choice_2_id,omitempty"`
-	Status          ApplicationStatus      `gorm:"type:varchar(30);not null;default:'awaiting_payment';index" json:"status"`
-	InvoiceID       *uuid.UUID             `gorm:"type:uuid" json:"invoice_id,omitempty"`
-	FinalChoiceID   *uuid.UUID             `gorm:"type:uuid" json:"final_choice_id,omitempty"`
-	SubmittedAt     *time.Time             `json:"submitted_at,omitempty"`
-	VerifiedAt      *time.Time             `json:"verified_at,omitempty"`
-	VerifiedBy      *uuid.UUID             `gorm:"type:uuid" json:"verified_by,omitempty"`
-	Notes           string                 `gorm:"type:text" json:"notes,omitempty"`
-	Period          *Period                `gorm:"foreignKey:PeriodID" json:"period,omitempty"`
-	AdmissionPath   *AdmissionPath         `gorm:"foreignKey:AdmissionPathID" json:"admission_path,omitempty"`
-	Documents       []ApplicationDocument  `gorm:"foreignKey:ApplicationID" json:"documents,omitempty"`
-	StatusLogs      []ApplicationStatusLog `gorm:"foreignKey:ApplicationID" json:"status_logs,omitempty"`
-	PersonData      interface{}            `gorm:"-" json:"person_data,omitempty"`
-	InvoiceData     interface{}            `gorm:"-" json:"invoice_data,omitempty"`
-	CanCancel       bool                   `gorm:"-" json:"can_cancel"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
+	ID                          uuid.UUID              `gorm:"type:uuid;primaryKey" json:"id"`
+	RegistrationNo              string                 `gorm:"type:varchar(50);uniqueIndex;not null" json:"registration_no"`
+	UserID                      uuid.UUID              `gorm:"type:uuid;index;not null" json:"user_id"`
+	PeriodID                    uint                   `gorm:"not null;index" json:"period_id"`
+	AdmissionPathID             uint                   `gorm:"not null;index" json:"admission_path_id"`
+	Choice1ID                   uuid.UUID              `gorm:"type:uuid;not null;index" json:"choice_1_id"`
+	Choice2ID                   *uuid.UUID             `gorm:"type:uuid;index" json:"choice_2_id,omitempty"`
+	Status                      ApplicationStatus      `gorm:"type:varchar(30);not null;default:'awaiting_payment';index" json:"status"`
+	InvoiceID                   *uuid.UUID             `gorm:"type:uuid" json:"invoice_id,omitempty"`
+	FinalChoiceID               *uuid.UUID             `gorm:"type:uuid" json:"final_choice_id,omitempty"`
+	PathChangeCountAfterPayment int                    `gorm:"not null;default:0" json:"path_change_count_after_payment"`
+	PreviousApplicationID       *uuid.UUID             `gorm:"type:uuid;index" json:"previous_application_id,omitempty"`
+	SubmittedAt                 *time.Time             `json:"submitted_at,omitempty"`
+	VerifiedAt                  *time.Time             `json:"verified_at,omitempty"`
+	VerifiedBy                  *uuid.UUID             `gorm:"type:uuid" json:"verified_by,omitempty"`
+	Notes                       string                 `gorm:"type:text" json:"notes,omitempty"`
+	Period                      *Period                `gorm:"foreignKey:PeriodID" json:"period,omitempty"`
+	AdmissionPath               *AdmissionPath         `gorm:"foreignKey:AdmissionPathID" json:"admission_path,omitempty"`
+	PreviousApplication         *Application           `gorm:"foreignKey:PreviousApplicationID" json:"previous_application,omitempty"`
+	Documents                   []ApplicationDocument  `gorm:"foreignKey:ApplicationID" json:"documents,omitempty"`
+	StatusLogs                  []ApplicationStatusLog `gorm:"foreignKey:ApplicationID" json:"status_logs,omitempty"`
+	Changes                     []ApplicationChange    `gorm:"foreignKey:ApplicationID" json:"changes,omitempty"`
+	PathChangeRequests          []PathChangeRequest    `gorm:"foreignKey:ApplicationID" json:"path_change_requests,omitempty"`
+	PersonData                  interface{}            `gorm:"-" json:"person_data,omitempty"`
+	InvoiceData                 interface{}            `gorm:"-" json:"invoice_data,omitempty"`
+	CanCancel                   bool                   `gorm:"-" json:"can_cancel"`
+	CreatedAt                   time.Time              `json:"created_at"`
+	UpdatedAt                   time.Time              `json:"updated_at"`
 }
 
 func (a *Application) BeforeCreate(tx *gorm.DB) error {
@@ -67,7 +73,7 @@ func (a *Application) IsCancellable() bool {
 
 // IsActive memeriksa apakah pendaftaran masih aktif
 func (a *Application) IsActive() bool {
-	return a.Status != StatusCancelled && a.Status != StatusFailed && a.Status != StatusExpired
+	return a.Status != StatusCancelled && a.Status != StatusFailed && a.Status != StatusExpired && a.Status != StatusWithdrawn
 }
 
 // CanChangeMajor memeriksa apakah pendaftar diizinkan mengubah pilihan prodi
