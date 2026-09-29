@@ -181,6 +181,19 @@ func (m *mockInvoiceRepoForInstallment) GenerateInvoiceNumber(ctx context.Contex
 	return "INV-TEST-001", nil
 }
 
+func (m *mockInvoiceRepoForInstallment) GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error) {
+	return "INV-REG-2026-0001-ADJ", nil
+}
+
+func (m *mockInvoiceRepoForInstallment) UpdateAmount(ctx context.Context, id uuid.UUID, amount int64) error {
+	inv, ok := m.invoices[id]
+	if !ok {
+		return repository.ErrInvoiceNotFound
+	}
+	inv.Amount = amount
+	return nil
+}
+
 func (m *mockInvoiceRepoForInstallment) UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error {
 	inv, ok := m.invoices[id]
 	if !ok {

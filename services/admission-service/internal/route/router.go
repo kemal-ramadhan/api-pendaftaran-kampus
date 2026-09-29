@@ -19,6 +19,7 @@ func SetupRouter(
 	appCtrl *controller.ApplicationController,
 	adminCtrl *controller.AdminController,
 	internalCtrl *controller.InternalController,
+	changeCtrl *controller.ChangeController,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -59,10 +60,17 @@ func SetupRouter(
 				userGroup.GET("/me/eligibility", appCtrl.GetEligibility)
 				userGroup.POST("/me/cancel", appCtrl.CancelApplication)
 				userGroup.GET("/me/progress", appCtrl.GetProgress)
+				userGroup.GET("/me/dashboard", changeCtrl.GetDashboard)
 				userGroup.POST("/me/documents", appCtrl.UploadDocument)
 				userGroup.DELETE("/me/documents/:code", appCtrl.DeleteDocument)
 				userGroup.GET("/me/documents/:code/url", appCtrl.GetDocumentURL)
 				userGroup.POST("/me/submit", appCtrl.SubmitApplication)
+
+				// CR-006 Calon Mahasiswa (Riwayat & Pindah Jalur)
+				userGroup.GET("/me/changes", changeCtrl.GetMyChanges)
+				userGroup.GET("/me/path-change/options", changeCtrl.GetPathChangeOptions)
+				userGroup.POST("/me/path-change", changeCtrl.RequestOrApplyPathChange)
+				userGroup.DELETE("/me/path-change/pending", changeCtrl.CancelPendingPathChange)
 
 				// Menggunakan ID pendaftaran eksplisit
 				userGroup.GET("/:id", appCtrl.GetApplicationDetail)
@@ -78,26 +86,39 @@ func SetupRouter(
 		registerUserRoutes("/applications")
 
 		// Admin, Staf Prodi, & Pimpinan endpoints
-		adminGroup := authGroup.Group("/admission/admin")
-		adminGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb", "prodi", "pimpinan"))
-		{
-			adminGroup.GET("/stats", adminCtrl.GetStats)
-			adminGroup.GET("/applications", adminCtrl.ListApplications)
-			adminGroup.GET("/applications/export", adminCtrl.ExportApplications)
-			adminGroup.GET("/applications/:id", adminCtrl.GetApplicationDetail)
-			adminGroup.POST("/applications/:id/verify", adminCtrl.VerifyDocuments)
-			adminGroup.GET("/applications/:id/documents/:code/url", adminCtrl.GetDocumentURL)
+		registerAdminRoutes := func(prefix string) {
+			adminGroup := authGroup.Group(prefix)
+			adminGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb", "prodi", "pimpinan"))
+			{
+				adminGroup.GET("/stats", adminCtrl.GetStats)
+				adminGroup.GET("/applications", adminCtrl.ListApplications)
+				adminGroup.GET("/applications/export", adminCtrl.ExportApplications)
+				adminGroup.GET("/applications/:id", adminCtrl.GetApplicationDetail)
+				adminGroup.POST("/applications/:id/verify", adminCtrl.VerifyDocuments)
+				adminGroup.GET("/applications/:id/documents/:code/url", adminCtrl.GetDocumentURL)
 
-			// Master data management (PRD C.4.4 / TINGGI-1)
-			adminGroup.GET("/periods", adminCtrl.ListPeriods)
-			adminGroup.POST("/periods", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePeriod)
-			adminGroup.GET("/paths", adminCtrl.ListPaths)
-			adminGroup.POST("/paths", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePath)
-			adminGroup.GET("/quotas", adminCtrl.ListQuotas)
-			adminGroup.POST("/quotas", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateQuota)
-			adminGroup.GET("/requirements", adminCtrl.ListRequirements)
-			adminGroup.POST("/requirements", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateRequirement)
+				// CR-006 Admin (Riwayat & Pindah Jalur)
+				adminGroup.GET("/path-change-requests", changeCtrl.AdminListPathChangeRequests)
+				adminGroup.POST("/path-change-requests/:id/approve", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminApprovePathChangeRequest)
+				adminGroup.POST("/path-change-requests/:id/reject", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminRejectPathChangeRequest)
+				adminGroup.POST("/applications/:id/move", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminMoveApplication)
+				adminGroup.GET("/applications/:id/changes", changeCtrl.AdminGetApplicationChanges)
+				adminGroup.GET("/path-changes/export", changeCtrl.AdminExportPathChanges)
+
+				// Master data management (PRD C.4.4 / TINGGI-1)
+				adminGroup.GET("/periods", adminCtrl.ListPeriods)
+				adminGroup.POST("/periods", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePeriod)
+				adminGroup.GET("/paths", adminCtrl.ListPaths)
+				adminGroup.POST("/paths", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePath)
+				adminGroup.GET("/quotas", adminCtrl.ListQuotas)
+				adminGroup.POST("/quotas", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateQuota)
+				adminGroup.GET("/requirements", adminCtrl.ListRequirements)
+				adminGroup.POST("/requirements", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateRequirement)
+			}
 		}
+
+		registerAdminRoutes("/admission/admin")
+		registerAdminRoutes("/admin")
 	}
 
 	return r

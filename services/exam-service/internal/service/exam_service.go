@@ -45,6 +45,7 @@ type ExamService interface {
 	GetMyExamSchedule(ctx context.Context, userID uuid.UUID) ([]model.Participant, error)
 	GetMyExamCardPDF(ctx context.Context, userID uuid.UUID) ([]byte, string, error)
 	GetParticipantByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Participant, error)
+	RemoveParticipantByApplicationID(ctx context.Context, appID uuid.UUID) error
 }
 
 type examService struct {
@@ -547,3 +548,8 @@ func (s *examService) GetParticipantByApplicationID(ctx context.Context, appID u
 	}
 	return p, nil
 }
+
+func (s *examService) RemoveParticipantByApplicationID(ctx context.Context, appID uuid.UUID) error {
+	return s.participantRepo.RemoveByApplicationID(ctx, appID)
+}
+

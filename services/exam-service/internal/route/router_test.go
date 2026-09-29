@@ -81,6 +81,10 @@ func (d *dummyParticipantRepo) SaveExamCard(ctx context.Context, card *model.Exa
 func (d *dummyParticipantRepo) FindCardByParticipantID(ctx context.Context, participantID uuid.UUID) (*model.ExamCard, error) {
 	return nil, nil
 }
+func (d *dummyParticipantRepo) RemoveByApplicationID(ctx context.Context, appID uuid.UUID) error {
+	return nil
+}
+
 
 func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())

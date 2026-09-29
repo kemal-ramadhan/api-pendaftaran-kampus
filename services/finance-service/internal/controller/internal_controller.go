@@ -143,3 +143,81 @@ func (ctrl *InternalController) CancelInvoiceByApplication(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Tagihan pendaftaran berhasil dibatalkan", gin.H{"cancelled": true})
 }
+
+type RepriceInvoiceInput struct {
+	Amount int64 `json:"amount" binding:"required"`
+}
+
+type CreateAdjustmentInvoiceInput struct {
+	UserID        string `json:"user_id" binding:"required"`
+	ApplicationID string `json:"application_id"`
+	Amount        int64  `json:"amount" binding:"required"`
+	Description   string `json:"description"`
+}
+
+func (ctrl *InternalController) RepriceInvoice(c *gin.Context) {
+	idStr := c.Param("id")
+	invID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID invoice tidak valid")
+		return
+	}
+
+	var input RepriceInvoiceInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "INVALID_PAYLOAD", "Payload reprice tidak valid: "+err.Error())
+		return
+	}
+
+	err = ctrl.svc.RepriceInvoice(c.Request.Context(), invID, input.Amount)
+	if err != nil {
+		if errors.Is(err, service.ErrRepriceNotAllowed) {
+			response.Conflict(c, "PAYMENT_IN_PROGRESS", err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal mengubah nominal tagihan: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Nominal tagihan berhasil diperbarui", gin.H{"repriced": true, "amount": input.Amount})
+}
+
+func (ctrl *InternalController) CreateAdjustmentInvoice(c *gin.Context) {
+	var input CreateAdjustmentInvoiceInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "INVALID_PAYLOAD", "Payload invoice adjustment tidak valid: "+err.Error())
+		return
+	}
+
+	userUUID, err := uuid.Parse(input.UserID)
+	if err != nil {
+		response.BadRequest(c, "INVALID_USER_ID", "Format user_id tidak valid")
+		return
+	}
+
+	var appUUID *uuid.UUID
+	if input.ApplicationID != "" {
+		if parsed, err := uuid.Parse(input.ApplicationID); err == nil {
+			appUUID = &parsed
+		}
+	}
+
+	desc := input.Description
+	if desc == "" {
+		desc = "Selisih biaya pindah jalur pendaftaran"
+	}
+
+	inv, err := ctrl.svc.CreateAdjustmentInvoice(c.Request.Context(), &service.CreateAdjustmentInvoiceRequest{
+		UserID:        userUUID,
+		ApplicationID: appUUID,
+		Amount:        input.Amount,
+		Description:   desc,
+	})
+	if err != nil {
+		response.InternalServerError(c, "Gagal membuat invoice penyesuaian: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "Invoice penyesuaian berhasil dibuat", inv)
+}
+

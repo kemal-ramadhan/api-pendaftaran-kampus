@@ -38,6 +38,7 @@ func SetupRouter(
 	{
 		internalGroup.GET("/participants/:application_id", internalCtrl.GetParticipantByApplicationID)
 		internalGroup.GET("/sessions/:id", internalCtrl.GetSession)
+		internalGroup.POST("/participants/remove", internalCtrl.RemoveParticipant)
 	}
 
 	// 3. Downstream endpoints dari API Gateway (dilindungi signature gateway)

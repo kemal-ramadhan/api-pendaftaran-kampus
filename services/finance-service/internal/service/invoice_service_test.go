@@ -73,6 +73,19 @@ func (m *mockInvoiceRepo) GenerateInvoiceNumber(ctx context.Context, tx *gorm.DB
 	return "INV-2026-00001", nil
 }
 
+func (m *mockInvoiceRepo) GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error) {
+	m.seq++
+	return "INV-REG-2026-0001-ADJ", nil
+}
+
+func (m *mockInvoiceRepo) UpdateAmount(ctx context.Context, id uuid.UUID, amount int64) error {
+	if inv, ok := m.invoices[id]; ok {
+		inv.Amount = amount
+		return nil
+	}
+	return repository.ErrInvoiceNotFound
+}
+
 func (m *mockInvoiceRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error {
 	if inv, ok := m.invoices[id]; ok {
 		inv.Status = status

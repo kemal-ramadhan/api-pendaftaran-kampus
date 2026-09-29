@@ -57,3 +57,29 @@ func (ctrl *InternalController) GetSession(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Data sesi ujian berhasil diambil", session)
 }
+
+type RemoveParticipantInput struct {
+	ApplicationID string `json:"application_id" binding:"required"`
+}
+
+func (ctrl *InternalController) RemoveParticipant(c *gin.Context) {
+	var input RemoveParticipantInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "INVALID_PAYLOAD", "Payload tidak valid: "+err.Error())
+		return
+	}
+
+	appID, err := uuid.Parse(input.ApplicationID)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID pendaftaran tidak valid")
+		return
+	}
+
+	if err := ctrl.svc.RemoveParticipantByApplicationID(c.Request.Context(), appID); err != nil {
+		response.InternalServerError(c, "Gagal mengeluarkan peserta dari sesi ujian: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Peserta berhasil dikeluarkan dari sesi ujian", gin.H{"removed": true})
+}
+

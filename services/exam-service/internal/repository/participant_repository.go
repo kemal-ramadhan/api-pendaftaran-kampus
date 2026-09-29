@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/services/exam-service/internal/model"
@@ -26,6 +27,7 @@ type ParticipantRepository interface {
 	GetNextParticipantSequence(ctx context.Context, year int) (int64, error)
 	SaveExamCard(ctx context.Context, card *model.ExamCard) error
 	FindCardByParticipantID(ctx context.Context, participantID uuid.UUID) (*model.ExamCard, error)
+	RemoveByApplicationID(ctx context.Context, appID uuid.UUID) error
 }
 
 type participantRepository struct {
@@ -156,3 +158,33 @@ func (r *participantRepository) FindCardByParticipantID(ctx context.Context, par
 	}
 	return &card, nil
 }
+
+func (r *participantRepository) RemoveByApplicationID(ctx context.Context, appID uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var p model.Participant
+		err := tx.Where("application_id = ?", appID).First(&p).Error
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil
+			}
+			return err
+		}
+
+		// Auto-submit any in-progress CBT attempts
+		now := time.Now()
+		_ = tx.Model(&model.CBTAttempt{}).
+			Where("participant_id = ? AND status = ?", p.ID, model.CBTAttemptStatusInProgress).
+			Updates(map[string]interface{}{
+				"status":       model.CBTAttemptStatusAutoSubmitted,
+				"submitted_at": now,
+				"updated_at":   now,
+			})
+
+		// Hapus kartu ujian bila ada
+		_ = tx.Where("participant_id = ?", p.ID).Delete(&model.ExamCard{})
+
+		// Hapus peserta
+		return tx.Delete(&p).Error
+	})
+}
+

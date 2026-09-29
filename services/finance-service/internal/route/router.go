@@ -49,6 +49,8 @@ func SetupRouter(
 		internalGroup.GET("/invoices", internalCtrl.GetInvoices)
 		internalGroup.POST("/invoices/:id/cancel", internalCtrl.CancelInvoice)
 		internalGroup.POST("/invoices/cancel-by-application/:application_id", internalCtrl.CancelInvoiceByApplication)
+		internalGroup.POST("/invoices/:id/reprice", internalCtrl.RepriceInvoice)
+		internalGroup.POST("/invoices/adjustment", internalCtrl.CreateAdjustmentInvoice)
 	}
 
 	// 5. Downstream endpoints dari API Gateway

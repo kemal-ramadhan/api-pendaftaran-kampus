@@ -111,6 +111,15 @@ func main() {
 		})
 	}
 
+	var examCli internalclient.Client
+	if cfg.ExamServiceURL != "" {
+		examCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.ExamServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
 	// Inisialisasi Storage Client (MinIO)
 	var storageCli storage.Client
 	if cfg.MinIOEndpoint != "" {
@@ -166,12 +175,27 @@ func main() {
 		*cfg,
 	)
 
+	changeSvc := service.NewChangeService(
+		changeRepo,
+		appRepo,
+		pathRepo,
+		periodRepo,
+		quotaRepo,
+		docRepo,
+		reqRepo,
+		financeCli,
+		examCli,
+		notifCli,
+		admissionSvc,
+	)
+
 	// 9. Inisialisasi Controllers
 	healthCtrl := controller.NewHealthController(db)
 	publicCtrl := controller.NewPublicController(admissionSvc)
 	appCtrl := controller.NewApplicationController(admissionSvc)
 	adminCtrl := controller.NewAdminController(admissionSvc, periodRepo, pathRepo, quotaRepo, reqRepo)
 	internalCtrl := controller.NewInternalController(admissionSvc)
+	changeCtrl := controller.NewChangeController(changeSvc)
 
 	// 10. Setup Router Gin
 	r := route.SetupRouter(
@@ -184,6 +208,7 @@ func main() {
 		appCtrl,
 		adminCtrl,
 		internalCtrl,
+		changeCtrl,
 	)
 
 	// 11. Jalankan HTTP Server

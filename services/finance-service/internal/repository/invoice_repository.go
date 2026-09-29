@@ -23,7 +23,9 @@ type InvoiceRepository interface {
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Invoice, error)
 	FindByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Invoice, error)
 	GenerateInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error)
+	GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error
+	UpdateAmount(ctx context.Context, id uuid.UUID, amount int64) error
 }
 
 type invoiceRepository struct {
@@ -119,6 +121,27 @@ func (r *invoiceRepository) GenerateInvoiceNumber(ctx context.Context, tx *gorm.
 	return fmt.Sprintf("INV-%s-%05d", dateStr, seq), nil
 }
 
+func (r *invoiceRepository) GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error) {
+	yearStr := time.Now().Format("2006")
+	prefix := fmt.Sprintf("INV-REG-%s-", yearStr)
+
+	dbRunner := r.db
+	if tx != nil {
+		dbRunner = tx
+	}
+
+	var count int64
+	err := dbRunner.WithContext(ctx).Model(&model.Invoice{}).
+		Where("invoice_number LIKE ?", prefix+"%-ADJ").
+		Count(&count).Error
+	if err != nil {
+		return "", err
+	}
+
+	seq := count + 1
+	return fmt.Sprintf("INV-REG-%s-%04d-ADJ", yearStr, seq), nil
+}
+
 func (r *invoiceRepository) UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error {
 	updates := map[string]interface{}{
 		"status":      status,
@@ -127,3 +150,12 @@ func (r *invoiceRepository) UpdateStatus(ctx context.Context, id uuid.UUID, stat
 	}
 	return r.db.WithContext(ctx).Model(&model.Invoice{}).Where("id = ?", id).Updates(updates).Error
 }
+
+func (r *invoiceRepository) UpdateAmount(ctx context.Context, id uuid.UUID, amount int64) error {
+	updates := map[string]interface{}{
+		"amount":     amount,
+		"updated_at": time.Now(),
+	}
+	return r.db.WithContext(ctx).Model(&model.Invoice{}).Where("id = ?", id).Updates(updates).Error
+}
+

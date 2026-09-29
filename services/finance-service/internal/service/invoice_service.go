@@ -16,7 +16,15 @@ var (
 	ErrForbiddenAccess    = errors.New("Anda tidak memiliki akses ke data tagihan ini")
 	ErrInvoiceAlreadyPaid = errors.New("tagihan ini sudah lunas")
 	ErrCancelNotAllowed   = errors.New("CANCEL_NOT_ALLOWED: tagihan tidak dapat dibatalkan karena sudah dibayar atau sedang diverifikasi")
+	ErrRepriceNotAllowed  = errors.New("PAYMENT_IN_PROGRESS: tagihan tidak dapat diubah nominalnya karena ada pembayaran sedang diproses atau sudah lunas")
 )
+
+type CreateAdjustmentInvoiceRequest struct {
+	UserID        uuid.UUID  `json:"user_id"`
+	ApplicationID *uuid.UUID `json:"application_id,omitempty"`
+	Amount        int64      `json:"amount"`
+	Description   string     `json:"description"`
+}
 
 type CreateInvoiceRequest struct {
 	UserID        uuid.UUID  `json:"user_id"`
@@ -71,6 +79,8 @@ type InvoiceService interface {
 	GetInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Invoice, error)
 	CancelInvoice(ctx context.Context, invoiceID uuid.UUID) error
 	CancelInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) error
+	RepriceInvoice(ctx context.Context, invoiceID uuid.UUID, newAmount int64) error
+	CreateAdjustmentInvoice(ctx context.Context, req *CreateAdjustmentInvoiceRequest) (*model.Invoice, error)
 }
 
 type invoiceService struct {
@@ -304,3 +314,74 @@ func (s *invoiceService) CancelInvoiceByApplicationID(ctx context.Context, appID
 
 	return s.CancelInvoice(ctx, inv.ID)
 }
+
+func (s *invoiceService) RepriceInvoice(ctx context.Context, invoiceID uuid.UUID, newAmount int64) error {
+	if newAmount <= 0 {
+		return fmt.Errorf("nominal tagihan baru harus lebih besar dari 0")
+	}
+
+	inv, err := s.invoiceRepo.FindByID(ctx, invoiceID)
+	if err != nil {
+		return err
+	}
+
+	if inv.Status != model.InvoiceStatusUnpaid {
+		return ErrRepriceNotAllowed
+	}
+
+	for _, p := range inv.Payments {
+		if p.Status == model.PaymentStatusSuccess || p.Status == model.PaymentStatusAwaitingVerification {
+			return ErrRepriceNotAllowed
+		}
+		if p.Status == model.PaymentStatusPending {
+			return ErrRepriceNotAllowed
+		}
+	}
+
+	return s.invoiceRepo.UpdateAmount(ctx, invoiceID, newAmount)
+}
+
+func (s *invoiceService) CreateAdjustmentInvoice(ctx context.Context, req *CreateAdjustmentInvoiceRequest) (*model.Invoice, error) {
+	if req.Amount <= 0 {
+		return nil, fmt.Errorf("nominal penyesuaian harus lebih besar dari 0")
+	}
+
+	tx := s.invoiceRepo.DB().Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	invNo, err := s.invoiceRepo.GenerateAdjustmentInvoiceNumber(ctx, tx)
+	if err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("gagal membuat nomor invoice penyesuaian: %w", err)
+	}
+
+	dueDate := time.Now().AddDate(0, 0, 7) // default jatuh tempo penyesuaian 7 hari
+
+	inv := &model.Invoice{
+		InvoiceNumber: invNo,
+		UserID:        req.UserID,
+		ApplicationID: req.ApplicationID,
+		FeeType:       "registration_adjustment",
+		Description:   req.Description,
+		Amount:        req.Amount,
+		Status:        model.InvoiceStatusUnpaid,
+		DueDate:       dueDate,
+		PaymentScheme: "full",
+	}
+
+	if err := s.invoiceRepo.CreateInTx(tx, inv); err != nil {
+		tx.Rollback()
+		return nil, fmt.Errorf("gagal menyimpan invoice penyesuaian: %w", err)
+	}
+
+	if err := tx.Commit().Error; err != nil {
+		return nil, fmt.Errorf("gagal commit transaksi invoice penyesuaian: %w", err)
+	}
+
+	return inv, nil
+}
+

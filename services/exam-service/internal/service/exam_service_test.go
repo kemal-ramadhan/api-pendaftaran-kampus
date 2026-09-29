@@ -215,6 +215,17 @@ func (m *mockParticipantRepo) FindCardByParticipantID(ctx context.Context, parti
 	return c, nil
 }
 
+func (m *mockParticipantRepo) RemoveByApplicationID(ctx context.Context, appID uuid.UUID) error {
+	for id, p := range m.participants {
+		if p.ApplicationID == appID {
+			delete(m.participants, id)
+			delete(m.cards, id)
+		}
+	}
+	return nil
+}
+
+
 func TestExamService_CreateSession(t *testing.T) {
 	sessionRepo := newMockSessionRepo()
 	partRepo := newMockParticipantRepo()
