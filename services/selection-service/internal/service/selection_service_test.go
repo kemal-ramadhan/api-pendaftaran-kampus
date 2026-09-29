@@ -300,4 +300,12 @@ func TestLeadershipApprovalFlowAndAnnouncements(t *testing.T) {
 	withdrawnResult, err := svc.GetMyResult(context.Background(), studentUserID)
 	require.NoError(t, err)
 	assert.Equal(t, model.DecisionWithdrawn, withdrawnResult.Decision)
+
+	// 8. Pengecekan SK Rektor & Scoreboard (CR-009 / K11 & K14)
+	assert.NotEmpty(t, ann.DecreeNumber)
+
+	sb, errSb := svc.GetScoreboard(context.Background(), periodID, "all", "", []string{"superadmin"}, nil)
+	require.NoError(t, errSb)
+	assert.Equal(t, 70.0, sb.PassingThreshold)
+	assert.NotNil(t, sb.Counts)
 }

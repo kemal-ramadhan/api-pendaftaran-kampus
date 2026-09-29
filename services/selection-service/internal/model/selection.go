@@ -22,6 +22,7 @@ const (
 	DecisionFail      DecisionType = "fail"
 	DecisionWaitlist  DecisionType = "waitlist"
 	DecisionWithdrawn DecisionType = "withdrawn"
+	DecisionPlenary   DecisionType = "plenary" // PRD 2.4 & K14: Status Evaluasi Pleno di bawah ambang
 )
 
 // Recommendation merepresentasikan usulan kelulusan program studi
@@ -63,14 +64,16 @@ func (RecommendationItem) TableName() string {
 
 // Announcement menyimpan rilis pengumuman resmi kelulusan
 type Announcement struct {
-	ID          uuid.UUID `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
-	PeriodID    uuid.UUID `gorm:"type:uuid;not null;index:idx_announcements_period" json:"period_id"`
-	Title       string    `gorm:"type:varchar(200);not null" json:"title"`
-	Content     string    `gorm:"type:text" json:"content"`
-	PublishedAt time.Time `gorm:"not null;default:now()" json:"published_at"`
-	PublishedBy uuid.UUID `gorm:"type:uuid;not null" json:"published_by"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID           uuid.UUID  `gorm:"type:uuid;primary_key;default:gen_random_uuid()" json:"id"`
+	PeriodID     uuid.UUID  `gorm:"type:uuid;not null;index:idx_announcements_period" json:"period_id"`
+	Title        string     `gorm:"type:varchar(200);not null" json:"title"`
+	Content      string     `gorm:"type:text" json:"content"`
+	DecreeNumber string     `gorm:"type:varchar(100)" json:"decree_number"`
+	DecreeDate   *time.Time `json:"decree_date,omitempty"`
+	PublishedAt  time.Time  `gorm:"not null;default:now()" json:"published_at"`
+	PublishedBy  uuid.UUID  `gorm:"type:uuid;not null" json:"published_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
 func (Announcement) TableName() string {
@@ -113,9 +116,11 @@ type ReviewRecommendationPayload struct {
 }
 
 type PublishAnnouncementPayload struct {
-	PeriodID uuid.UUID `json:"period_id" binding:"required"`
-	Title    string    `json:"title" binding:"required"`
-	Content  string    `json:"content"`
+	PeriodID     uuid.UUID  `json:"period_id" binding:"required"`
+	Title        string     `json:"title" binding:"required"`
+	Content      string     `json:"content"`
+	DecreeNumber string     `json:"decree_number"`
+	DecreeDate   *time.Time `json:"decree_date,omitempty"`
 }
 
 type MyResultResponse struct {
@@ -129,4 +134,34 @@ type MyResultResponse struct {
 	InvoiceNumber      string       `json:"invoice_number,omitempty"`
 	Amount             int64        `json:"amount,omitempty"`
 	PaymentStatus      string       `json:"payment_status,omitempty"`
+}
+
+// ScoreboardItem DTO baris tabel scoreboard hasil seleksi (PRD 2.4)
+type ScoreboardItem struct {
+	ApplicationID      uuid.UUID    `json:"application_id"`
+	ParticipantNumber string       `json:"participant_number"`
+	FullName           string       `json:"full_name"`
+	StudyProgramCode   string       `json:"study_program_code"`
+	StudyProgramName   string       `json:"study_program_name"`
+	CBTScore           float64      `json:"cbt_score"`
+	ReportAverage      float64      `json:"report_average"`
+	InterviewScore     float64      `json:"interview_score"`
+	FinalScore         float64      `json:"final_score"`
+	Decision           DecisionType `json:"decision"`
+	DecisionLabel      string       `json:"decision_label"`
+	IsSecondChoice     bool         `json:"is_second_choice"`
+}
+
+type ScoreboardCounts struct {
+	All     int64 `json:"all"`
+	Passed  int64 `json:"passed"`
+	Plenary int64 `json:"plenary"`
+	Failed  int64 `json:"failed"`
+}
+
+type ScoreboardResponse struct {
+	PeriodID         uuid.UUID        `json:"period_id"`
+	PassingThreshold float64          `json:"passing_threshold"`
+	Counts           ScoreboardCounts `json:"counts"`
+	Items            []ScoreboardItem `json:"items"`
 }

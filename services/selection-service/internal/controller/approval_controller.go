@@ -108,3 +108,31 @@ func (ctrl *ApprovalController) Return(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Rekomendasi dikembalikan ke program studi untuk revisi dan nilai telah dibuka kembali", rec)
 }
+
+// GetScoreboard mengambil papan nilai seleksi akademik, CBT, rapor & wawancara (PRD 2.4)
+func (ctrl *ApprovalController) GetScoreboard(c *gin.Context) {
+	periodIDStr := c.Query("period_id")
+	var periodID uuid.UUID
+	if periodIDStr != "" {
+		parsed, err := uuid.Parse(periodIDStr)
+		if err == nil {
+			periodID = parsed
+		}
+	}
+
+	decisionFilter := c.Query("decision")
+	search := c.Query("q")
+	roles := gatewayauth.GetUserRoles(c)
+	var scopes []string
+	for _, sc := range gatewayauth.GetUserScopes(c) {
+		scopes = append(scopes, sc.ID)
+	}
+
+	res, err := ctrl.svc.GetScoreboard(c.Request.Context(), periodID, decisionFilter, search, roles, scopes)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil data scoreboard seleksi: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Data scoreboard seleksi berhasil diambil", res)
+}

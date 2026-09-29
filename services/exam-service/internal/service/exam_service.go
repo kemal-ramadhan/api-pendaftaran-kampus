@@ -262,7 +262,9 @@ func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, ap
 		appResp.Data.Choice1.Name = "Teknik Informatika"
 	}
 
-	if appResp.Data.Status != "verified" {
+	// K11: Kelayakan ujian CBT terbuka setelah formulir lunas (form_open / submitted / verified / exam_scheduled)
+	status := appResp.Data.Status
+	if status != "verified" && status != "form_open" && status != "submitted" && status != "documents_completed" && status != "exam_scheduled" {
 		return nil, ErrApplicationNotVerified
 	}
 

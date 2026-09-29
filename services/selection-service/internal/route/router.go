@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/selection-service/internal/controller"
 )
 
@@ -61,11 +62,14 @@ func SetupRouter(
 				approvalGroup.POST("/recommendations/:id/return", approvalCtrl.Return)
 			}
 
-			// Admin PMB: Publikasi pengumuman
+			// Admin PMB & Superadmin: RBAC Terlindungi (docs/RBAC.md)
 			adminGroup := authGroup.Group(prefix + "/admin")
-			adminGroup.Use(gatewayauth.RequireRole("admin_pmb", "superadmin"))
 			{
-				adminGroup.POST("/announcements", announcementCtrl.PublishAnnouncement)
+				adminGroup.GET("/scoreboard", rbac.RequirePermission("selection.score.read"), approvalCtrl.GetScoreboard)
+				adminGroup.POST("/recommendations", rbac.RequirePermission("selection.recommendation.manage"), progCtrl.SaveRecommendation)
+				adminGroup.POST("/approval", rbac.RequirePermission("selection.approval.decide"), approvalCtrl.Approve)
+				adminGroup.POST("/announcements", rbac.RequirePermission("selection.announcement.publish"), announcementCtrl.PublishAnnouncement)
+				adminGroup.POST("/announcements/publish", rbac.RequirePermission("selection.announcement.publish"), announcementCtrl.PublishAnnouncement)
 			}
 
 			// Calon Mahasiswa: Lihat hasil seleksi & tagihan daftar ulang

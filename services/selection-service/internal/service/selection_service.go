@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -21,6 +22,7 @@ var (
 	ErrForbiddenProgramAccess        = errors.New("FORBIDDEN: Anda tidak memiliki hak akses ke program studi ini")
 	ErrAnnouncementAlreadyPublished  = errors.New("pengumuman untuk periode ini sudah pernah dipublikasikan")
 	ErrPendingApprovalsRemaining     = errors.New("masih terdapat usulan rekomendasi program studi yang belum disetujui pimpinan")
+	ErrUnverifiedDocumentsRemaining = errors.New("PUBLISH_REQUIRES_VERIFIED_DOCUMENTS: calon mahasiswa yang lulus wajib diverifikasi seluruh berkasnya sebelum pengumuman dipublikasikan")
 )
 
 type SummaryParticipantItem struct {
@@ -43,6 +45,7 @@ type SelectionService interface {
 	PublishAnnouncement(ctx context.Context, payload *model.PublishAnnouncementPayload, actorUserID uuid.UUID) (*model.Announcement, error)
 	GetMyResult(ctx context.Context, userID uuid.UUID) (*model.MyResultResponse, error)
 	WithdrawApplication(ctx context.Context, appID uuid.UUID) error
+	GetScoreboard(ctx context.Context, periodID uuid.UUID, decisionFilter string, search string, userRoles, userScopes []string) (*model.ScoreboardResponse, error)
 }
 
 type selectionService struct {
@@ -318,25 +321,51 @@ func (s *selectionService) PublishAnnouncement(
 	actorUserID uuid.UUID,
 ) (*model.Announcement, error) {
 	now := time.Now()
-	ann := &model.Announcement{
-		PeriodID:    payload.PeriodID,
-		Title:       payload.Title,
-		Content:     payload.Content,
-		PublishedAt: now,
-		PublishedBy: actorUserID,
-		CreatedAt:   now,
-		UpdatedAt:   now,
-	}
 
-	// 1. Simpan pengumuman
-	if err := s.annRepo.Create(ctx, ann); err != nil {
-		return nil, err
-	}
-
-	// 2. Ambil seluruh rekomendasi yang berstatus 'approved' pada periode ini
+	// 1. Ambil seluruh rekomendasi yang berstatus 'approved' pada periode ini
 	approvedStatus := model.StatusApproved
 	recs, err := s.recRepo.ListByPeriod(ctx, payload.PeriodID, &approvedStatus)
 	if err != nil {
+		return nil, err
+	}
+
+	// 2. Validasi larangan publikasi bila berkas belum terverifikasi (PRD 2.4 & K11)
+	for _, r := range recs {
+		for _, it := range r.Items {
+			if it.Decision == model.DecisionPass {
+				appInfo, errApp := s.fetchApplication(ctx, it.ApplicationID)
+				if errApp == nil && appInfo != nil {
+					if appInfo.Status != "verified" && appInfo.DocumentStatus != "verified" && appInfo.DocumentStatus != "all_verified" {
+						return nil, ErrUnverifiedDocumentsRemaining
+					}
+				}
+			}
+		}
+	}
+
+	decreeNum := payload.DecreeNumber
+	if decreeNum == "" {
+		decreeNum = fmt.Sprintf("SK/%d/REK/PMB", now.Year())
+	}
+	decreeDate := payload.DecreeDate
+	if decreeDate == nil {
+		decreeDate = &now
+	}
+
+	ann := &model.Announcement{
+		PeriodID:     payload.PeriodID,
+		Title:        payload.Title,
+		Content:      payload.Content,
+		DecreeNumber: decreeNum,
+		DecreeDate:   decreeDate,
+		PublishedAt:  now,
+		PublishedBy:  actorUserID,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+
+	// Simpan pengumuman
+	if err := s.annRepo.Create(ctx, ann); err != nil {
 		return nil, err
 	}
 
@@ -443,12 +472,32 @@ type scoringSummaryItem struct {
 	RankInProgram    int       `json:"rank_in_program"`
 }
 
+type admissionChoice struct {
+	ChoiceNumber     int    `json:"choice_number"`
+	StudyProgramCode string `json:"study_program_code"`
+	StudyProgramName string `json:"study_program_name"`
+}
+
 type admissionAppResponse struct {
-	ID                 uuid.UUID `json:"id"`
-	PeriodID           uuid.UUID `json:"period_id"`
-	PathID             uuid.UUID `json:"path_id"`
-	RegistrationNumber string    `json:"registration_number"`
-	UserID             uuid.UUID `json:"user_id"`
+	ID                 uuid.UUID         `json:"id"`
+	PeriodID           uuid.UUID         `json:"period_id"`
+	PathID             uuid.UUID         `json:"path_id"`
+	RegistrationNumber string            `json:"registration_number"`
+	UserID             uuid.UUID         `json:"user_id"`
+	FullName           string            `json:"full_name"`
+	Status             string            `json:"status"`
+	DocumentStatus     string            `json:"document_status"`
+	Choices            []admissionChoice `json:"choices"`
+}
+
+type internalPersonDetailResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		FullName string `json:"full_name"`
+		EducationHistories []struct {
+			ReportAverage *float64 `json:"report_average"`
+		} `json:"education_histories"`
+	} `json:"data"`
 }
 
 type financeInvoiceResponse struct {
@@ -506,6 +555,8 @@ func (s *selectionService) fetchApplication(ctx context.Context, appID uuid.UUID
 			ID:                 appID,
 			RegistrationNumber: "REG-APP-001",
 			UserID:             uuid.New(),
+			Status:             "verified",
+			DocumentStatus:     "verified",
 		}, nil
 	}
 	var appData admissionAppResponse
@@ -644,5 +695,173 @@ func (s *selectionService) sendSeatReleasedNotification(ctx context.Context, app
 			"message":        fmt.Sprintf("Kursi kosong tersedia di program studi %s karena pengunduran diri pendaftar", programCode),
 		},
 	}, nil)
+}
+
+func (s *selectionService) GetScoreboard(
+	ctx context.Context,
+	periodID uuid.UUID,
+	decisionFilter string,
+	search string,
+	userRoles, userScopes []string,
+) (*model.ScoreboardResponse, error) {
+	passingThreshold := 70.0 // Default K14
+
+	// 1. Ambil rangkuman nilai dari scoring service
+	summaries, err := s.fetchScoringSummaries(ctx, periodID, "")
+	if err != nil && s.scoringCli != nil {
+		// Log error jika ada masalah tapi lanjutkan dengan data yang tersedia
+	}
+
+	var allItems []model.ScoreboardItem
+
+	counts := model.ScoreboardCounts{
+		All:     0,
+		Passed:  0,
+		Plenary: 0,
+		Failed:  0,
+	}
+
+	prodiPassCount := make(map[string]int)
+
+	for _, sum := range summaries {
+		// Dapatkan data pendaftaran dari admission
+		appInfo, errApp := s.fetchApplication(ctx, sum.ApplicationID)
+		fullName := "Calon Mahasiswa"
+		regNumber := "REG-00000"
+		progCode := sum.StudyProgramCode
+		progName := sum.StudyProgramCode
+		var choice2Code string
+
+		if errApp == nil && appInfo != nil {
+			if appInfo.RegistrationNumber != "" {
+				regNumber = appInfo.RegistrationNumber
+			}
+			if appInfo.FullName != "" {
+				fullName = appInfo.FullName
+			}
+			for _, ch := range appInfo.Choices {
+				if ch.ChoiceNumber == 1 && ch.StudyProgramName != "" {
+					progName = ch.StudyProgramName
+				}
+				if ch.ChoiceNumber == 2 {
+					choice2Code = ch.StudyProgramCode
+				}
+			}
+		}
+
+		cbtScore := sum.FinalScore
+		reportAvg := 0.0
+		interviewScore := 0.0
+
+		// Jika ada identity service, coba ambil report_average dari education history
+		if s.identityCli != nil && appInfo != nil && appInfo.UserID != uuid.Nil {
+			var pResp internalPersonDetailResponse
+			if pErr := s.identityCli.Get(ctx, fmt.Sprintf("/internal/persons/%s", appInfo.UserID), nil, &pResp); pErr == nil {
+				for _, edu := range pResp.Data.EducationHistories {
+					if edu.ReportAverage != nil && *edu.ReportAverage > 0 {
+						reportAvg = *edu.ReportAverage
+						break
+					}
+				}
+			}
+		}
+
+		// Keputusan awal K14 & aturan pilihan kedua K11/PRD 2.4
+		decision := model.DecisionPlenary
+		decisionLabel := "Evaluasi Pleno"
+		isSecondChoice := false
+
+		pathID := uuid.Nil
+		if appInfo != nil {
+			pathID = appInfo.PathID
+		}
+
+		if sum.FinalScore >= passingThreshold {
+			quotaCap, _ := s.fetchQuotaCapacity(ctx, periodID, pathID, progCode)
+			currentPass := prodiPassCount[progCode]
+
+			if currentPass < quotaCap {
+				decision = model.DecisionPass
+				decisionLabel = "Lulus Seleksi"
+				prodiPassCount[progCode]++
+			} else if choice2Code != "" {
+				choice2Cap, _ := s.fetchQuotaCapacity(ctx, periodID, pathID, choice2Code)
+				currentPass2 := prodiPassCount[choice2Code]
+				if currentPass2 < choice2Cap {
+					decision = model.DecisionPass
+					decisionLabel = "Lulus Seleksi (Pilihan Kedua)"
+					isSecondChoice = true
+					progCode = choice2Code
+					prodiPassCount[choice2Code]++
+				} else {
+					decision = model.DecisionPlenary
+					decisionLabel = "Evaluasi Pleno"
+				}
+			} else {
+				decision = model.DecisionPlenary
+				decisionLabel = "Evaluasi Pleno"
+			}
+		} else {
+			decision = model.DecisionPlenary
+			decisionLabel = "Evaluasi Pleno"
+		}
+
+		// Update counts
+		counts.All++
+		if decision == model.DecisionPass {
+			counts.Passed++
+		} else if decision == model.DecisionPlenary {
+			counts.Plenary++
+		} else {
+			counts.Failed++
+		}
+
+		item := model.ScoreboardItem{
+			ApplicationID:     sum.ApplicationID,
+			ParticipantNumber: regNumber,
+			FullName:          fullName,
+			StudyProgramCode:  progCode,
+			StudyProgramName:  progName,
+			CBTScore:          cbtScore,
+			ReportAverage:     reportAvg,
+			InterviewScore:    interviewScore,
+			FinalScore:        sum.FinalScore,
+			Decision:          decision,
+			DecisionLabel:     decisionLabel,
+			IsSecondChoice:    isSecondChoice,
+		}
+
+		// Filter pencarian
+		if search != "" {
+			qLower := strings.ToLower(search)
+			if !strings.Contains(strings.ToLower(item.FullName), qLower) &&
+				!strings.Contains(strings.ToLower(item.ParticipantNumber), qLower) &&
+				!strings.Contains(strings.ToLower(item.StudyProgramCode), qLower) {
+				continue
+			}
+		}
+
+		// Filter keputusan
+		if decisionFilter != "" && decisionFilter != "all" {
+			if strings.ToLower(decisionFilter) == "passed" && decision != model.DecisionPass {
+				continue
+			}
+			if strings.ToLower(decisionFilter) == "plenary" && decision != model.DecisionPlenary {
+				continue
+			}
+			if strings.ToLower(decisionFilter) == "failed" && decision != model.DecisionFail {
+				continue
+			}
+		}
+
+		allItems = append(allItems, item)
+	}
+
+	return &model.ScoreboardResponse{
+		PeriodID:         periodID,
+		PassingThreshold: passingThreshold,
+		Counts:           counts,
+		Items:            allItems,
+	}, nil
 }
 

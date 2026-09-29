@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/exam-service/internal/controller"
 )
 
@@ -85,9 +86,9 @@ func SetupRouter(
 			participantCtrl.UpdateAttendance,
 		)
 
-		// Endpoint Admin PMB & Superadmin
+		// Endpoint Admin PMB & Superadmin (docs/RBAC.md)
 		adminGroup := authGroup.Group("/exam/admin")
-		adminGroup.Use(gatewayauth.RequireRole("admin_pmb", "superadmin"))
+		adminGroup.Use(rbac.RequirePermission("selection.score.read"))
 		{
 			adminGroup.POST("/sessions", sessionCtrl.CreateSession)
 			adminGroup.GET("/sessions", sessionCtrl.ListSessions)

@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/scoring-service/internal/controller"
 )
 
@@ -50,6 +51,7 @@ func SetupRouter(
 			adminGroup.PUT("/components/:id", compCtrl.UpdateComponent)
 			adminGroup.DELETE("/components/:id", compCtrl.DeleteComponent)
 			adminGroup.POST("/paths/:path_id/validate-weight", compCtrl.ValidatePathWeight)
+			adminGroup.PUT("/interview-scores/:application_id", rbac.RequirePermission("selection.interview.score"), examinerCtrl.InputInterviewScore)
 		}
 
 		// Input Nilai: Dosen Penguji, Admin PMB, Superadmin
