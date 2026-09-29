@@ -428,6 +428,36 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
     - Seluruh use case pada tabel keterlacakan (PRD-fase-2.md Bagian 3) dinyatakan **Selesai**, termasuk ekspor laporan spreadsheet Excel .xlsx (UC-26), dashboard statistik pimpinan (UC-31), dan pengelolaan master data (UC-32).
 - **Rasional**: Memberikan visibilitas terpadu kepada para pengambil keputusan universitas tanpa melanggar prinsip desentralisasi basis data mikroservis, menjamin seluruh alur operasional PMB bebas hambatan dari hulu ke hilir, serta memverifikasi kesiapan produksi sistem backend PMB sesuai seluruh tolok ukur Definition of Done.
 
+---
+
+## 30. Keputusan Default CR-006, CR-007, dan CR-008 (P1–P4, M1–M6, S1)
+- **Status**: default, menunggu konfirmasi lead (29 September 2026, sumber: `PRD-TAMBAHAN-CR006-008.md` Bagian 5)
+- **Rangkuman Keputusan**:
+
+| Kode | Keputusan | Status Konfirmasi |
+|---|---|---|
+| **P1** | Pindah jalur oleh calon mahasiswa setelah bayar hanya lewat permintaan yang disetujui admin, maksimal 1 kali, dan hanya sebelum dijadwalkan ujian | default, menunggu konfirmasi lead |
+| **P2** | Selisih biaya lebih mahal ditagihkan (invoice ADJ); lebih murah tidak dikembalikan otomatis (dicatat untuk ditinjau keuangan) | default, menunggu konfirmasi lead |
+| **P3** | Setelah pindah jalur, dokumen diverifikasi ulang bila jalur baru punya persyaratan berbeda | default, menunggu konfirmasi lead |
+| **P4** | Nomor pendaftaran tetap saat pindah jalur | default, menunggu konfirmasi lead |
+| **M1** | Pengunduran diri sebelum lulus langsung berlaku; setelah lulus/daftar ulang/NIM perlu persetujuan admin | default, menunggu konfirmasi lead |
+| **M2** | Pengunduran diri wajib konfirmasi kata sandi dan alasan berkategori | default, menunggu konfirmasi lead |
+| **M3** | Uang yang sudah dibayar tidak dikembalikan otomatis; ditandai untuk ditinjau keuangan (`refund_review`) | default, menunggu konfirmasi lead |
+| **M4** | NIM yang sudah terbit dibatalkan (`voided`), tidak dipakai ulang | default, menunggu konfirmasi lead |
+| **M5** | Setelah mundur, boleh mendaftar lagi di gelombang yang masih buka | default, menunggu konfirmasi lead |
+| **M6** | Kursi yang kosong karena mundur dilaporkan ke prodi; promosi cadangan (waitlist) tetap manual | default, menunggu konfirmasi lead |
+| **S1** | Uji otomatis tetap memakai mock (`PAYMENT_PROVIDER=mock`); uji Duitku sandbox manual lewat script PowerShell | default, menunggu konfirmasi lead |
+
+- **Rasional & Implikasi Arsitektural**:
+  - **P1 & P4**: Menjaga stabilitas nomor pendaftaran (`registration_number`) dan mencegah abuse pergantian jalur berulang kali setelah proses verifikasi berkas atau penjadwalan ujian dimulai.
+  - **P2**: Mempertahankan integritas finansial: biaya tambahan yang timbul diterbitkan sebagai tagihan penyesuaian (`INV-REG-{YYYY}-{urut}-ADJ`), dan tidak ada mekanisme auto-refund untuk mencegah kerugian operasional dan manipulasi transaksi.
+  - **P3**: Memastikan kepatuhan akademik bahwa berkas yang belum pernah dipenuhi pada jalur sebelumnya wajib diunggah kembali (status kembali ke `form_open` jika ada berkas belum lengkap).
+  - **M1 & M2**: Mencegah pengunduran diri palsu atau tidak sengaja dengan otentikasi kata sandi langsung ke Auth Service (`POST /internal/users/:id/verify-password`) dan pembatasan wewenang berjenjang untuk mahasiswa yang sudah melewati fase seleksi akhir.
+  - **M3 & M4**: NIM adalah identitas universitas permanen yang tidak boleh didaur ulang (*no sequence reuse*); status `voided` mengamankan audit trail. Pengembalian dana dilakukan manual oleh pihak keuangan.
+  - **M5 & M6**: Memberikan kesempatan kedua bagi pendaftar tanpa merusak alur seleksi normal; pelepasan kuota memberi transparansi kursi kosong bagi panitia program studi.
+  - **S1**: Memastikan siklus CI/CD dan pengujian regression `scripts/e2e.sh` tetap deterministik, cepat, dan independen dari ketergantungan koneksi pihak ketiga/jaringan eksternal.
+
+
 
 
 
