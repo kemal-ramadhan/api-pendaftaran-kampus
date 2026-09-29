@@ -28,8 +28,11 @@ func SetupRoutes(
 
 	// Health Check Endpoints
 	r.GET("/health", healthCtrl.LivenessCheck)
+	r.HEAD("/health", healthCtrl.LivenessCheck)
 	r.GET("/health/ready", healthCtrl.HealthCheck)
+	r.HEAD("/health/ready", healthCtrl.HealthCheck)
 	r.GET("/auth/health", healthCtrl.HealthCheck)
+	r.HEAD("/auth/health", healthCtrl.HealthCheck)
 
 	// Well-Known JWKS
 	r.GET("/.well-known/jwks.json", authCtrl.GetJWKS)

@@ -24,7 +24,9 @@ func SetupRouter(
 
 	// 1. Health checks (tanpa auth)
 	r.GET("/health", healthCtrl.Liveness)
+	r.HEAD("/health", healthCtrl.Liveness)
 	r.GET("/health/ready", healthCtrl.Readiness)
+	r.HEAD("/health/ready", healthCtrl.Readiness)
 
 	// 2. Internal inter-service endpoints
 	internalGroup := r.Group("/internal")

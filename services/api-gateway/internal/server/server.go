@@ -42,7 +42,9 @@ func SetupGatewayEngine(
 
 	// Health probes langsung dari gateway
 	r.GET("/health", healthHandler.LivenessCheck)
+	r.HEAD("/health", healthHandler.LivenessCheck)
 	r.GET("/health/ready", healthHandler.ReadinessCheck)
+	r.HEAD("/health/ready", healthHandler.ReadinessCheck)
 
 	// 6. Blokir path terlarang (/internal/*, /metrics, /docs)
 	r.Use(middleware.BlockProtectedPathsMiddleware())

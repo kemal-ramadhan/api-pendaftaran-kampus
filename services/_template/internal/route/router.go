@@ -16,7 +16,9 @@ func SetupRouter(
 ) {
 	// Health routes (tanpa gatewayauth)
 	r.GET("/health", healthCtl.LivenessCheck)
+	r.HEAD("/health", healthCtl.LivenessCheck)
 	r.GET("/health/ready", healthCtl.ReadinessCheck)
+	r.HEAD("/health/ready", healthCtl.ReadinessCheck)
 
 	// Protected downstream routes (Wajib gateway signature)
 	api := r.Group("/template")

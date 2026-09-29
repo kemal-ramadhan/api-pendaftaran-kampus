@@ -23,12 +23,16 @@ func SetupRouter(
 	r.Use(gin.Recovery())
 
 	// 1. Health checks publik
-	r.GET("/health", func(c *gin.Context) {
+	healthHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "service": "pmb-nim-service"})
-	})
-	r.GET("/health/ready", func(c *gin.Context) {
+	}
+	readyHandler := func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ready", "service": "pmb-nim-service"})
-	})
+	}
+	r.GET("/health", healthHandler)
+	r.HEAD("/health", healthHandler)
+	r.GET("/health/ready", readyHandler)
+	r.HEAD("/health/ready", readyHandler)
 
 	// 2. Endpoint Inter-Service Internal
 	internalGroup := r.Group("/internal")

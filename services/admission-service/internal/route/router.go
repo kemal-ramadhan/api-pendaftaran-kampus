@@ -28,7 +28,9 @@ func SetupRouter(
 
 	// 1. Health check endpoints
 	r.GET("/health", healthCtrl.Health)
+	r.HEAD("/health", healthCtrl.Health)
 	r.GET("/health/ready", healthCtrl.Readiness)
+	r.HEAD("/health/ready", healthCtrl.Readiness)
 
 	// 2. Public admission info & verification
 	publicGroup := r.Group("/admission")

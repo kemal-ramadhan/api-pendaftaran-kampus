@@ -25,7 +25,9 @@ func SetupRouter(
 
 	// Health check publik untuk docker / load balancer
 	r.GET("/health", healthCtrl.Health)
+	r.HEAD("/health", healthCtrl.Health)
 	r.GET("/health/ready", healthCtrl.Readiness)
+	r.HEAD("/health/ready", healthCtrl.Readiness)
 
 	// Admin endpoints (lewat Gateway dengan signature HMAC)
 	adminGroup := r.Group("/notifications/admin")

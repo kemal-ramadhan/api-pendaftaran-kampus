@@ -32,7 +32,9 @@ func SetupRouter(
 
 	// 1. Health checks (publik)
 	r.GET("/health", healthCtrl.Health)
+	r.HEAD("/health", healthCtrl.Health)
 	r.GET("/health/ready", healthCtrl.Readiness)
+	r.HEAD("/health/ready", healthCtrl.Readiness)
 
 	// 2. Webhook publik provider pembayaran & daftar metode pembayaran
 	r.POST("/webhooks/payments/:provider", webhookCtrl.HandleWebhook)

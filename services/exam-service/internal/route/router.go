@@ -29,7 +29,9 @@ func SetupRouter(
 
 	// 1. Health check publik & sinkronisasi waktu server
 	r.GET("/health", healthCtrl.HealthCheck)
+	r.HEAD("/health", healthCtrl.HealthCheck)
 	r.GET("/health/ready", healthCtrl.ReadinessCheck)
+	r.HEAD("/health/ready", healthCtrl.ReadinessCheck)
 	r.GET("/time", cbtCtrl.GetServerTime)
 	r.GET("/exam/time", cbtCtrl.GetServerTime)
 
