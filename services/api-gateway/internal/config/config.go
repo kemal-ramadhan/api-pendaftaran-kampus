@@ -174,12 +174,23 @@ func LoadRoutesConfig(filePath string) (*RoutesConfig, error) {
 		if val, ok := os.LookupEnv(varName); ok {
 			return val
 		}
-		// Default fallback jika AUTH_SERVICE_URL / OCR_SERVICE_URL tidak ada di env
-		if varName == "AUTH_SERVICE_URL" {
-			return "http://auth-service:8080"
+		// Default fallback jika URL service tidak ada di env
+		defaults := map[string]string{
+			"AUTH_SERVICE_URL":         "http://auth-service:8080",
+			"OCR_SERVICE_URL":          "http://ocr-service:8088",
+			"ORGANIZATION_SERVICE_URL": "http://organization-service:8081",
+			"IDENTITY_SERVICE_URL":     "http://identity-service:8082",
+			"ADMISSION_SERVICE_URL":    "http://admission-service:8084",
+			"FINANCE_SERVICE_URL":      "http://finance-service:8085",
+			"EXAM_SERVICE_URL":         "http://exam-service:8087",
+			"SCORING_SERVICE_URL":      "http://scoring-service:8089",
+			"SELECTION_SERVICE_URL":    "http://selection-service:8090",
+			"STUDENT_SERVICE_URL":      "http://student-service:8091",
+			"NIM_SERVICE_URL":          "http://nim-service:8092",
+			"NOTIFICATION_SERVICE_URL": "http://notification-service:8083",
 		}
-		if varName == "OCR_SERVICE_URL" {
-			return "http://ocr-service:8088"
+		if defVal, found := defaults[varName]; found {
+			return defVal
 		}
 		return m
 	})

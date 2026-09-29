@@ -160,6 +160,7 @@ services:
       STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:8091}
       NIM_SERVICE_URL: ${NIM_SERVICE_URL:-http://nim-service:8092}
       OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8083}
       JWKS_URL: http://auth-service:8080/.well-known/jwks.json
       REDIS_ADDR: redis:6379
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
@@ -184,6 +185,8 @@ services:
       student-service:
         condition: service_healthy
       nim-service:
+        condition: service_healthy
+      notification-service:
         condition: service_healthy
       redis:
         condition: service_healthy
