@@ -99,6 +99,7 @@ routes:
     public_paths:
       - GET /periods/active
       - GET /paths
+      - GET /withdrawals/verify
     max_body: 10MB
   - prefix: /api/v1/finance/webhooks/payments
     service: finance
@@ -107,6 +108,14 @@ routes:
   - prefix: /api/v1/webhooks/payments
     service: finance
     rewrite: /webhooks/payments
+    auth: public
+  - prefix: /api/v1/finance/payment-methods
+    service: finance
+    rewrite: /payment-methods
+    auth: public
+  - prefix: /api/v1/payment-methods
+    service: finance
+    rewrite: /payment-methods
     auth: public
   - prefix: /api/v1/dev/payments
     service: finance

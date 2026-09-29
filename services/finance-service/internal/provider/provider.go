@@ -55,10 +55,18 @@ type WebhookPayload struct {
 	PaidAt           time.Time `json:"paid_at"`
 }
 
+type PaymentMethodInfo struct {
+	PaymentMethod string `json:"paymentMethod"`
+	PaymentName   string `json:"paymentName"`
+	PaymentImage  string `json:"paymentImage"`
+	TotalFee      string `json:"totalFee"`
+}
+
 type PaymentProvider interface {
 	CreateVA(ctx context.Context, invoiceID uuid.UUID, amount int64) (*VACreationResult, error)
 	CreatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResult, error)
 	ParseWebhook(ctx context.Context, body []byte) (*WebhookPayload, error)
 	VerifySignature(secret string, signatureHeader string, body []byte) bool
 	CheckStatus(ctx context.Context, merchantOrderID string) (*PaymentStatusResult, error)
+	GetPaymentMethods(ctx context.Context, amount int64) ([]PaymentMethodInfo, error)
 }

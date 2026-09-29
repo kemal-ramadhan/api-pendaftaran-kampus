@@ -119,18 +119,22 @@ func main() {
 	var paymentProvider provider.PaymentProvider
 	if cfg.PaymentProvider == "duitku" {
 		dProvider, dErr := provider.NewDuitkuProvider(provider.DuitkuConfig{
-			Env:           cfg.DuitkuEnv,
-			MerchantCode:  cfg.DuitkuMerchantCode,
-			APIKey:        cfg.DuitkuApiKey,
-			ExpiryMinutes: cfg.DuitkuExpiryMinutes,
-			CallbackURL:   cfg.DuitkuCallbackURL,
-			ReturnURL:     cfg.DuitkuReturnURL,
+			Env:                 cfg.DuitkuEnv,
+			MerchantCode:        cfg.DuitkuMerchantCode,
+			APIKey:              cfg.DuitkuApiKey,
+			ExpiryMinutes:       cfg.DuitkuExpiryMinutes,
+			CallbackURL:         cfg.DuitkuCallbackURL,
+			ReturnURL:           cfg.DuitkuReturnURL,
+			POPBaseURL:          cfg.DuitkuPOPBaseURL,
+			WebAPIBaseURL:       cfg.DuitkuWebAPIBaseURL,
+			CallbackIPAllowlist: cfg.DuitkuCallbackIPAllowlist,
+			Logger:              log,
 		})
 		if dErr != nil {
 			log.Fatal("Gagal inisialisasi Duitku payment provider", zap.Error(dErr))
 		}
 		paymentProvider = dProvider
-		log.Info("Menggunakan Payment Provider: Duitku POP", zap.String("env", cfg.DuitkuEnv))
+		log.Info("Menggunakan Payment Provider: Duitku POP & WebAPI", zap.String("env", cfg.DuitkuEnv))
 	} else {
 		paymentProvider = provider.NewMockProvider()
 		log.Info("Menggunakan Payment Provider: MockProvider (Development/Testing)")

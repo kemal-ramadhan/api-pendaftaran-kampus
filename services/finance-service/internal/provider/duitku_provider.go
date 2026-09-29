@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
+	"crypto/md5"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -18,24 +19,31 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 var (
 	ErrDuitkuConfigMissing  = errors.New("DUITKU_MERCHANT_CODE dan DUITKU_API_KEY wajib dikonfigurasi")
-	ErrDuitkuCreateFailed   = errors.New("gagal membuat invoice di Duitku")
+	ErrDuitkuCreateFailed   = errors.New("PAYMENT_PROVIDER_ERROR: gagal membuat invoice pembayaran di Duitku")
 	ErrDuitkuInvalidWebhook = errors.New("payload webhook Duitku tidak valid")
 	ErrInvalidSignature     = errors.New("signature webhook tidak valid")
+	ErrPaymentProviderError = errors.New("PAYMENT_PROVIDER_ERROR: layanan pembayaran sedang mengalami gangguan")
+	ErrIPNotAllowed         = errors.New("IP pemanggil webhook tidak diizinkan")
 )
 
 type DuitkuConfig struct {
-	Env            string // sandbox | production
-	MerchantCode   string
-	APIKey         string
-	ExpiryMinutes  int
-	CallbackURL    string
-	ReturnURL      string
-	HTTPTimeout    time.Duration
-	BaseURLOverride string // untuk pengujian unit via httptest
+	Env                 string // sandbox | production
+	MerchantCode        string
+	APIKey              string
+	ExpiryMinutes       int
+	CallbackURL         string
+	ReturnURL           string
+	HTTPTimeout         time.Duration
+	POPBaseURL          string
+	WebAPIBaseURL       string
+	CallbackIPAllowlist string
+	BaseURLOverride     string // untuk pengujian unit via httptest
+	Logger              *zap.Logger
 }
 
 type duitkuProvider struct {
@@ -63,14 +71,30 @@ func NewDuitkuProvider(cfg DuitkuConfig) (PaymentProvider, error) {
 	}, nil
 }
 
-func (d *duitkuProvider) getBaseURL() string {
+func (d *duitkuProvider) getPOPBaseURL() string {
 	if d.cfg.BaseURLOverride != "" {
 		return d.cfg.BaseURLOverride
+	}
+	if d.cfg.POPBaseURL != "" {
+		return strings.TrimRight(d.cfg.POPBaseURL, "/")
 	}
 	if strings.ToLower(d.cfg.Env) == "production" {
 		return "https://api-prod.duitku.com"
 	}
 	return "https://api-sandbox.duitku.com"
+}
+
+func (d *duitkuProvider) getWebAPIBaseURL() string {
+	if d.cfg.BaseURLOverride != "" {
+		return d.cfg.BaseURLOverride
+	}
+	if d.cfg.WebAPIBaseURL != "" {
+		return strings.TrimRight(d.cfg.WebAPIBaseURL, "/")
+	}
+	if strings.ToLower(d.cfg.Env) == "production" {
+		return "https://passport.duitku.com"
+	}
+	return "https://sandbox.duitku.com"
 }
 
 func (d *duitkuProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amount int64) (*VACreationResult, error) {
@@ -93,7 +117,7 @@ func (d *duitkuProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amou
 }
 
 func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResult, error) {
-	baseURL := d.getBaseURL()
+	baseURL := d.getPOPBaseURL()
 	endpoint := fmt.Sprintf("%s/api/merchant/createInvoice", baseURL)
 
 	timestampMs := fmt.Sprintf("%d", time.Now().UnixMilli())
@@ -145,17 +169,26 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 
 	resp, err := d.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("koneksi ke gateway Duitku gagal: %w", err)
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Koneksi ke gateway Duitku createInvoice gagal", zap.Error(err))
+		}
+		return nil, fmt.Errorf("%w: koneksi ke gateway gagal", ErrPaymentProviderError)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("gagal membaca respon Duitku: %w", err)
+		return nil, fmt.Errorf("%w: gagal membaca respons", ErrPaymentProviderError)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: HTTP %d - %s", ErrDuitkuCreateFailed, resp.StatusCode, string(respBody))
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Duitku createInvoice mengembalikan status non-200",
+				zap.Int("http_status", resp.StatusCode),
+				zap.String("response_body", string(respBody)),
+			)
+		}
+		return nil, fmt.Errorf("%w: status HTTP %d", ErrPaymentProviderError, resp.StatusCode)
 	}
 
 	var duitkuResp struct {
@@ -169,11 +202,17 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 	}
 
 	if err := json.Unmarshal(respBody, &duitkuResp); err != nil {
-		return nil, fmt.Errorf("format respon Duitku tidak valid: %w", err)
+		return nil, fmt.Errorf("%w: format data tidak sesuai", ErrPaymentProviderError)
 	}
 
 	if duitkuResp.StatusCode != "00" {
-		return nil, fmt.Errorf("%w: kode %s - %s", ErrDuitkuCreateFailed, duitkuResp.StatusCode, duitkuResp.StatusMessage)
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Warn("Duitku createInvoice gagal bisnis",
+				zap.String("status_code", duitkuResp.StatusCode),
+				zap.String("status_message", duitkuResp.StatusMessage),
+			)
+		}
+		return nil, fmt.Errorf("%w: kode %s - %s", ErrPaymentProviderError, duitkuResp.StatusCode, duitkuResp.StatusMessage)
 	}
 
 	expiresAt := time.Now().Add(time.Duration(d.cfg.ExpiryMinutes) * time.Minute)
@@ -187,6 +226,77 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 		Amount:           req.Amount,
 		ExpiresAt:        expiresAt,
 	}, nil
+}
+
+func (d *duitkuProvider) GetPaymentMethods(ctx context.Context, amount int64) ([]PaymentMethodInfo, error) {
+	baseURL := d.getWebAPIBaseURL()
+	endpoint := fmt.Sprintf("%s/webapi/api/merchant/paymentmethod/getpaymentmethod", baseURL)
+
+	nowStr := time.Now().Format("2006-01-02 15:04:05")
+	amountStr := strconv.FormatInt(amount, 10)
+	if amount <= 0 {
+		amountStr = "10000"
+	}
+
+	sig := GenerateDuitkuPaymentMethodSignature(d.cfg.MerchantCode, amountStr, nowStr, d.cfg.APIKey)
+
+	reqBody := map[string]string{
+		"merchantcode": d.cfg.MerchantCode,
+		"amount":       amountStr,
+		"datetime":     nowStr,
+		"signature":    sig,
+	}
+
+	jsonBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(jsonBytes))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	resp, err := d.httpClient.Do(httpReq)
+	if err != nil {
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Koneksi ke gateway Duitku getpaymentmethod gagal", zap.Error(err))
+		}
+		return nil, fmt.Errorf("%w: gagal mengambil daftar metode pembayaran", ErrPaymentProviderError)
+	}
+	defer resp.Body.Close()
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Duitku getpaymentmethod mengembalikan status non-200",
+				zap.Int("http_status", resp.StatusCode),
+				zap.String("response_body", string(bodyBytes)),
+			)
+		}
+		return nil, fmt.Errorf("%w: HTTP %d", ErrPaymentProviderError, resp.StatusCode)
+	}
+
+	var methodResp struct {
+		PaymentFee      []PaymentMethodInfo `json:"paymentFee"`
+		ResponseCode    string              `json:"responseCode"`
+		ResponseMessage string              `json:"responseMessage"`
+	}
+
+	if err := json.Unmarshal(bodyBytes, &methodResp); err != nil {
+		return nil, fmt.Errorf("%w: format data tidak sesuai", ErrPaymentProviderError)
+	}
+
+	if methodResp.ResponseCode != "" && methodResp.ResponseCode != "00" {
+		return nil, fmt.Errorf("%w: kode %s - %s", ErrPaymentProviderError, methodResp.ResponseCode, methodResp.ResponseMessage)
+	}
+
+	return methodResp.PaymentFee, nil
 }
 
 func (d *duitkuProvider) ParseWebhook(ctx context.Context, body []byte) (*WebhookPayload, error) {
@@ -223,7 +333,7 @@ func (d *duitkuProvider) ParseWebhook(ctx context.Context, body []byte) (*Webhoo
 		return nil, fmt.Errorf("%w: merchant code tidak cocok", ErrDuitkuInvalidWebhook)
 	}
 
-	// Verifikasi signature callback
+	// Verifikasi signature callback (constant-time)
 	if !d.VerifySignature(d.cfg.APIKey, signature, body) {
 		return nil, ErrInvalidSignature
 	}
@@ -277,22 +387,26 @@ func (d *duitkuProvider) VerifySignature(secret string, signatureHeader string, 
 		return false
 	}
 
-	expectedSig := GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiKey)
+	// Dukung HMAC-SHA256 (POP) dan MD5 (WebAPI)
+	expectedHMAC := GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiKey)
+	expectedMD5 := GenerateDuitkuCallbackMD5Signature(merchantCode, amount, merchantOrderID, apiKey)
 
-	return subtle.ConstantTimeCompare([]byte(strings.ToLower(incomingSig)), []byte(strings.ToLower(expectedSig))) == 1
+	cleanIncoming := strings.ToLower(strings.TrimSpace(incomingSig))
+	if subtle.ConstantTimeCompare([]byte(cleanIncoming), []byte(strings.ToLower(expectedHMAC))) == 1 {
+		return true
+	}
+	if subtle.ConstantTimeCompare([]byte(cleanIncoming), []byte(strings.ToLower(expectedMD5))) == 1 {
+		return true
+	}
+
+	return false
 }
 
 func (d *duitkuProvider) CheckStatus(ctx context.Context, merchantOrderID string) (*PaymentStatusResult, error) {
-	baseURL := d.getBaseURL()
-	endpoint := fmt.Sprintf("%s/api/merchant/transactionStatus", baseURL)
+	baseURL := d.getWebAPIBaseURL()
+	endpoint := fmt.Sprintf("%s/webapi/api/merchant/transactionStatus", baseURL)
 
-	timestampMs := fmt.Sprintf("%d", time.Now().UnixMilli())
-	headerSig := GenerateDuitkuHeaderSignature(d.cfg.MerchantCode, timestampMs, d.cfg.APIKey)
-
-	// Signature body untuk status check: MD5/SHA256(merchantCode + merchantOrderId + apiKey)
-	hash := sha256.New()
-	hash.Write([]byte(d.cfg.MerchantCode + merchantOrderID + d.cfg.APIKey))
-	bodySig := hex.EncodeToString(hash.Sum(nil))
+	bodySig := GenerateDuitkuTransactionStatusSignature(d.cfg.MerchantCode, merchantOrderID, d.cfg.APIKey)
 
 	reqBody := map[string]string{
 		"merchantCode":    d.cfg.MerchantCode,
@@ -309,21 +423,30 @@ func (d *duitkuProvider) CheckStatus(ctx context.Context, merchantOrderID string
 	if err != nil {
 		return nil, err
 	}
-
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-duitku-merchantcode", d.cfg.MerchantCode)
-	httpReq.Header.Set("x-duitku-timestamp", timestampMs)
-	httpReq.Header.Set("x-duitku-signature", headerSig)
 
 	resp, err := d.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("gagal periksa status transaksi Duitku: %w", err)
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Koneksi ke gateway Duitku transactionStatus gagal", zap.Error(err))
+		}
+		return nil, fmt.Errorf("%w: periksa status transaksi gagal", ErrPaymentProviderError)
 	}
 	defer resp.Body.Close()
 
 	respBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		if d.cfg.Logger != nil {
+			d.cfg.Logger.Error("Duitku transactionStatus mengembalikan status non-200",
+				zap.Int("http_status", resp.StatusCode),
+				zap.String("response_body", string(respBytes)),
+			)
+		}
+		return nil, fmt.Errorf("%w: HTTP %d", ErrPaymentProviderError, resp.StatusCode)
 	}
 
 	var statusResp struct {
@@ -335,7 +458,7 @@ func (d *duitkuProvider) CheckStatus(ctx context.Context, merchantOrderID string
 	}
 
 	if err := json.Unmarshal(respBytes, &statusResp); err != nil {
-		return nil, fmt.Errorf("format respon periksa status Duitku tidak valid: %w", err)
+		return nil, fmt.Errorf("%w: format data tidak sesuai", ErrPaymentProviderError)
 	}
 
 	amount, _ := strconv.ParseInt(statusResp.Amount, 10, 64)
@@ -350,7 +473,7 @@ func (d *duitkuProvider) CheckStatus(ctx context.Context, merchantOrderID string
 	}, nil
 }
 
-// Helper kalkulasi signature HMAC Duitku
+// Helper kalkulasi signature
 func GenerateDuitkuHeaderSignature(merchantCode, timestampMs, apiKey string) string {
 	mac := hmac.New(sha256.New, []byte(apiKey))
 	mac.Write([]byte(merchantCode + timestampMs))
@@ -361,4 +484,22 @@ func GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiK
 	mac := hmac.New(sha256.New, []byte(apiKey))
 	mac.Write([]byte(merchantCode + amount + merchantOrderID))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func GenerateDuitkuCallbackMD5Signature(merchantCode, amount, merchantOrderID, apiKey string) string {
+	h := md5.New()
+	h.Write([]byte(merchantCode + amount + merchantOrderID + apiKey))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func GenerateDuitkuPaymentMethodSignature(merchantCode, amount, datetime, apiKey string) string {
+	h := sha256.New()
+	h.Write([]byte(merchantCode + amount + datetime + apiKey))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+func GenerateDuitkuTransactionStatusSignature(merchantCode, merchantOrderID, apiKey string) string {
+	h := md5.New()
+	h.Write([]byte(merchantCode + merchantOrderID + apiKey))
+	return hex.EncodeToString(h.Sum(nil))
 }

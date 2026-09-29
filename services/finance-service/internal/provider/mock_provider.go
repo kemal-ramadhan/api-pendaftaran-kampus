@@ -97,3 +97,39 @@ func (m *mockProvider) CheckStatus(ctx context.Context, merchantOrderID string) 
 		PaidAt:          time.Now(),
 	}, nil
 }
+
+func (m *mockProvider) GetPaymentMethods(ctx context.Context, amount int64) ([]PaymentMethodInfo, error) {
+	return []PaymentMethodInfo{
+		{
+			PaymentMethod: "VC",
+			PaymentName:   "BCA Virtual Account",
+			PaymentImage:  "https://images.duitku.com/icon/BCA.png",
+			TotalFee:      "0",
+		},
+		{
+			PaymentMethod: "VA",
+			PaymentName:   "BNI Virtual Account",
+			PaymentImage:  "https://images.duitku.com/icon/BNI.png",
+			TotalFee:      "0",
+		},
+		{
+			PaymentMethod: "M2",
+			PaymentName:   "Mandiri Virtual Account",
+			PaymentImage:  "https://images.duitku.com/icon/MANDIRI.png",
+			TotalFee:      "0",
+		},
+		{
+			PaymentMethod: "BR",
+			PaymentName:   "BRI Virtual Account",
+			PaymentImage:  "https://images.duitku.com/icon/BRI.png",
+			TotalFee:      "0",
+		},
+		{
+			PaymentMethod: "SP",
+			PaymentName:   "ShopeePay",
+			PaymentImage:  "https://images.duitku.com/icon/SHOPEEPAY.png",
+			TotalFee:      "0",
+		},
+	}, nil
+}
+

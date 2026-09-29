@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -195,3 +196,21 @@ func (ctrl *PaymentController) GetPaymentStatus(c *gin.Context) {
 		"amount":     payment.Amount,
 	})
 }
+
+// GetPaymentMethods menangani GET /finance/payment-methods dan GET /payment-methods
+func (ctrl *PaymentController) GetPaymentMethods(c *gin.Context) {
+	amountStr := c.Query("amount")
+	amount, _ := strconv.ParseInt(amountStr, 10, 64)
+	if amount <= 0 {
+		amount = 250000 // default perkiraan biaya pendaftaran PMB
+	}
+
+	methods, err := ctrl.svc.GetPaymentMethods(c.Request.Context(), amount)
+	if err != nil {
+		response.Error(c, http.StatusBadGateway, "PAYMENT_PROVIDER_ERROR", "Layanan penyedia pembayaran sedang mengalami gangguan", nil)
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Daftar metode pembayaran berhasil diambil", methods)
+}
+

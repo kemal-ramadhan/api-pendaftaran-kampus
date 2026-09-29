@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -22,49 +23,65 @@ type Config struct {
 	NotificationServiceURL string
 	PaymentWebhookSecret   string
 	PaymentProvider        string // mock | duitku
-	DuitkuEnv              string // sandbox | production
-	DuitkuMerchantCode     string
-	DuitkuApiKey           string
-	DuitkuExpiryMinutes    int
-	DuitkuCallbackURL      string
-	DuitkuReturnURL        string
-	DuitkuHTTPTimeout      string
-	MinioEndpoint          string
-	MinioAccessKey         string
-	MinioSecretKey         string
-	MinioUseSSL            bool
-	MinioPublicEndpoint    string
+	DuitkuEnv                 string // sandbox | production
+	DuitkuMerchantCode        string
+	DuitkuApiKey              string
+	DuitkuExpiryMinutes       int
+	DuitkuCallbackURL         string
+	DuitkuReturnURL           string
+	DuitkuHTTPTimeout         string
+	DuitkuPOPBaseURL          string
+	DuitkuWebAPIBaseURL       string
+	DuitkuReconcileInterval   string
+	DuitkuCallbackIPAllowlist string
+	MinioEndpoint             string
+	MinioAccessKey            string
+	MinioSecretKey            string
+	MinioUseSSL               bool
+	MinioPublicEndpoint       string
 }
 
 func LoadConfig() (*Config, error) {
 	_ = godotenv.Load()
 
+	duitkuEnv := getEnv("DUITKU_ENV", "sandbox")
+	defaultPOP := "https://api-sandbox.duitku.com"
+	defaultWebAPI := "https://sandbox.duitku.com"
+	if strings.ToLower(duitkuEnv) == "production" {
+		defaultPOP = "https://api-prod.duitku.com"
+		defaultWebAPI = "https://passport.duitku.com"
+	}
+
 	cfg := &Config{
-		AppEnv:                 getEnv("APP_ENV", "development"),
-		AppPort:                getEnvAsInt("APP_PORT", 8085),
-		DBHost:                 getEnv("DB_HOST", "localhost"),
-		DBPort:                 getEnvAsInt("DB_PORT", 5432),
-		DBUser:                 getEnv("DB_USER", "pmb_user"),
-		DBPassword:             getEnv("DB_PASSWORD", "pmb_password"),
-		DBName:                 getEnv("DB_NAME", "pmb_finance"),
-		GatewaySharedSecret:    getEnv("GATEWAY_SHARED_SECRET", "secret-gateway-hmac"),
-		InternalToken:          getEnv("INTERNAL_TOKEN", "secret-internal-token"),
-		AdmissionServiceURL:    getEnv("ADMISSION_SERVICE_URL", "http://localhost:8084"),
-		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
-		PaymentWebhookSecret:   getEnv("PAYMENT_WEBHOOK_SECRET", "secret-payment-webhook"),
-		PaymentProvider:        getEnv("PAYMENT_PROVIDER", "mock"),
-		DuitkuEnv:              getEnv("DUITKU_ENV", "sandbox"),
-		DuitkuMerchantCode:     getEnv("DUITKU_MERCHANT_CODE", ""),
-		DuitkuApiKey:           getEnv("DUITKU_API_KEY", ""),
-		DuitkuExpiryMinutes:    getEnvAsInt("DUITKU_EXPIRY_MINUTES", 1440),
-		DuitkuCallbackURL:      getEnv("DUITKU_CALLBACK_URL", ""),
-		DuitkuReturnURL:        getEnv("DUITKU_RETURN_URL", ""),
-		DuitkuHTTPTimeout:      getEnv("DUITKU_HTTP_TIMEOUT", "15s"),
-		MinioEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccessKey:         getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioUseSSL:            getEnvAsBool("MINIO_USE_SSL", false),
-		MinioPublicEndpoint:    getEnv("MINIO_PUBLIC_ENDPOINT", ""),
+		AppEnv:                    getEnv("APP_ENV", "development"),
+		AppPort:                   getEnvAsInt("APP_PORT", 8085),
+		DBHost:                    getEnv("DB_HOST", "localhost"),
+		DBPort:                    getEnvAsInt("DB_PORT", 5432),
+		DBUser:                    getEnv("DB_USER", "pmb_user"),
+		DBPassword:                getEnv("DB_PASSWORD", "pmb_password"),
+		DBName:                    getEnv("DB_NAME", "pmb_finance"),
+		GatewaySharedSecret:       getEnv("GATEWAY_SHARED_SECRET", "secret-gateway-hmac"),
+		InternalToken:             getEnv("INTERNAL_TOKEN", "secret-internal-token"),
+		AdmissionServiceURL:       getEnv("ADMISSION_SERVICE_URL", "http://localhost:8084"),
+		NotificationServiceURL:    getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
+		PaymentWebhookSecret:      getEnv("PAYMENT_WEBHOOK_SECRET", "secret-payment-webhook"),
+		PaymentProvider:           getEnv("PAYMENT_PROVIDER", "mock"),
+		DuitkuEnv:                 duitkuEnv,
+		DuitkuMerchantCode:        getEnv("DUITKU_MERCHANT_CODE", ""),
+		DuitkuApiKey:              getEnv("DUITKU_API_KEY", ""),
+		DuitkuExpiryMinutes:       getEnvAsInt("DUITKU_EXPIRY_MINUTES", 1440),
+		DuitkuCallbackURL:         getEnv("DUITKU_CALLBACK_URL", ""),
+		DuitkuReturnURL:           getEnv("DUITKU_RETURN_URL", ""),
+		DuitkuHTTPTimeout:         getEnv("DUITKU_HTTP_TIMEOUT", "15s"),
+		DuitkuPOPBaseURL:          getEnv("DUITKU_POP_BASE_URL", defaultPOP),
+		DuitkuWebAPIBaseURL:       getEnv("DUITKU_WEBAPI_BASE_URL", defaultWebAPI),
+		DuitkuReconcileInterval:   getEnv("DUITKU_RECONCILE_INTERVAL", "10m"),
+		DuitkuCallbackIPAllowlist: getEnv("DUITKU_CALLBACK_IP_ALLOWLIST", ""),
+		MinioEndpoint:             getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:            getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey:            getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinioUseSSL:               getEnvAsBool("MINIO_USE_SSL", false),
+		MinioPublicEndpoint:       getEnv("MINIO_PUBLIC_ENDPOINT", ""),
 	}
 
 	return cfg, nil

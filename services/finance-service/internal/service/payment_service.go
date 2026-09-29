@@ -36,6 +36,7 @@ type PaymentService interface {
 	GetReceiptByPaymentID(ctx context.Context, paymentID uuid.UUID, requesterID uuid.UUID, role string) (*model.Receipt, []byte, error)
 	ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error)
 	ReconcilePendingPayments(ctx context.Context) (int, error)
+	GetPaymentMethods(ctx context.Context, amount int64) ([]provider.PaymentMethodInfo, error)
 }
 
 type paymentService struct {
@@ -584,5 +585,12 @@ func (s *paymentService) ReconcilePendingPayments(ctx context.Context) (int, err
 		}
 	}
 	return reconciled, nil
+}
+
+func (s *paymentService) GetPaymentMethods(ctx context.Context, amount int64) ([]provider.PaymentMethodInfo, error) {
+	if s.provider == nil {
+		return nil, errors.New("penyedia pembayaran tidak tersedia")
+	}
+	return s.provider.GetPaymentMethods(ctx, amount)
 }
 

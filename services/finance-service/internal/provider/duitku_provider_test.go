@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDuitkuSignature_HeaderAndCallback(t *testing.T) {
@@ -19,23 +21,20 @@ func TestDuitkuSignature_HeaderAndCallback(t *testing.T) {
 
 	// 1. Header Signature Test
 	headerSig := GenerateDuitkuHeaderSignature(merchantCode, timestamp, apiKey)
-	if headerSig == "" {
-		t.Fatal("Header signature tidak boleh kosong")
-	}
+	assert.NotEmpty(t, headerSig)
 
-	// 2. Callback Signature Test
+	// 2. Callback Signature Test (HMAC & MD5)
 	amount := "500000"
 	merchantOrderID := "INV-20260925-001"
-	callbackSig := GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiKey)
-	if callbackSig == "" {
-		t.Fatal("Callback signature tidak boleh kosong")
-	}
+	callbackHMAC := GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiKey)
+	assert.NotEmpty(t, callbackHMAC)
+
+	callbackMD5 := GenerateDuitkuCallbackMD5Signature(merchantCode, amount, merchantOrderID, apiKey)
+	assert.NotEmpty(t, callbackMD5)
 
 	// Verifikasi deterministik
 	sameSig := GenerateDuitkuCallbackSignature(merchantCode, amount, merchantOrderID, apiKey)
-	if callbackSig != sameSig {
-		t.Fatalf("Signature harus deterministik: got %s vs %s", callbackSig, sameSig)
-	}
+	assert.Equal(t, callbackHMAC, sameSig)
 }
 
 func TestDuitkuProvider_CreatePayment_Httptest(t *testing.T) {
@@ -44,22 +43,15 @@ func TestDuitkuProvider_CreatePayment_Httptest(t *testing.T) {
 
 	// Mock HTTP Server Duitku
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			t.Errorf("Expected POST, got %s", r.Method)
-		}
-
-		if r.Header.Get("x-duitku-merchantcode") != "TEST_MERCHANT" {
-			t.Errorf("Unexpected merchant code header: %s", r.Header.Get("x-duitku-merchantcode"))
-		}
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "TEST_MERCHANT", r.Header.Get("x-duitku-merchantcode"))
 
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
 
 		// Verifikasi customerVaName dipotong <= 20
 		vaName, _ := body["customerVaName"].(string)
-		if len(vaName) > 20 {
-			t.Errorf("customerVaName harus dipotong maksimal 20 karakter, got length %d: %s", len(vaName), vaName)
-		}
+		assert.LessOrEqual(t, len(vaName), 20)
 
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -83,9 +75,7 @@ func TestDuitkuProvider_CreatePayment_Httptest(t *testing.T) {
 	}
 
 	p, err := NewDuitkuProvider(cfg)
-	if err != nil {
-		t.Fatalf("NewDuitkuProvider gagal: %v", err)
-	}
+	require.NoError(t, err)
 
 	req := &PaymentRequest{
 		InvoiceID:       uuid.New(),
@@ -97,16 +87,9 @@ func TestDuitkuProvider_CreatePayment_Httptest(t *testing.T) {
 	}
 
 	res, err := p.CreatePayment(context.Background(), req)
-	if err != nil {
-		t.Fatalf("CreatePayment gagal: %v", err)
-	}
-
-	if res.ProviderRef != expectedRef {
-		t.Errorf("Expected ProviderRef %s, got %s", expectedRef, res.ProviderRef)
-	}
-	if res.PaymentURL != expectedURL {
-		t.Errorf("Expected PaymentURL %s, got %s", expectedURL, res.PaymentURL)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, expectedRef, res.ProviderRef)
+	assert.Equal(t, expectedURL, res.PaymentURL)
 }
 
 func TestDuitkuProvider_ParseWebhook_And_VerifySignature(t *testing.T) {
@@ -116,7 +99,8 @@ func TestDuitkuProvider_ParseWebhook_And_VerifySignature(t *testing.T) {
 	orderID := "ORD-PMB-999"
 	ref := "REF-DUITKU-123"
 
-	validSignature := GenerateDuitkuCallbackSignature(merchantCode, amount, orderID, apiKey)
+	validHMAC := GenerateDuitkuCallbackSignature(merchantCode, amount, orderID, apiKey)
+	validMD5 := GenerateDuitkuCallbackMD5Signature(merchantCode, amount, orderID, apiKey)
 
 	cfg := DuitkuConfig{
 		MerchantCode: merchantCode,
@@ -124,30 +108,35 @@ func TestDuitkuProvider_ParseWebhook_And_VerifySignature(t *testing.T) {
 	}
 	p, _ := NewDuitkuProvider(cfg)
 
-	// 1. Kasus Sukses
+	// 1. Kasus Sukses dengan Signature HMAC (POP)
 	form := url.Values{}
 	form.Set("merchantCode", merchantCode)
 	form.Set("amount", amount)
 	form.Set("merchantOrderId", orderID)
 	form.Set("resultCode", "00")
 	form.Set("reference", ref)
-	form.Set("signature", validSignature)
+	form.Set("signature", validHMAC)
 	form.Set("paymentCode", "014998877")
 
-	body := []byte(form.Encode())
+	payload, err := p.ParseWebhook(context.Background(), []byte(form.Encode()))
+	require.NoError(t, err)
+	assert.Equal(t, "success", payload.Status)
+	assert.Equal(t, int64(750000), payload.Amount)
 
-	payload, err := p.ParseWebhook(context.Background(), body)
-	if err != nil {
-		t.Fatalf("ParseWebhook valid gagal: %v", err)
-	}
-	if payload.Status != "success" {
-		t.Errorf("Expected status success, got %s", payload.Status)
-	}
-	if payload.Amount != 750000 {
-		t.Errorf("Expected amount 750000, got %d", payload.Amount)
-	}
+	// 2. Kasus Sukses dengan Signature MD5 (WebAPI)
+	formMD5 := url.Values{}
+	formMD5.Set("merchantCode", merchantCode)
+	formMD5.Set("amount", amount)
+	formMD5.Set("merchantOrderId", orderID)
+	formMD5.Set("resultCode", "00")
+	formMD5.Set("reference", ref)
+	formMD5.Set("signature", validMD5)
 
-	// 2. Kasus Signature Salah
+	payloadMD5, err := p.ParseWebhook(context.Background(), []byte(formMD5.Encode()))
+	require.NoError(t, err)
+	assert.Equal(t, "success", payloadMD5.Status)
+
+	// 3. Kasus Signature Salah
 	formInvalidSig := url.Values{}
 	formInvalidSig.Set("merchantCode", merchantCode)
 	formInvalidSig.Set("amount", amount)
@@ -157,31 +146,25 @@ func TestDuitkuProvider_ParseWebhook_And_VerifySignature(t *testing.T) {
 	formInvalidSig.Set("signature", "invalid-fake-signature")
 
 	_, err = p.ParseWebhook(context.Background(), []byte(formInvalidSig.Encode()))
-	if err == nil {
-		t.Fatal("ParseWebhook harus gagal saat signature tidak valid")
-	}
+	assert.Error(t, err)
 
-	// 3. Kasus Merchant Code Mismatch
+	// 4. Kasus Merchant Code Mismatch
 	formMismatchMerchant := url.Values{}
 	formMismatchMerchant.Set("merchantCode", "WRONG_MERCHANT")
 	formMismatchMerchant.Set("amount", amount)
 	formMismatchMerchant.Set("merchantOrderId", orderID)
 	formMismatchMerchant.Set("resultCode", "00")
 	formMismatchMerchant.Set("reference", ref)
-	formMismatchMerchant.Set("signature", validSignature)
+	formMismatchMerchant.Set("signature", validHMAC)
 
 	_, err = p.ParseWebhook(context.Background(), []byte(formMismatchMerchant.Encode()))
-	if err == nil {
-		t.Fatal("ParseWebhook harus gagal saat merchant code mismatch")
-	}
+	assert.Error(t, err)
 }
 
 func TestDuitkuProvider_CheckStatus_Httptest(t *testing.T) {
 	orderID := "ORDER-CHECK-1"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.URL.Path, "transactionStatus") {
-			t.Errorf("Unexpected path: %s", r.URL.Path)
-		}
+		assert.True(t, strings.Contains(r.URL.Path, "transactionStatus"))
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"statusCode":      "00",
@@ -201,14 +184,80 @@ func TestDuitkuProvider_CheckStatus_Httptest(t *testing.T) {
 	p, _ := NewDuitkuProvider(cfg)
 
 	status, err := p.CheckStatus(context.Background(), orderID)
-	if err != nil {
-		t.Fatalf("CheckStatus gagal: %v", err)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, "00", status.StatusCode)
+	assert.Equal(t, int64(1500000), status.Amount)
+}
 
-	if status.StatusCode != "00" {
-		t.Errorf("Expected status 00, got %s", status.StatusCode)
+func TestDuitkuProvider_GetPaymentMethods_Httptest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.True(t, strings.Contains(r.URL.Path, "paymentmethod/getpaymentmethod"))
+
+		var req map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		assert.Equal(t, "TEST_MERCHANT", req["merchantcode"])
+		assert.Equal(t, "250000", req["amount"])
+		assert.NotEmpty(t, req["datetime"])
+		assert.NotEmpty(t, req["signature"])
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"paymentFee": []map[string]string{
+				{
+					"paymentMethod": "VC",
+					"paymentName":   "BCA Virtual Account",
+					"paymentImage":  "https://images.duitku.com/icon/BCA.png",
+					"totalFee":      "4000",
+				},
+				{
+					"paymentMethod": "VA",
+					"paymentName":   "BNI Virtual Account",
+					"paymentImage":  "https://images.duitku.com/icon/BNI.png",
+					"totalFee":      "3000",
+				},
+			},
+			"responseCode":    "00",
+			"responseMessage": "SUCCESS",
+		})
+	}))
+	defer server.Close()
+
+	cfg := DuitkuConfig{
+		MerchantCode:    "TEST_MERCHANT",
+		APIKey:          "test-key-secret",
+		BaseURLOverride: server.URL,
 	}
-	if status.Amount != 1500000 {
-		t.Errorf("Expected amount 1500000, got %d", status.Amount)
+	p, _ := NewDuitkuProvider(cfg)
+
+	methods, err := p.GetPaymentMethods(context.Background(), 250000)
+	require.NoError(t, err)
+	assert.Len(t, methods, 2)
+	assert.Equal(t, "VC", methods[0].PaymentMethod)
+	assert.Equal(t, "BCA Virtual Account", methods[0].PaymentName)
+}
+
+func TestDuitkuProvider_ErrorMapping_502(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"statusCode":"99","statusMessage":"Internal Duitku Gateway Error"}`))
+	}))
+	defer server.Close()
+
+	cfg := DuitkuConfig{
+		MerchantCode:    "TEST_MERCHANT",
+		APIKey:          "test-key-secret",
+		BaseURLOverride: server.URL,
 	}
+	p, _ := NewDuitkuProvider(cfg)
+
+	_, err := p.CreatePayment(context.Background(), &PaymentRequest{
+		Amount: 100000,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "PAYMENT_PROVIDER_ERROR")
+
+	_, errMethods := p.GetPaymentMethods(context.Background(), 100000)
+	assert.Error(t, errMethods)
+	assert.Contains(t, errMethods.Error(), "PAYMENT_PROVIDER_ERROR")
 }
