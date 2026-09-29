@@ -16,6 +16,8 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
 | **CR-006** | 2026-09-29 | Riwayat pendaftaran & pindah jalur (langsung / via permintaan admin), immutable DB triggers, reprice/ADJ invoice, penghitungan ulang dokumen | Pak Kemal Ramadhan (Lead / Product Owner) | Admission Service, Finance Service, Exam Service, API Gateway | Tahap 13 / CR-006 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 1 |
 | **CR-007** | 2026-09-29 | Fitur pengunduran diri resmi (verifikasi password Auth, pembatalan tagihan & refund review Finance, pelepasan kuota Selection, pencabutan role Auth, NIM voided, bukti PDF) | Pak Kemal Ramadhan (Lead / Product Owner) | Admission Service, Auth Service, Finance Service, Exam Service, Selection Service, Student Service, NIM Service, API Gateway | Tahap 13 / CR-007 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 2 |
 | **CR-008** | 2026-09-29 | Uji integrasi Duitku Sandbox sungguhan (pemisahan POP & WebAPI base URL, script powershell uji sandbox, penanganan PAYMENT_PROVIDER_ERROR, rekonsiliasi) | Pak Kemal Ramadhan (Lead / Product Owner) | Finance Service, API Gateway, Scripts, Docs | Tahap 13 / CR-008 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 3, `docs/DUITKU-SANDBOX.md` |
+| **CR-009** | 2026-09-29 | Portal Admin (8 modul) & RBAC berbasis permission (tabel permissions/role_permissions, role dekan scope fakultas, header X-User-Permissions di gateway, pkg/rbac, pemetaan permission, 8 modul portal admin) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Seluruh service (Auth, Gateway, Organization, Notification, Admission, Finance, Identity, Exam, Scoring, Selection, Student, NIM) | Tahap 14 / CR-009 | **open** | `PRD-TAMBAHAN-CR009-010.md` Bagian 1 & 2, `docs/RBAC.md` |
+| **CR-010** | 2026-09-29 | Penyesuaian desain Portal Calon Mahasiswa v2 (stepper 6 tahap, agenda & ringkasan, options admission_open & biaya formulir, 5 berkas wajib, tab pembayaran VA/Transfer/QRIS + badge + biaya gratis + jatuh tempo 3 hari kerja, pembukaan CBT otomatis K11, receipt-view) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Admission, Finance, Identity, Exam, Selection, Gateway, Organization | Tahap 14 / CR-010 | **open** | `PRD-TAMBAHAN-CR009-010.md` Bagian 3 |
 
 ---
 
@@ -95,7 +97,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
     - Auth: role `mahasiswa` dicabut via internal API `DELETE /internal/users/:id/roles/:code`.
   - Surat bukti pengunduran diri format PDF dengan QR code verifikasi publik (`GET /admission/withdrawals/verify/:code`).
   - Pengunduran diri oleh admin atas nama pendaftar (unggah surat PDF/JPG <= 5 MB).
-- **Status**: **open** (menunggu persetujuan rencana implementasi).
+- **Status**: **done** (Tahap 13 / CR-007).
 
 ### CR-008 — Uji Integrasi Duitku Sandbox Sungguhan (29 September 2026)
 - **Arahan Lead**: Duitku mode sandbox dapat dipakai tanpa verifikasi dokumen. Integrasi Duitku wajib diuji terhadap sandbox sungguhan dengan script PowerShell pengujian otomatis/interaktif, bukan hanya MockProvider.
@@ -106,5 +108,38 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Konfigurasi `DUITKU_RECONCILE_INTERVAL` untuk percepatan uji rekonsiliasi.
   - Script pengujian Windows `scripts/duitku-sandbox-check.ps1` (ASCII-only) dengan alur pembuatan pendaftaran, penarikan metode bayar sandbox, instruksi simulasi bayar VA, polling status, verifikasi pelunasan via callback dan rekonsiliasi.
   - Unit test tetap menggunakan mock/httptest (tidak menembak Duitku saat build/CI); `scripts/e2e.sh` tetap `PAYMENT_PROVIDER=mock`.
-- **Status**: **open** (menunggu persetujuan rencana implementasi).
+- **Status**: **done** (Tahap 13 / CR-008).
+
+### CR-009 — Portal Admin & RBAC Berbasis Permission (29 September 2026)
+- **Arahan Lead & Sumber Desain**: Desain Figma PMB v2 (24 halaman: 13–24 portal admin); arahan lead: "di admin pakai sistem RBAC dan ROLE, yang bisa akses admin bukan hanya admin super tapi keuangan, prodi juga dengan akses terbatas".
+- **Ruang Lingkup**:
+  - Auth Service: tabel `permissions` dan `role_permissions`, seeder matriks permission 1.4, role `dekan` (scope `faculty`), klaim `perms` pada access token, endpoint `GET /auth/me/permissions`, `GET /auth/admin/permissions`, `GET/PUT /auth/admin/roles/:code/permissions`.
+  - API Gateway: header `X-User-Permissions` (comma-separated), pembersihan header palsu dari client, route guard kasar (staf/admin) sementara pengecekan hak aksi dan scope dilakukan di downstream service.
+  - Shared package `pkg/rbac`: middleware `RequirePermission(code...)` dan helper scope `ScopeFilter`.
+  - 8 Modul Portal Admin:
+    1. Ringkasan Eksekutif & KPI (`/admission/admin/overview?period_id=`)
+    2. Verifikasi Berkas (`/admission/admin/document-queue`, `/admission/admin/applications/:id/documents`, 5 berkas wajib)
+    3. Rekonsiliasi Keuangan & Virtual Account (`/finance/admin/reconciliation`, konfirmasi manual referensi mutasi unik)
+    4. Seleksi Akademik & CBT (`/selection/admin/scoreboard`, ambang 70.0, input nilai wawancara, SK Rektor, aturan pilihan kedua)
+    5. Penetapan NIM & PKKMB (`/student/admin/enrolment`, penerbitan NIM manual/batch K12, gugus PKKMB, ekspor SIAKAD)
+    6. Dashboard Institusional (`/admission/admin/institution-dashboard`, kuota, keketatan, pendaftar per fakultas/prodi)
+    7. Pusat Pelaporan, Cetak Resmi, Broadcast & Buku Besar (ekspor csv/xlsx, PDF Berita Acara nomor unik `{urut 3 digit}/BA-PMB/...`, broadcast notifikasi massal, buku besar kas masuk)
+    8. Master Data Organisasi: Fakultas & Program Studi (`admission_open` buka/tutup prodi PMB, estimasi UKT).
+  - Notification Service: tabel `activity_events`, internal ingestion `POST /internal/activity`, baca log aktivitas `GET /notifications/admin/activity`.
+  - Organization Service: profil institusi field tambahan (kop surat berita acara, rekening bank transfer institusi, dsb.).
+- **Status**: **open** (dalam proses implementasi).
+
+### CR-010 — Penyesuaian Desain Portal Calon Mahasiswa v2 (29 September 2026)
+- **Arahan Lead & Sumber Desain**: Desain Figma PMB v2 (24 halaman: 05–12 portal calon mahasiswa).
+- **Ruang Lingkup**:
+  - Beranda (05): Stepper 6 tahap (`profile`, `path`, `payment`, `documents`, `selection`, `reregistration`), jadwal & agenda seleksi, summary cards, kontak institusi.
+  - Biodata (06): Field `report_average` (rata-rata rapor) di riwayat sekolah.
+  - Jalur & Prodi (07): Pilihan prodi hanya `admission_open = true`, biaya formulir per jalur di options, status gabungan.
+  - Berkas Persyaratan (08): 5 dokumen wajib (IJAZAH_SKL, KTP_KIA_KP, KK, PAS_FOTO, SURAT_SEHAT), sinkronisasi pas foto profil & berkas.
+  - Pembayaran (09): Tab Virtual Account / Transfer Bank / QRIS, badge bank mitra/utama, fee transaksi gratis ditanggung kampus, jatuh tempo 3 hari kerja (`REGISTRATION_PAYMENT_DUE_BUSINESS_DAYS=3`), renew tagihan kedaluwarsa.
+  - Pelaksanaan CBT (10): K11 kelayakan CBT (biaya lunas + biodata lengkap langsung membuka modul CBT tanpa menunggu berkas terverifikasi, verifikasi berkas berjalan paralel).
+  - Pengumuman & Registrasi (11): Penugasan gugus PKKMB calon mahasiswa baru.
+  - Kuitansi Resmi (12): Endpoint `GET /finance/me/invoices/:id/receipt-view`, kuitansi lunas, teks status penguncian pilihan jalur.
+- **Status**: **open** (dalam proses implementasi).
+
 

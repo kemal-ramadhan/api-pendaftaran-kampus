@@ -457,6 +457,44 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - **M5 & M6**: Memberikan kesempatan kedua bagi pendaftar tanpa merusak alur seleksi normal; pelepasan kuota memberi transparansi kursi kosong bagi panitia program studi.
   - **S1**: Memastikan siklus CI/CD dan pengujian regression `scripts/e2e.sh` tetap deterministik, cepat, dan independen dari ketergantungan koneksi pihak ketiga/jaringan eksternal.
 
+---
+
+## 31. Keputusan Default CR-009 dan CR-010 (K11–K18, Q1–Q5)
+- **Status**: default, menunggu konfirmasi lead (29 September 2026, sumber: `PRD-TAMBAHAN-CR009-010.md` Bagian 4)
+- **Rangkuman Keputusan**:
+
+| Kode | Keputusan | Status Konfirmasi |
+|---|---|---|
+| **K11** | CBT terbuka setelah formulir lunas + biodata lengkap; verifikasi berkas paralel; kelulusan hanya bisa dipublikasikan bila berkas terverifikasi | default, menunggu konfirmasi lead |
+| **K12** | NIM diterbitkan admin (satuan/batch), bukan otomatis (`NIM_ISSUANCE_MODE=manual`) | default, menunggu konfirmasi lead |
+| **K13** | Konfirmasi lunas manual hanya keuangan/superadmin dengan bukti & nomor referensi mutasi unik | default, menunggu konfirmasi lead |
+| **K14** | Ambang kelulusan global per gelombang (default 70.0); di bawah ambang → "Evaluasi Pleno", bukan otomatis tidak lulus | default, menunggu konfirmasi lead |
+| **K15** | Batas bayar formulir 3 hari kerja, bisa diperpanjang maks. 2 kali | default, menunggu konfirmasi lead |
+| **K16** | Role baru `dekan` (scope fakultas) untuk tab Dekanat di Dashboard Institusi | default, menunggu konfirmasi lead |
+| **K17** | Biaya transaksi pembayaran ditanggung kampus (tampil Rp 0 ke pendaftar) | default, menunggu konfirmasi lead |
+| **K18** | Integrasi SIAKAD lewat ekspor file dulu | default, menunggu konfirmasi lead |
+
+- **Pertanyaan Terbuka & Keputusan Default Sementara**:
+
+| No | Pertanyaan | Default yang Diterapkan |
+|---|---|---|
+| **Q1** | Desain kuitansi: "pilihan terkunci dan tidak dapat diubah lagi", sedangkan CR-006 membolehkan pindah jalur setelah bayar lewat persetujuan. Mana yang dipakai? | CR-006 tetap berlaku; teks kuitansi dikonfigurasi dinamis ("Pembayaran lunas. Pilihan jalur dan program studi terkunci; perubahan hanya melalui pengajuan ke panitia.") |
+| **Q2** | Format NIM berbeda antar halaman: halaman 18 `[YY][Kode Prodi 2][Urut 4]`, halaman 24 `{YY}{NIM}{JALUR}{URUT}` | Template dapat dikonfigurasi; default tetap `{YY}{kode NIM prodi}{kode jalur}{urut 4}` (sesuai PRD & halaman 24) |
+| **Q3** | Nomor VA di desain berpola tetap (mis. `988 2026 01 94461`, turunan nomor registrasi) — apakah butuh VA tetap per pendaftar atau VA dinamis Duitku sudah cukup? | VA dinamis Duitku; nomor di desain dianggap contoh ilustratif |
+| **Q4** | Penyedia WhatsApp Gateway resmi untuk broadcast? | Adapter `log` default; driver penyedia resmi ditambahkan setelah dipilih vendor institusi |
+| **Q5** | Pengaman konfirmasi lunas manual: perlu persetujuan dua orang keuangan? | Tidak (`MANUAL_CONFIRM_SECOND_APPROVAL=false` default) |
+
+- **Rasional & Implikasi Arsitektural**:
+  - **K11**: Mengakomodasi kebutuhan pendaftar untuk segera menyelesaikan ujian CBT daring tanpa terhambat antrean verifikasi berkas ijazah/SKL, namun gerbang kelulusan akhir tetap terkunci sampai berkas dinyatakan sah.
+  - **K12**: Menghindari penerbitan NIM liar secara otomatis pada skenario di mana panitia akademik perlu memverifikasi kelengkapan berkas fisik sebelum alokasi nomor induk mahasiswa resmi.
+  - **K13**: Menutup celah kecurangan audit finansial: setiap pencatatan pelunasan manual wajib menyertakan identitas referensi transaksi mutasi perbankan yang unik (menolak rekor ganda) dan file bukti bayar.
+  - **K14**: Memberikan fleksibilitas pada rapat pleno pimpinan untuk meninjau calon mahasiswa potensial (kategori `plenary`) sebelum vonis kelulusan final.
+  - **K15**: Mencegah penumpukan invoice pendaftaran basi dan mempermudah perpanjangan jatuh tempo tanpa harus membatalkan pendaftaran.
+  - **K16**: Mengimplementasikan prinsip hak akses terkecil (*least privilege*) berjenjang: Dekan dapat memonitor seluruh prodi di bawah naungan fakultasnya tanpa wewenang lintas fakultas lain.
+  - **K17**: Memberikan kepastian nominal pembayaran yang bersih di sisi calon mahasiswa (*zero fee deduction* di UI).
+  - **K18**: Mengisolasi kompleksitas API eksternal SIAKAD pada fase ini, memprioritaskan format ekspor standar xlsx/csv.
+
+
 
 
 
