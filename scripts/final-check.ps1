@@ -1,4 +1,4 @@
-<#
+﻿<#
   final-check.ps1 - Pengecekan akhir backend PMB (tanpa cek manual)
   Jalankan dari root repo:
       powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1
@@ -65,7 +65,7 @@ foreach ($m in $modules) {
         $tidyOk = ($LASTEXITCODE -eq 0)
         if (-not $tidyOk) { git checkout -- "$m/go.mod" "$m/go.sum" 2>$null }
         Push-Location $m
-        $out = $(go build ./... 2>&1; go vet ./... 2>&1; go test -count=1 ./... 2>&1) | Out-String
+        $out = (go build ./... 2>&1; go vet ./... 2>&1; go test -count=1 ./... 2>&1) | Out-String
         $testOk = ($LASTEXITCODE -eq 0) -and ($out -notmatch "FAIL|cannot|undefined|missing go.sum")
         Pop-Location
     } else {
@@ -133,7 +133,7 @@ if ($gitBashOk -and (-not $notHealthy)) {
 
 # ---------------------------------------------------------------- 7. Kelengkapan dokumen
 Section "7. Kelengkapan dokumentasi"
-$docs = @("docs/contracts","docs/API.md","docs/DECISIONS.md","docs/CHANGE_REQUESTS.md","docs/AUDIT-REPORT.md","docs/FE-BE-GAP.md","docs/PMB.postman_collection.json","docs/ocr-benchmark.md","docs/DUITKU-SANDBOX.md","scripts/duitku-sandbox-check.ps1")
+$docs = @("docs/contracts","docs/API.md","docs/DECISIONS.md","docs/CHANGE_REQUESTS.md","docs/AUDIT-REPORT.md","docs/FE-BE-GAP.md","docs/PMB.postman_collection.json","docs/ocr-benchmark.md","docs/DUITKU-SANDBOX.md","scripts/duitku-sandbox-check.ps1","docs/RBAC.md")
 foreach ($d in $docs) { Add-Result "Dokumen $d" (Test-Path $d) "" }
 $svcs = Get-ChildItem services -Directory | Where-Object { $_.Name -ne "api-gateway" } | ForEach-Object { $_.Name -replace "-service$","" }
 foreach ($s in $svcs) {
@@ -141,7 +141,7 @@ foreach ($s in $svcs) {
     Add-Result "Class diagram & ERD: $s" ($cd -and $erd) $(if ($cd -and $erd) { "ada" } else { "kurang: " + $(if (-not $cd) { "class-diagram " }) + $(if (-not $erd) { "erd" }) })
 }
 $crText = if (Test-Path "docs/CHANGE_REQUESTS.md") { Get-Content "docs/CHANGE_REQUESTS.md" -Raw } else { "" }
-$required = @("CR-001","CR-002","CR-003","CR-004","CR-005","CR-006","CR-007","CR-008")
+$required = @("CR-001","CR-002","CR-003","CR-004","CR-005","CR-006","CR-007","CR-008","CR-009","CR-010")
 $found = [regex]::Matches($crText, "CR-\d{3}") | ForEach-Object { $_.Value }
 $allCr = ($required + $found) | Sort-Object -Unique
 foreach ($cr in $allCr) {
