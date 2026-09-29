@@ -35,19 +35,27 @@ func (NIMSequence) TableName() string {
 	return "nim_sequences"
 }
 
+type NIMIssuanceStatus string
+
+const (
+	NIMIssuanceStatusActive NIMIssuanceStatus = "active"
+	NIMIssuanceStatusVoided NIMIssuanceStatus = "voided"
+)
+
 // NIMIssuance mencatat riwayat resmi penerbitan NIM (idempoten per application_id)
 type NIMIssuance struct {
-	ID               uuid.UUID `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	ApplicationID    uuid.UUID `gorm:"type:uuid;not null;uniqueIndex" json:"application_id"`
-	UserID           uuid.UUID `gorm:"type:uuid;not null;index" json:"user_id"`
-	NIM              string    `gorm:"type:varchar(30);not null;uniqueIndex" json:"nim"`
-	EntryYear        int       `gorm:"not null;index" json:"entry_year"`
-	StudyProgramCode string    `gorm:"type:varchar(30);not null;index" json:"study_program_code"`
-	SelectionPath    string    `gorm:"type:varchar(50);not null" json:"selection_path"`
-	SequenceNumber   int       `gorm:"not null" json:"sequence_number"`
-	IssuedAt         time.Time `json:"issued_at"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID               uuid.UUID         `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	ApplicationID    uuid.UUID         `gorm:"type:uuid;not null;uniqueIndex" json:"application_id"`
+	UserID           uuid.UUID         `gorm:"type:uuid;not null;index" json:"user_id"`
+	NIM              string            `gorm:"type:varchar(30);not null;uniqueIndex" json:"nim"`
+	EntryYear        int               `gorm:"not null;index" json:"entry_year"`
+	StudyProgramCode string            `gorm:"type:varchar(30);not null;index" json:"study_program_code"`
+	SelectionPath    string            `gorm:"type:varchar(50);not null" json:"selection_path"`
+	SequenceNumber   int               `gorm:"not null" json:"sequence_number"`
+	Status           NIMIssuanceStatus `gorm:"type:varchar(20);not null;default:'active';index" json:"status"`
+	IssuedAt         time.Time         `json:"issued_at"`
+	CreatedAt        time.Time         `json:"created_at"`
+	UpdatedAt        time.Time         `json:"updated_at"`
 }
 
 func (NIMIssuance) TableName() string {

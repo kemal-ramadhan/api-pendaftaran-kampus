@@ -23,6 +23,9 @@ type Config struct {
 	IdentityServiceURL     string
 	ExamServiceURL         string
 	AuthServiceURL         string
+	SelectionServiceURL    string
+	StudentServiceURL      string
+	NIMServiceURL          string
 	MinIOEndpoint          string
 	MinIOAccessKey         string
 	MinIOSecretKey         string
@@ -48,8 +51,11 @@ func LoadConfig() (*Config, error) {
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://localhost:8085"),
 		IdentityServiceURL:     getEnv("IDENTITY_SERVICE_URL", "http://localhost:8082"),
-		ExamServiceURL:         getEnv("EXAM_SERVICE_URL", "http://localhost:8086"),
-		AuthServiceURL:         getEnv("AUTH_SERVICE_URL", "http://localhost:8081"),
+		ExamServiceURL:         getEnv("EXAM_SERVICE_URL", "http://localhost:8087"),
+		AuthServiceURL:         getEnv("AUTH_SERVICE_URL", "http://localhost:8080"),
+		SelectionServiceURL:    getEnv("SELECTION_SERVICE_URL", "http://localhost:8090"),
+		StudentServiceURL:      getEnv("STUDENT_SERVICE_URL", "http://localhost:8091"),
+		NIMServiceURL:          getEnv("NIM_SERVICE_URL", "http://localhost:8092"),
 		MinIOEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinIOAccessKey:         getEnv("MINIO_ACCESS_KEY", "minioadmin"),
 		MinIOSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),

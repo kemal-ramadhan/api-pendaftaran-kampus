@@ -142,6 +142,7 @@ func main() {
 		resetRepo,
 		auditRepo,
 		sessionStore,
+		rateLimiter,
 		mailService,
 		orgClient,
 		appLog,

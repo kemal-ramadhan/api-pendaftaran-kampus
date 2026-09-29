@@ -11,6 +11,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/dto"
+	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/limiter"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/mailer"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/auth-service/internal/repository"
@@ -33,6 +34,8 @@ type AdminService interface {
 	InternalGetUser(ctx context.Context, id uuid.UUID) (*dto.UserResponseData, error)
 	InternalGetUsersBatch(ctx context.Context, ids []uuid.UUID) ([]dto.UserResponseData, error)
 	InternalAddRole(ctx context.Context, id uuid.UUID, req dto.AddUserRoleRequest) (*dto.UserResponseData, error)
+	InternalVerifyPassword(ctx context.Context, id uuid.UUID, password string) error
+	InternalRemoveRole(ctx context.Context, id uuid.UUID, roleCode string) error
 }
 
 type adminService struct {
@@ -42,6 +45,7 @@ type adminService struct {
 	resetRepo    repository.PasswordResetRepository
 	auditRepo    repository.AuditLogRepository
 	sessionStore token.SessionStore
+	rateLimiter  limiter.RateLimiter
 	mailer       mailer.Mailer
 	orgClient    internalclient.Client
 	logger       *zap.Logger
@@ -54,6 +58,7 @@ func NewAdminService(
 	resetRepo repository.PasswordResetRepository,
 	auditRepo repository.AuditLogRepository,
 	sessionStore token.SessionStore,
+	rateLimiter limiter.RateLimiter,
 	mailer mailer.Mailer,
 	orgClient internalclient.Client,
 	logger *zap.Logger,
@@ -65,6 +70,7 @@ func NewAdminService(
 		resetRepo:    resetRepo,
 		auditRepo:    auditRepo,
 		sessionStore: sessionStore,
+		rateLimiter:  rateLimiter,
 		mailer:       mailer,
 		orgClient:    orgClient,
 		logger:       logger,
@@ -502,6 +508,57 @@ func (s *adminService) InternalAddRole(ctx context.Context, id uuid.UUID, req dt
 	}
 	res := toUserResponseData(updatedUser)
 	return &res, nil
+}
+
+func (s *adminService) InternalVerifyPassword(ctx context.Context, id uuid.UUID, password string) error {
+	u, err := s.userRepo.FindByID(ctx, id)
+	if err != nil || u == nil {
+		return ErrUserNotFound
+	}
+
+	if s.rateLimiter != nil {
+		isLocked, _, err := s.rateLimiter.IsLoginLocked(ctx, u.Email)
+		if err == nil && isLocked {
+			return ErrTooManyAttempts
+		}
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+		if s.rateLimiter != nil {
+			locked, _, _ := s.rateLimiter.RecordLoginFailure(ctx, u.Email)
+			if locked {
+				return ErrTooManyAttempts
+			}
+		}
+		return ErrInvalidCredentials
+	}
+
+	if s.rateLimiter != nil {
+		_ = s.rateLimiter.ResetLoginFailure(ctx, u.Email)
+	}
+
+	return nil
+}
+
+func (s *adminService) InternalRemoveRole(ctx context.Context, id uuid.UUID, roleCode string) error {
+	u, err := s.userRepo.FindByID(ctx, id)
+	if err != nil || u == nil {
+		return ErrUserNotFound
+	}
+
+	if err := s.roleRepo.RemoveUserRoleByCode(ctx, id, roleCode); err != nil {
+		return err
+	}
+
+	_ = s.sessionStore.RevokeAllUserSessions(ctx, id)
+
+	_ = s.auditRepo.Create(ctx, &model.AuditLog{
+		Action:    "internal.user.role_removed",
+		Metadata:  fmt.Sprintf(`{"user_id":"%s","role":"%s"}`, id.String(), roleCode),
+		CreatedAt: time.Now(),
+	})
+
+	return nil
 }
 
 func toUserResponseData(user *model.User) dto.UserResponseData {

@@ -150,3 +150,7 @@ type AddUserRoleRequest struct {
 	ScopeID   string `json:"scope_id"`
 }
 
+type VerifyPasswordRequest struct {
+	Password string `json:"password" binding:"required"`
+}
+

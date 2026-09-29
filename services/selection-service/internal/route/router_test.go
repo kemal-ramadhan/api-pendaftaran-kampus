@@ -16,7 +16,7 @@ func TestRouterHealthAndAuth(t *testing.T) {
 	approvalCtrl := controller.NewApprovalController(nil)
 	announcementCtrl := controller.NewAnnouncementController(nil)
 	studentCtrl := controller.NewStudentController(nil)
-	internalCtrl := controller.NewInternalController(nil)
+	internalCtrl := controller.NewInternalController(nil, nil)
 
 	cfg := route.RouterConfig{
 		GatewaySecret: "test-secret-at-least-32-bytes-long!",

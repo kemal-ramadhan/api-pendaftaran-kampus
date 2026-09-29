@@ -18,6 +18,7 @@ const (
 	PaymentStatusRejected            PaymentStatus = "rejected"
 	PaymentStatusCancelled           PaymentStatus = "cancelled"
 	PaymentStatusPaidAfterCancel     PaymentStatus = "paid_after_cancel"
+	PaymentStatusRefundReview        PaymentStatus = "refund_review"
 )
 
 type PaymentMethod string

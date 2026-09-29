@@ -51,6 +51,9 @@ func (d *dummyNIMRepo) CreateFormat(_ context.Context, _ *model.NIMFormat) error
 func (d *dummyNIMRepo) UpdateFormat(_ context.Context, _ *model.NIMFormat) error {
 	return nil
 }
+func (d *dummyNIMRepo) VoidIssuance(_ context.Context, _ uuid.UUID) (*model.NIMIssuance, error) {
+	return nil, nil
+}
 
 func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())

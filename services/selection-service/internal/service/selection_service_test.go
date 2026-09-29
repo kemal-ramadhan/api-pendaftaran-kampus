@@ -141,6 +141,15 @@ func (m *mockResultRepo) FindByUserID(ctx context.Context, userID uuid.UUID) (*m
 	return nil, nil
 }
 
+func (m *mockResultRepo) WithdrawApplication(ctx context.Context, appID uuid.UUID) (*model.Result, error) {
+	if res, ok := m.results[appID]; ok {
+		res.Decision = model.DecisionWithdrawn
+		return res, nil
+	}
+	return nil, nil
+}
+
+
 // -------------------------------------------------------------
 // Test Suite
 // -------------------------------------------------------------
@@ -283,4 +292,12 @@ func TestLeadershipApprovalFlowAndAnnouncements(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, model.DecisionPass, myResult.Decision)
 	assert.Equal(t, "TIF", myResult.AcceptedProgram)
+
+	// 7. Pengunduran diri pendaftar (CR-007)
+	err = svc.WithdrawApplication(context.Background(), appStudent)
+	require.NoError(t, err)
+
+	withdrawnResult, err := svc.GetMyResult(context.Background(), studentUserID)
+	require.NoError(t, err)
+	assert.Equal(t, model.DecisionWithdrawn, withdrawnResult.Decision)
 }

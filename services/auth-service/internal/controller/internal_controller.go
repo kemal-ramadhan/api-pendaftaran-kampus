@@ -122,3 +122,86 @@ func (ctl *InternalController) AddUserRole(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Role pengguna berhasil ditambahkan", user)
 }
+
+// VerifyPassword godoc
+// @Summary Verifikasi Kata Sandi Pengguna (Internal)
+// @Description Memverifikasi kata sandi pengguna untuk aksi sensitif (seperti pengunduran diri).
+// @Tags Internal
+// @Accept json
+// @Produce json
+// @Param id path string true "User UUID"
+// @Param request body dto.VerifyPasswordRequest true "Kata Sandi"
+// @Success 200 {object} response.SuccessResponse
+// @Failure 400 {object} response.ErrorResponse
+// @Failure 429 {object} response.ErrorResponse
+// @Router /internal/users/{id}/verify-password [post]
+func (ctl *InternalController) VerifyPassword(c *gin.Context) {
+	idStr := c.Param("id")
+	targetID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "Format ID tidak valid")
+		return
+	}
+
+	var req dto.VerifyPasswordRequest
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	err = ctl.adminService.InternalVerifyPassword(c.Request.Context(), targetID, req.Password)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "Pengguna tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrTooManyAttempts) {
+			response.Error(c, http.StatusTooManyRequests, response.ErrCodeRateLimited, "Akun terkunci sementara karena terlalu banyak percobaan gagal", nil)
+			return
+		}
+		if errors.Is(err, service.ErrInvalidCredentials) {
+			response.Error(c, http.StatusBadRequest, "PASSWORD_CONFIRMATION_FAILED", "Kata sandi konfirmasi salah", nil)
+			return
+		}
+		response.InternalServerError(c, "Gagal memverifikasi kata sandi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Kata sandi terverifikasi", gin.H{"valid": true})
+}
+
+// RemoveUserRole godoc
+// @Summary Cabut Role dari Pengguna (Internal)
+// @Description Mencabut role pengguna dari service hilir secara idempoten.
+// @Tags Internal
+// @Produce json
+// @Param id path string true "User UUID"
+// @Param code path string true "Kode Role"
+// @Success 200 {object} response.SuccessResponse
+// @Failure 404 {object} response.ErrorResponse
+// @Router /internal/users/{id}/roles/{code} [delete]
+func (ctl *InternalController) RemoveUserRole(c *gin.Context) {
+	idStr := c.Param("id")
+	targetID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "Format ID tidak valid")
+		return
+	}
+
+	roleCode := c.Param("code")
+	if roleCode == "" {
+		response.BadRequest(c, response.ErrCodeValidationError, "Kode role wajib diisi")
+		return
+	}
+
+	err = ctl.adminService.InternalRemoveRole(c.Request.Context(), targetID, roleCode)
+	if err != nil {
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.NotFound(c, "Pengguna tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal mencabut role pengguna")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Role pengguna berhasil dicabut", nil)
+}

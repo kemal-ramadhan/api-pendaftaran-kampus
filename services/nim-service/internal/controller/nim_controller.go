@@ -218,3 +218,25 @@ func (ctrl *NIMController) UpdateFormat(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Format NIM berhasil diperbarui", format)
 }
+
+func (ctrl *NIMController) VoidNIM(c *gin.Context) {
+	appIDStr := c.Param("application_id")
+	appID, err := uuid.Parse(appIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format application_id tidak valid")
+		return
+	}
+
+	issuance, err := ctrl.svc.VoidNIM(c.Request.Context(), appID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal membatalkan (void) NIM: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "NIM berhasil dibatalkan (voided)", gin.H{
+		"application_id": appID,
+		"voided":         true,
+		"issuance":       issuance,
+	})
+}
+

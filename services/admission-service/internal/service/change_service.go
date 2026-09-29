@@ -107,8 +107,9 @@ type changeService struct {
 	reqRepo    repository.DocumentRequirementRepository
 	financeCli internalclient.Client
 	examCli    internalclient.Client
-	notifCli   internalclient.Client
-	admService AdmissionService
+	notifCli       internalclient.Client
+	admService     AdmissionService
+	withdrawalRepo repository.WithdrawalRepository
 }
 
 func NewChangeService(
@@ -123,19 +124,21 @@ func NewChangeService(
 	examCli internalclient.Client,
 	notifCli internalclient.Client,
 	admService AdmissionService,
+	withdrawalRepo repository.WithdrawalRepository,
 ) ChangeService {
 	return &changeService{
-		changeRepo: changeRepo,
-		appRepo:    appRepo,
-		pathRepo:   pathRepo,
-		periodRepo: periodRepo,
-		quotaRepo:  quotaRepo,
-		docRepo:    docRepo,
-		reqRepo:    reqRepo,
-		financeCli: financeCli,
-		examCli:    examCli,
-		notifCli:   notifCli,
-		admService: admService,
+		changeRepo:     changeRepo,
+		appRepo:        appRepo,
+		pathRepo:       pathRepo,
+		periodRepo:     periodRepo,
+		quotaRepo:      quotaRepo,
+		docRepo:        docRepo,
+		reqRepo:        reqRepo,
+		financeCli:     financeCli,
+		examCli:        examCli,
+		notifCli:       notifCli,
+		admService:     admService,
+		withdrawalRepo: withdrawalRepo,
 	}
 }
 
@@ -836,6 +839,14 @@ func (s *changeService) GetDashboardSummary(ctx context.Context, userID uuid.UUI
 				Type:        "path_change",
 				StatusLabel: "Permohonan Pindah Jalur Menunggu Persetujuan",
 				CreatedAt:   pendingPath.CreatedAt,
+			}
+		} else if s.withdrawalRepo != nil {
+			if pendingWith, _ := s.withdrawalRepo.FindPendingByApplicationID(ctx, app.ID); pendingWith != nil {
+				pendingSummary = &PendingRequestSummary{
+					Type:        "withdrawal",
+					StatusLabel: "Permohonan Pengunduran Diri Menunggu Persetujuan",
+					CreatedAt:   pendingWith.RequestedAt,
+				}
 			}
 		}
 	}

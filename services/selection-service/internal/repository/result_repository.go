@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/services/selection-service/internal/model"
@@ -14,6 +15,7 @@ type ResultRepository interface {
 	BatchCreate(ctx context.Context, results []model.Result) error
 	FindByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Result, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) (*model.Result, error)
+	WithdrawApplication(ctx context.Context, appID uuid.UUID) (*model.Result, error)
 }
 
 type resultRepository struct {
@@ -64,3 +66,25 @@ func (r *resultRepository) FindByUserID(ctx context.Context, userID uuid.UUID) (
 	}
 	return &res, nil
 }
+
+func (r *resultRepository) WithdrawApplication(ctx context.Context, appID uuid.UUID) (*model.Result, error) {
+	var res model.Result
+	err := r.db.WithContext(ctx).Where("application_id = ?", appID).First(&res).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			_ = r.db.WithContext(ctx).Model(&model.RecommendationItem{}).Where("application_id = ?", appID).Update("decision", model.DecisionWithdrawn).Error
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	res.Decision = model.DecisionWithdrawn
+	res.UpdatedAt = time.Now()
+	if err := r.db.WithContext(ctx).Save(&res).Error; err != nil {
+		return nil, err
+	}
+
+	_ = r.db.WithContext(ctx).Model(&model.RecommendationItem{}).Where("application_id = ?", appID).Update("decision", model.DecisionWithdrawn).Error
+	return &res, nil
+}
+

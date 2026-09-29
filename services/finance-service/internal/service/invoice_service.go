@@ -81,6 +81,7 @@ type InvoiceService interface {
 	CancelInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) error
 	RepriceInvoice(ctx context.Context, invoiceID uuid.UUID, newAmount int64) error
 	CreateAdjustmentInvoice(ctx context.Context, req *CreateAdjustmentInvoiceRequest) (*model.Invoice, error)
+	ProcessApplicationWithdrawal(ctx context.Context, appID uuid.UUID) error
 }
 
 type invoiceService struct {
@@ -384,4 +385,73 @@ func (s *invoiceService) CreateAdjustmentInvoice(ctx context.Context, req *Creat
 
 	return inv, nil
 }
+
+func (s *invoiceService) ProcessApplicationWithdrawal(ctx context.Context, appID uuid.UUID) error {
+	inv, err := s.invoiceRepo.FindByApplicationID(ctx, appID)
+	if err != nil {
+		if errors.Is(err, repository.ErrInvoiceNotFound) {
+			return nil
+		}
+		return err
+	}
+
+	runInTx := func(fn func(tx *gorm.DB) error) error {
+		if s.invoiceRepo.DB() != nil {
+			return s.invoiceRepo.DB().WithContext(ctx).Transaction(fn)
+		}
+		return fn(nil)
+	}
+
+	return runInTx(func(tx *gorm.DB) error {
+		now := time.Now()
+		if tx != nil {
+			if inv.Status == model.InvoiceStatusUnpaid {
+				_ = tx.Model(&model.Invoice{}).Where("id = ?", inv.ID).Updates(map[string]interface{}{
+					"status":     model.InvoiceStatusCancelled,
+					"updated_at": now,
+				}).Error
+				_ = tx.Model(&model.Payment{}).Where("invoice_id = ? AND status = ?", inv.ID, model.PaymentStatusPending).Updates(map[string]interface{}{
+					"status":     model.PaymentStatusCancelled,
+					"notes":      "Dibatalkan karena pemohon mengundurkan diri",
+					"updated_at": now,
+				}).Error
+			} else {
+				for _, p := range inv.Payments {
+					if p.Status == model.PaymentStatusSuccess {
+						_ = tx.Model(&model.Payment{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
+							"status":     model.PaymentStatusRefundReview,
+							"notes":      "Ditandai refund_review karena pemohon mengundurkan diri",
+							"updated_at": now,
+						}).Error
+
+						var existingCount int64
+						_ = tx.Model(&model.RefundReview{}).Where("payment_id = ?", p.ID).Count(&existingCount).Error
+						if existingCount == 0 {
+							rev := &model.RefundReview{
+								ID:            uuid.New(),
+								PaymentID:     p.ID,
+								InvoiceID:     inv.ID,
+								ApplicationID: appID,
+								Amount:        p.Amount,
+								Status:        model.RefundReviewStatusPending,
+								Notes:         "Pengunduran diri pendaftaran",
+								CreatedAt:     now,
+								UpdatedAt:     now,
+							}
+							_ = tx.Create(rev).Error
+						}
+					} else if p.Status == model.PaymentStatusPending {
+						_ = tx.Model(&model.Payment{}).Where("id = ?", p.ID).Updates(map[string]interface{}{
+							"status":     model.PaymentStatusCancelled,
+							"notes":      "Dibatalkan karena pemohon mengundurkan diri",
+							"updated_at": now,
+						}).Error
+					}
+				}
+			}
+		}
+		return nil
+	})
+}
+
 

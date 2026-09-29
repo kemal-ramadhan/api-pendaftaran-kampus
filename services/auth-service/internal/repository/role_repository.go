@@ -16,6 +16,7 @@ type RoleRepository interface {
 	GetUserRoles(ctx context.Context, userID uuid.UUID) ([]model.UserRole, error)
 	RemoveUserRoles(ctx context.Context, userID uuid.UUID) error
 	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error
+	RemoveUserRoleByCode(ctx context.Context, userID uuid.UUID, code string) error
 	CountActiveSuperadmins(ctx context.Context) (int64, error)
 }
 
@@ -88,6 +89,17 @@ func (r *roleRepository) ReplaceUserRoles(ctx context.Context, userID uuid.UUID,
 		}
 		return nil
 	})
+}
+
+func (r *roleRepository) RemoveUserRoleByCode(ctx context.Context, userID uuid.UUID, code string) error {
+	var role model.Role
+	if err := r.db.WithContext(ctx).Where("code = ?", code).First(&role).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		return err
+	}
+	return r.db.WithContext(ctx).Where("user_id = ? AND role_id = ?", userID, role.ID).Delete(&model.UserRole{}).Error
 }
 
 func (r *roleRepository) CountActiveSuperadmins(ctx context.Context) (int64, error) {

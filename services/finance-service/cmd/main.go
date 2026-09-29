@@ -60,6 +60,7 @@ func main() {
 		&model.PaymentWebhookLog{},
 		&model.InstallmentRequest{},
 		&model.Installment{},
+		&model.RefundReview{},
 	)
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel finance", zap.Error(err))
@@ -160,6 +161,9 @@ func main() {
 	)
 	paySvc.SetInstallmentRepo(installmentRepo)
 
+	refundReviewRepo := repository.NewRefundReviewRepository(db)
+	refundReviewSvc := service.NewRefundReviewService(refundReviewRepo)
+
 	installmentSvc := service.NewInstallmentService(installmentRepo, invRepo, feeSchemeRepo, notifCli)
 	reportSvc := service.NewReportService(reportRepo, reportExp)
 
@@ -170,7 +174,7 @@ func main() {
 	rcCtrl := controller.NewReceiptController(paySvc)
 	webhookCtrl := controller.NewWebhookController(paySvc)
 	devCtrl := controller.NewDevController(paySvc, cfg)
-	adminCtrl := controller.NewAdminController(paySvc, feeSchemeRepo)
+	adminCtrl := controller.NewAdminController(paySvc, feeSchemeRepo, refundReviewSvc)
 	internalCtrl := controller.NewInternalController(invSvc)
 	installmentCtrl := controller.NewInstallmentController(installmentSvc)
 	reportCtrl := controller.NewReportController(reportSvc, installmentSvc)

@@ -29,6 +29,7 @@ type NIMService interface {
 	GetFormatByID(ctx context.Context, id uuid.UUID) (*model.NIMFormat, error)
 	CreateFormat(ctx context.Context, req *model.CreateNIMFormatRequest) (*model.NIMFormat, error)
 	UpdateFormat(ctx context.Context, id uuid.UUID, req *model.UpdateNIMFormatRequest) (*model.NIMFormat, error)
+	VoidNIM(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error)
 }
 
 type nimService struct {
@@ -356,3 +357,8 @@ func renderNIM(pattern string, year int, prodiNimCode, pathDigit string, seqNumb
 	res = strings.ReplaceAll(res, "{urut}", urutStr)
 	return res
 }
+
+func (s *nimService) VoidNIM(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error) {
+	return s.repo.VoidIssuance(ctx, appID)
+}
+

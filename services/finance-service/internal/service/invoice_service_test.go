@@ -167,4 +167,27 @@ func TestInvoiceService_ValidationAndAccess(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, invoices, 2)
 	})
+
+	t.Run("process application withdrawal cancels unpaid invoice", func(t *testing.T) {
+		appID := uuid.New()
+		inv := &model.Invoice{
+			ID:            uuid.New(),
+			UserID:        uuid.New(),
+			ApplicationID: &appID,
+			Amount:        250000,
+			Status:        model.InvoiceStatusUnpaid,
+			Payments: []model.Payment{
+				{
+					ID:     uuid.New(),
+					Status: model.PaymentStatusPending,
+					Amount: 250000,
+				},
+			},
+		}
+		_ = repo.Create(ctx, inv)
+
+		err := svc.ProcessApplicationWithdrawal(ctx, appID)
+		assert.NoError(t, err)
+	})
 }
+

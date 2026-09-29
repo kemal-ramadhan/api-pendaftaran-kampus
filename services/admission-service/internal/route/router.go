@@ -20,6 +20,7 @@ func SetupRouter(
 	adminCtrl *controller.AdminController,
 	internalCtrl *controller.InternalController,
 	changeCtrl *controller.ChangeController,
+	withdrawalCtrl *controller.WithdrawalController,
 ) *gin.Engine {
 	r := gin.New()
 	r.Use(gin.Recovery())
@@ -28,12 +29,14 @@ func SetupRouter(
 	r.GET("/health", healthCtrl.Health)
 	r.GET("/health/ready", healthCtrl.Readiness)
 
-	// 2. Public admission info
+	// 2. Public admission info & verification
 	publicGroup := r.Group("/admission")
 	{
 		publicGroup.GET("/periods/active", publicCtrl.GetActivePeriod)
 		publicGroup.GET("/paths", publicCtrl.GetAdmissionPaths)
+		publicGroup.GET("/withdrawals/verify/:code", withdrawalCtrl.VerifyWithdrawalPublic)
 	}
+	r.GET("/withdrawals/verify/:code", withdrawalCtrl.VerifyWithdrawalPublic)
 
 	// 3. Internal inter-service endpoints
 	internalGroup := r.Group("/internal")
@@ -72,6 +75,13 @@ func SetupRouter(
 				userGroup.POST("/me/path-change", changeCtrl.RequestOrApplyPathChange)
 				userGroup.DELETE("/me/path-change/pending", changeCtrl.CancelPendingPathChange)
 
+				// CR-007 Calon Mahasiswa (Pengunduran Diri)
+				userGroup.GET("/me/withdrawal/eligibility", withdrawalCtrl.GetEligibility)
+				userGroup.POST("/me/withdrawal", withdrawalCtrl.RequestWithdrawal)
+				userGroup.GET("/me/withdrawal", withdrawalCtrl.GetMyWithdrawal)
+				userGroup.DELETE("/me/withdrawal/pending", withdrawalCtrl.CancelPendingWithdrawal)
+				userGroup.GET("/me/withdrawal/letter", withdrawalCtrl.GetWithdrawalLetterPDF)
+
 				// Menggunakan ID pendaftaran eksplisit
 				userGroup.GET("/:id", appCtrl.GetApplicationDetail)
 				userGroup.PUT("/:id/choices", appCtrl.ChangeChoices)
@@ -104,6 +114,14 @@ func SetupRouter(
 				adminGroup.POST("/applications/:id/move", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminMoveApplication)
 				adminGroup.GET("/applications/:id/changes", changeCtrl.AdminGetApplicationChanges)
 				adminGroup.GET("/path-changes/export", changeCtrl.AdminExportPathChanges)
+
+				// CR-007 Admin (Pengunduran Diri)
+				adminGroup.GET("/withdrawals", withdrawalCtrl.AdminListWithdrawals)
+				adminGroup.POST("/withdrawals/:id/approve", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminApproveWithdrawal)
+				adminGroup.POST("/withdrawals/:id/reject", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminRejectWithdrawal)
+				adminGroup.POST("/applications/:id/withdraw", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminWithdrawApplication)
+				adminGroup.GET("/withdrawals/stats", withdrawalCtrl.AdminGetWithdrawalStats)
+				adminGroup.GET("/withdrawals/export", withdrawalCtrl.AdminExportWithdrawalsXLSX)
 
 				// Master data management (PRD C.4.4 / TINGGI-1)
 				adminGroup.GET("/periods", adminCtrl.ListPeriods)

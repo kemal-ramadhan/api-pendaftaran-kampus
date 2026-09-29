@@ -42,6 +42,7 @@ type SelectionService interface {
 	ReturnRecommendation(ctx context.Context, id uuid.UUID, note string, actorUserID uuid.UUID) (*model.Recommendation, error)
 	PublishAnnouncement(ctx context.Context, payload *model.PublishAnnouncementPayload, actorUserID uuid.UUID) (*model.Announcement, error)
 	GetMyResult(ctx context.Context, userID uuid.UUID) (*model.MyResultResponse, error)
+	WithdrawApplication(ctx context.Context, appID uuid.UUID) error
 }
 
 type selectionService struct {
@@ -619,3 +620,29 @@ func hasAnyRole(roles []string, targets ...string) bool {
 	}
 	return false
 }
+
+func (s *selectionService) WithdrawApplication(ctx context.Context, appID uuid.UUID) error {
+	res, err := s.resultRepo.WithdrawApplication(ctx, appID)
+	if err != nil {
+		return err
+	}
+	if res != nil && res.AcceptedProgram != "" {
+		_ = s.sendSeatReleasedNotification(ctx, appID, res.AcceptedProgram)
+	}
+	return nil
+}
+
+func (s *selectionService) sendSeatReleasedNotification(ctx context.Context, appID uuid.UUID, programCode string) error {
+	if s.notificationCli == nil {
+		return nil
+	}
+	return s.notificationCli.Post(ctx, "/internal/notifications", map[string]interface{}{
+		"template": "seat_released",
+		"data": map[string]interface{}{
+			"application_id": appID.String(),
+			"program_code":   programCode,
+			"message":        fmt.Sprintf("Kursi kosong tersedia di program studi %s karena pengunduran diri pendaftar", programCode),
+		},
+	}, nil)
+}
+

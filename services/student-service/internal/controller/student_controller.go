@@ -256,3 +256,23 @@ func (ctrl *StudentController) ProcessOutbox(c *gin.Context) {
 		"processed_count": count,
 	})
 }
+
+func (ctrl *StudentController) InternalWithdraw(c *gin.Context) {
+	appIDStr := c.Param("application_id")
+	appID, err := uuid.Parse(appIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format application_id tidak valid")
+		return
+	}
+
+	if err := ctrl.svc.WithdrawApplication(c.Request.Context(), appID); err != nil {
+		response.InternalServerError(c, "Gagal membatalkan daftar ulang mahasiswa: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Pengunduran diri pendaftaran ulang berhasil diproses", gin.H{
+		"application_id": appID,
+		"withdrawn":      true,
+	})
+}
+

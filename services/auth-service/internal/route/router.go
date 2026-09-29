@@ -79,5 +79,7 @@ func SetupRoutes(
 		internal.GET("/users/:id", internalCtrl.GetUser)
 		internal.POST("/users/batch", internalCtrl.GetBatchUsers)
 		internal.POST("/users/:id/roles", internalCtrl.AddUserRole)
+		internal.POST("/users/:id/verify-password", internalCtrl.VerifyPassword)
+		internal.DELETE("/users/:id/roles/:code", internalCtrl.RemoveUserRole)
 	}
 }

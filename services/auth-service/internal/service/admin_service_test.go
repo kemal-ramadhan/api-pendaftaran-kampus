@@ -45,6 +45,7 @@ func setupTestAdminService(t *testing.T) (
 		resetRepo,
 		auditRepo,
 		sessionStore,
+		nil,
 		mailer,
 		nil,
 		logger,
@@ -249,7 +250,7 @@ func TestAdminService_M2_AcceptanceCriteria_CreatedUsersCanLoginWithRolesAndScop
 		t.Fatalf("NewTokenManager error: %v", err)
 	}
 
-	adminSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, nil, logger)
+	adminSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, rateLimiter, mailer, nil, logger)
 	authSvc := NewAuthService(cfg, userRepo, roleRepo, otpRepo, resetRepo, auditRepo, tm, sessionStore, rateLimiter, mailer, logger)
 
 	ctx := context.Background()
@@ -380,7 +381,7 @@ func TestUpdateUserRoles_ProdiScopeValidation(t *testing.T) {
 		},
 	}
 
-	svc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, mockClient, logger)
+	svc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, nil, mailer, mockClient, logger)
 
 	res, err := svc.UpdateUserRoles(ctx, targetID, dto.AdminUpdateRolesRequest{
 		Roles: []dto.RoleAssignmentDTO{
@@ -410,7 +411,7 @@ func TestUpdateUserRoles_ProdiScopeValidation(t *testing.T) {
 			return errors.New("connection refused")
 		},
 	}
-	downSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, mailer, downClient, logger)
+	downSvc := NewAdminService(cfg, userRepo, roleRepo, resetRepo, auditRepo, sessionStore, nil, mailer, downClient, logger)
 
 	_, err = downSvc.UpdateUserRoles(ctx, targetID, dto.AdminUpdateRolesRequest{
 		Roles: []dto.RoleAssignmentDTO{
@@ -421,4 +422,54 @@ func TestUpdateUserRoles_ProdiScopeValidation(t *testing.T) {
 		t.Fatalf("expected ErrUpstreamUnavailable when org service down, got: %v", err)
 	}
 }
+
+func TestAdminService_InternalVerifyPassword_And_RemoveRole(t *testing.T) {
+	svc, userRepo, roleRepo, _, superadminID := setupTestAdminService(t)
+	ctx := context.Background()
+
+	// Hash password "Secret123"
+	hashed, _ := bcrypt.GenerateFromPassword([]byte("Secret123"), bcrypt.MinCost)
+	testUser := &model.User{
+		ID:           uuid.New(),
+		Email:        "applicant@test.id",
+		FullName:     "Calon Mahasiswa",
+		PasswordHash: string(hashed),
+		Status:       model.UserStatusActive,
+	}
+	_ = userRepo.Create(ctx, testUser)
+
+	// Tambahkan role mahasiswa
+	_ = roleRepo.AssignRole(ctx, &model.UserRole{
+		UserID: testUser.ID,
+		RoleID: 2, // role id
+		Role:   model.Role{ID: 2, Code: "mahasiswa", Name: "Mahasiswa"},
+	})
+
+	// 1. Verify password salah
+	err := svc.InternalVerifyPassword(ctx, testUser.ID, "SalahPassword1")
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials for wrong password, got: %v", err)
+	}
+
+	// 2. Verify password benar
+	err = svc.InternalVerifyPassword(ctx, testUser.ID, "Secret123")
+	if err != nil {
+		t.Fatalf("expected success for correct password, got: %v", err)
+	}
+
+	// 3. Remove role mahasiswa
+	err = svc.InternalRemoveRole(ctx, testUser.ID, "mahasiswa")
+	if err != nil {
+		t.Fatalf("expected success for InternalRemoveRole, got: %v", err)
+	}
+
+	// 4. Remove role lagi (idempoten)
+	err = svc.InternalRemoveRole(ctx, testUser.ID, "mahasiswa")
+	if err != nil {
+		t.Fatalf("expected idempotent success for InternalRemoveRole, got: %v", err)
+	}
+
+	_ = superadminID
+}
+
 

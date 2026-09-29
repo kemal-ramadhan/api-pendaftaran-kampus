@@ -51,6 +51,7 @@ func SetupRouter(
 		internalGroup.POST("/invoices/cancel-by-application/:application_id", internalCtrl.CancelInvoiceByApplication)
 		internalGroup.POST("/invoices/:id/reprice", internalCtrl.RepriceInvoice)
 		internalGroup.POST("/invoices/adjustment", internalCtrl.CreateAdjustmentInvoice)
+		internalGroup.POST("/applications/:application_id/withdraw", internalCtrl.HandleApplicationWithdrawal)
 	}
 
 	// 5. Downstream endpoints dari API Gateway
@@ -92,6 +93,8 @@ func SetupRouter(
 					keuanganOnly.GET("/fee-schemes", adminCtrl.ListFeeSchemes)
 					keuanganOnly.POST("/fee-schemes", adminCtrl.CreateFeeScheme)
 					keuanganOnly.POST("/reconcile", adminCtrl.ReconcilePayments)
+					keuanganOnly.GET("/refund-reviews", adminCtrl.ListRefundReviews)
+					keuanganOnly.PATCH("/refund-reviews/:id", adminCtrl.UpdateRefundReview)
 				}
 
 				// Laporan ringkasan & ekspor excel: role keuangan, pimpinan, superadmin

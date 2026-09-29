@@ -109,6 +109,17 @@ func (m *mockConcurrentRepo) UpdateFormat(_ context.Context, _ *model.NIMFormat)
 	return nil
 }
 
+func (m *mockConcurrentRepo) VoidIssuance(_ context.Context, appID uuid.UUID) (*model.NIMIssuance, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if item, ok := m.issuances[appID]; ok {
+		item.Status = model.NIMIssuanceStatusVoided
+		return item, nil
+	}
+	return nil, nil
+}
+
+
 // -----------------------------------------------------------------------------
 // Test Suites
 // -----------------------------------------------------------------------------
@@ -208,4 +219,24 @@ func TestNIMService_ConcurrencyAndIdempotency(t *testing.T) {
 		// Pastikan jumlah NIM unik tepat 50
 		assert.Equal(t, totalRequests, len(seenNIMs), "Jumlah NIM unik harus tepat 50")
 	})
+
+	t.Run("void issued NIM sets status to voided", func(t *testing.T) {
+		appID := uuid.New()
+		req := &model.IssueNIMRequest{
+			ApplicationID:    appID,
+			UserID:           uuid.New(),
+			StudyProgramCode: "TI",
+			EntryYear:        2026,
+			SelectionPath:    "reguler",
+		}
+
+		res, err := svc.IssueNIM(context.Background(), req)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, res.NIM)
+
+		voided, err := svc.VoidNIM(context.Background(), appID)
+		assert.NoError(t, err)
+		assert.Equal(t, model.NIMIssuanceStatusVoided, voided.Status)
+	})
 }
+

@@ -154,6 +154,11 @@ func (r *mockRoleRepo) CountActiveSuperadmins(ctx context.Context) (int64, error
 	return 1, nil
 }
 
+func (r *mockRoleRepo) RemoveUserRoleByCode(ctx context.Context, userID uuid.UUID, code string) error {
+	return nil
+}
+
+
 
 type mockOTPRepo struct {
 	mu   sync.Mutex

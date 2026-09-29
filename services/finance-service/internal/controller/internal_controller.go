@@ -221,3 +221,21 @@ func (ctrl *InternalController) CreateAdjustmentInvoice(c *gin.Context) {
 	response.Success(c, http.StatusCreated, "Invoice penyesuaian berhasil dibuat", inv)
 }
 
+func (ctrl *InternalController) HandleApplicationWithdrawal(c *gin.Context) {
+	appIDStr := c.Param("application_id")
+	appID, err := uuid.Parse(appIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format application_id tidak valid")
+		return
+	}
+
+	err = ctrl.svc.ProcessApplicationWithdrawal(c.Request.Context(), appID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memproses pengunduran diri pada tagihan: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Pengunduran diri tagihan berhasil diproses", gin.H{"processed": true})
+}
+
+

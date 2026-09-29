@@ -12,6 +12,7 @@ const (
 	ReregistrationStatusWaitingPayment ReregistrationStatus = "waiting_payment"
 	ReregistrationStatusInProgress     ReregistrationStatus = "in_progress"
 	ReregistrationStatusCompleted      ReregistrationStatus = "completed"
+	ReregistrationStatusCancelled      ReregistrationStatus = "cancelled"
 )
 
 type StudentStatus string
@@ -19,6 +20,7 @@ type StudentStatus string
 const (
 	StudentStatusReregistered StudentStatus = "reregistered"
 	StudentStatusActive       StudentStatus = "active"
+	StudentStatusWithdrawn    StudentStatus = "withdrawn"
 )
 
 // Reregistration merepresentasikan data pendaftaran ulang calon mahasiswa baru

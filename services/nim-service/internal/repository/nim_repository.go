@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/services/nim-service/internal/model"
@@ -18,6 +19,7 @@ type NIMRepository interface {
 	GetIssuanceByNIM(ctx context.Context, nim string) (*model.NIMIssuance, error)
 	CreateIssuanceInTx(ctx context.Context, tx *gorm.DB, issuance *model.NIMIssuance) error
 	ListIssuances(ctx context.Context, filter model.IssuanceFilter) ([]model.NIMIssuance, int64, error)
+	VoidIssuance(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error)
 
 	// Concurrency & Sequence
 	GetNextSequenceWithLock(ctx context.Context, tx *gorm.DB, entryYear int, studyProgramCode string) (int, error)
@@ -102,6 +104,23 @@ func (r *nimRepository) ListIssuances(ctx context.Context, filter model.Issuance
 		Find(&issuances).Error
 
 	return issuances, total, err
+}
+
+func (r *nimRepository) VoidIssuance(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error) {
+	var issuance model.NIMIssuance
+	err := r.db.WithContext(ctx).Where("application_id = ?", appID).First(&issuance).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	issuance.Status = model.NIMIssuanceStatusVoided
+	issuance.UpdatedAt = time.Now()
+	if err := r.db.WithContext(ctx).Save(&issuance).Error; err != nil {
+		return nil, err
+	}
+	return &issuance, nil
 }
 
 func (r *nimRepository) GetNextSequenceWithLock(ctx context.Context, tx *gorm.DB, entryYear int, studyProgramCode string) (int, error) {

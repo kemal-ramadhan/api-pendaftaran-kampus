@@ -18,9 +18,10 @@ const (
 type DecisionType string
 
 const (
-	DecisionPass     DecisionType = "pass"
-	DecisionFail     DecisionType = "fail"
-	DecisionWaitlist DecisionType = "waitlist"
+	DecisionPass      DecisionType = "pass"
+	DecisionFail      DecisionType = "fail"
+	DecisionWaitlist  DecisionType = "waitlist"
+	DecisionWithdrawn DecisionType = "withdrawn"
 )
 
 // Recommendation merepresentasikan usulan kelulusan program studi

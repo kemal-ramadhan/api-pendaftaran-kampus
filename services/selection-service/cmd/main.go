@@ -127,7 +127,7 @@ func main() {
 	approvalCtrl := controller.NewApprovalController(selectionSvc)
 	announcementCtrl := controller.NewAnnouncementController(selectionSvc)
 	studentCtrl := controller.NewStudentController(selectionSvc)
-	internalCtrl := controller.NewInternalController(resultRepo)
+	internalCtrl := controller.NewInternalController(resultRepo, selectionSvc)
 
 	// 7. Inisialisasi HTTP Router
 	routerCfg := route.RouterConfig{

@@ -283,6 +283,7 @@ func TestChangeService_Flow(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	userID := uuid.New()

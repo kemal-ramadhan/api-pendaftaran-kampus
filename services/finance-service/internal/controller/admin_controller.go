@@ -15,14 +15,20 @@ import (
 )
 
 type AdminController struct {
-	paymentSvc    service.PaymentService
-	feeSchemeRepo repository.FeeSchemeRepository
+	paymentSvc      service.PaymentService
+	feeSchemeRepo   repository.FeeSchemeRepository
+	refundReviewSvc service.RefundReviewService
 }
 
-func NewAdminController(paymentSvc service.PaymentService, feeSchemeRepo repository.FeeSchemeRepository) *AdminController {
+func NewAdminController(
+	paymentSvc service.PaymentService,
+	feeSchemeRepo repository.FeeSchemeRepository,
+	refundReviewSvc service.RefundReviewService,
+) *AdminController {
 	return &AdminController{
-		paymentSvc:    paymentSvc,
-		feeSchemeRepo: feeSchemeRepo,
+		paymentSvc:      paymentSvc,
+		feeSchemeRepo:   feeSchemeRepo,
+		refundReviewSvc: refundReviewSvc,
 	}
 }
 
@@ -140,5 +146,87 @@ func (ctrl *AdminController) ReconcilePayments(c *gin.Context) {
 		"reconciled_count": reconciledCount,
 	})
 }
+
+type UpdateRefundReviewInput struct {
+	Status string `json:"status" binding:"required"` // completed, rejected
+	Notes  string `json:"notes"`
+}
+
+func (ctrl *AdminController) ListRefundReviews(c *gin.Context) {
+	if ctrl.refundReviewSvc == nil {
+		response.Success(c, http.StatusOK, "Daftar tinjauan pengembalian dana kosong", gin.H{"items": []interface{}{}, "meta": gin.H{"total": 0, "page": 1, "limit": 10}})
+		return
+	}
+
+	limit := 10
+	if lStr := c.Query("limit"); lStr != "" {
+		if l, err := strconv.Atoi(lStr); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	page := 1
+	if pStr := c.Query("page"); pStr != "" {
+		if p, err := strconv.Atoi(pStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	offset := (page - 1) * limit
+	status := c.Query("status")
+
+	items, total, err := ctrl.refundReviewSvc.ListRefundReviews(c.Request.Context(), status, limit, offset)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar tinjauan pengembalian dana: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Daftar tinjauan pengembalian dana berhasil diambil", gin.H{
+		"items": items,
+		"meta": gin.H{
+			"total": total,
+			"page":  page,
+			"limit": limit,
+		},
+	})
+}
+
+func (ctrl *AdminController) UpdateRefundReview(c *gin.Context) {
+	if ctrl.refundReviewSvc == nil {
+		response.InternalServerError(c, "Layanan tinjauan pengembalian dana tidak tersedia")
+		return
+	}
+
+	adminID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	idStr := c.Param("id")
+	revID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID tinjauan tidak valid")
+		return
+	}
+
+	var input UpdateRefundReviewInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data perbaruan tinjauan tidak valid: "+err.Error())
+		return
+	}
+
+	updated, err := ctrl.refundReviewSvc.UpdateRefundReview(c.Request.Context(), revID, input.Status, input.Notes, adminID)
+	if err != nil {
+		if errors.Is(err, repository.ErrRefundReviewNotFound) {
+			response.NotFound(c, "Tinjauan pengembalian dana tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal memperbarui tinjauan pengembalian dana: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Tinjauan pengembalian dana berhasil diperbarui", updated)
+}
+
 
 

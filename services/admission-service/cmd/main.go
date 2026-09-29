@@ -61,6 +61,7 @@ func main() {
 		&model.ApplicationStatusLog{},
 		&model.ApplicationChange{},
 		&model.PathChangeRequest{},
+		&model.Withdrawal{},
 		&outbox.Event{},
 	)
 	if err != nil {
@@ -120,6 +121,42 @@ func main() {
 		})
 	}
 
+	var authCli internalclient.Client
+	if cfg.AuthServiceURL != "" {
+		authCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.AuthServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
+	var selectionCli internalclient.Client
+	if cfg.SelectionServiceURL != "" {
+		selectionCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.SelectionServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
+	var studentCli internalclient.Client
+	if cfg.StudentServiceURL != "" {
+		studentCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.StudentServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
+	var nimCli internalclient.Client
+	if cfg.NIMServiceURL != "" {
+		nimCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.NIMServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
 	// Inisialisasi Storage Client (MinIO)
 	var storageCli storage.Client
 	if cfg.MinIOEndpoint != "" {
@@ -159,6 +196,7 @@ func main() {
 	appRepo := repository.NewApplicationRepository(db)
 	docRepo := repository.NewApplicationDocumentRepository(db)
 	reqRepo := repository.NewDocumentRequirementRepository(db)
+	withdrawalRepo := repository.NewWithdrawalRepository(db)
 
 	// 8. Inisialisasi Service
 	admissionSvc := service.NewAdmissionService(
@@ -187,6 +225,22 @@ func main() {
 		examCli,
 		notifCli,
 		admissionSvc,
+		withdrawalRepo,
+	)
+
+	withdrawalSvc := service.NewWithdrawalService(
+		withdrawalRepo,
+		appRepo,
+		changeRepo,
+		pathRepo,
+		authCli,
+		financeCli,
+		examCli,
+		selectionCli,
+		studentCli,
+		nimCli,
+		identityCli,
+		notifCli,
 	)
 
 	// 9. Inisialisasi Controllers
@@ -196,6 +250,7 @@ func main() {
 	adminCtrl := controller.NewAdminController(admissionSvc, periodRepo, pathRepo, quotaRepo, reqRepo)
 	internalCtrl := controller.NewInternalController(admissionSvc)
 	changeCtrl := controller.NewChangeController(changeSvc)
+	withdrawalCtrl := controller.NewWithdrawalController(withdrawalSvc)
 
 	// 10. Setup Router Gin
 	r := route.SetupRouter(
@@ -209,6 +264,7 @@ func main() {
 		adminCtrl,
 		internalCtrl,
 		changeCtrl,
+		withdrawalCtrl,
 	)
 
 	// 11. Jalankan HTTP Server

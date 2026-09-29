@@ -228,6 +228,21 @@ func (r *fakeRoleRepo) CountActiveSuperadmins(ctx context.Context) (int64, error
 	return count, nil
 }
 
+func (r *fakeRoleRepo) RemoveUserRoleByCode(ctx context.Context, userID uuid.UUID, code string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	current := r.userRoles[userID]
+	filtered := make([]model.UserRole, 0, len(current))
+	for _, ur := range current {
+		if ur.Role.Code != code {
+			filtered = append(filtered, ur)
+		}
+	}
+	r.userRoles[userID] = filtered
+	return nil
+}
+
+
 
 type fakeOTPRepo struct {
 	mu   sync.Mutex

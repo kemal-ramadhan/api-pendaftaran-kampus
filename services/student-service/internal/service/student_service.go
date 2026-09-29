@@ -13,6 +13,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/exporter"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/repository"
+	"gorm.io/gorm"
 )
 
 var (
@@ -34,6 +35,7 @@ type StudentService interface {
 	GetStudentByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Student, error)
 	UpdateStudentNIM(ctx context.Context, appID uuid.UUID, nim string) error
 	ProcessPendingOutboxEvents(ctx context.Context) (int, error)
+	WithdrawApplication(ctx context.Context, appID uuid.UUID) error
 }
 
 type studentService struct {
@@ -480,3 +482,34 @@ func (s *studentService) ProcessPendingOutboxEvents(ctx context.Context) (int, e
 
 	return processedCount, nil
 }
+
+func (s *studentService) WithdrawApplication(ctx context.Context, appID uuid.UUID) error {
+	runInTx := func(fn func(tx *gorm.DB) error) error {
+		if s.repo.DB() != nil {
+			return s.repo.DB().WithContext(ctx).Transaction(fn)
+		}
+		return fn(nil)
+	}
+
+	return runInTx(func(tx *gorm.DB) error {
+		now := time.Now()
+		if tx != nil {
+			_ = tx.Model(&model.Reregistration{}).Where("application_id = ?", appID).Updates(map[string]interface{}{
+				"status":     model.ReregistrationStatusCancelled,
+				"updated_at": now,
+			}).Error
+			_ = tx.Model(&model.Student{}).Where("application_id = ?", appID).Updates(map[string]interface{}{
+				"status":     model.StudentStatusWithdrawn,
+				"updated_at": now,
+			}).Error
+		} else {
+			rereg, _ := s.repo.GetReregistrationByApplicationID(ctx, appID)
+			if rereg != nil {
+				rereg.Status = model.ReregistrationStatusCancelled
+				_ = s.repo.UpdateReregistration(ctx, rereg)
+			}
+		}
+		return nil
+	})
+}
+

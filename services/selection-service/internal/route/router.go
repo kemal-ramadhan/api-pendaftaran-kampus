@@ -34,6 +34,7 @@ func SetupRouter(
 	internalGroup.Use(internalauth.Middleware(cfg.InternalToken))
 	{
 		internalGroup.GET("/results/:application_id", internalCtrl.GetResultByApplicationID)
+		internalGroup.POST("/applications/:application_id/withdraw", internalCtrl.HandleApplicationWithdrawal)
 	}
 
 	// 3. Downstream endpoints dari API Gateway

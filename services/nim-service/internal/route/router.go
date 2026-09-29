@@ -35,6 +35,7 @@ func SetupRouter(
 	{
 		internalGroup.POST("/nim/issue", nimCtrl.IssueNIM)
 		internalGroup.GET("/nim/issuances/:application_id", nimCtrl.GetIssuanceByApplicationID)
+		internalGroup.POST("/nim/issuances/:application_id/void", nimCtrl.VoidNIM)
 	}
 
 	// 3. Endpoint Downstream API Gateway
