@@ -52,3 +52,5 @@ __pycache__/
 services/ocr-service/tests/fixtures/
 
 final-check-report.txt
+
+duitku-sandbox-report.txt
