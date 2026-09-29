@@ -306,17 +306,45 @@ func TestIdentityService_AddressGuardianEducation(t *testing.T) {
 		t.Fatalf("Guardian tidak sesuai: %+v", g)
 	}
 
-	// 3. Simpan Riwayat Pendidikan
+	// 3. Simpan Riwayat Pendidikan (dengan report_average)
+	avg := 88.75
 	edu, err := svc.SaveEducation(ctx, user, dto.EducationHistoryRequest{
 		Level:          "SMA",
 		SchoolName:     "SMA Negeri 1 Bandung",
 		Major:          "IPA",
 		GraduationYear: 2024,
+		ReportAverage:  &avg,
 	})
 	if err != nil {
 		t.Fatalf("SaveEducation gagal: %v", err)
 	}
 	if edu.GraduationYear != 2024 {
 		t.Fatalf("Tahun kelulusan tidak sesuai: %d", edu.GraduationYear)
+	}
+	if edu.ReportAverage == nil || *edu.ReportAverage != 88.75 {
+		t.Fatalf("Nilai rata-rata rapor tidak sesuai: %v", edu.ReportAverage)
+	}
+
+	// 4. Test SearchNIK
+	rawNIK := "3273012345670001"
+	_, err = svc.UpdateProfile(ctx, user, dto.ProfileRequest{
+		FullName:   "Ahmad Subagyo",
+		NIK:        rawNIK,
+		BirthPlace: "Bandung",
+		BirthDate:  "2006-05-12",
+		Gender:     "L",
+		Religion:   "Islam",
+		Phone:      "081234567890",
+	})
+	if err != nil {
+		t.Fatalf("UpdateProfile gagal: %v", err)
+	}
+
+	pDetail, sErr := svc.SearchNIK(ctx, crypto.HashNIK(rawNIK))
+	if sErr != nil {
+		t.Fatalf("SearchNIK gagal: %v", sErr)
+	}
+	if pDetail == nil || pDetail.Profile.FullName != "Ahmad Subagyo" {
+		t.Fatalf("Data SearchNIK tidak cocok: %+v", pDetail)
 	}
 }

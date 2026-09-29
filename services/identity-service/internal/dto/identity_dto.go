@@ -81,11 +81,12 @@ type GuardianResponse struct {
 
 // EducationHistoryRequest payload riwayat pendidikan
 type EducationHistoryRequest struct {
-	Level          string `json:"level" binding:"required"` // SMA, SMK, MA, D3, dll
-	SchoolName     string `json:"school_name" binding:"required"`
-	NPSN           string `json:"npsn"`
-	Major          string `json:"major"`
-	GraduationYear int    `json:"graduation_year" binding:"required,min=1950,max=2100"`
+	Level          string   `json:"level" binding:"required"` // SMA, SMK, MA, D3, dll
+	SchoolName     string   `json:"school_name" binding:"required"`
+	NPSN           string   `json:"npsn"`
+	Major          string   `json:"major"`
+	GraduationYear int      `json:"graduation_year" binding:"required,min=1950,max=2100"`
+	ReportAverage  *float64 `json:"report_average"`
 }
 
 // EducationHistoryResponse representasi riwayat pendidikan
@@ -97,6 +98,19 @@ type EducationHistoryResponse struct {
 	NPSN           string    `json:"npsn"`
 	Major          string    `json:"major"`
 	GraduationYear int       `json:"graduation_year"`
+	ReportAverage  *float64  `json:"report_average"`
+}
+
+// SearchNIKRequest payload pencarian NIK internal
+type SearchNIKRequest struct {
+	NIKHash string `json:"nik_hash"`
+	NIK     string `json:"nik"`
+}
+
+// SearchNIKResponse respons pencarian NIK internal
+type SearchNIKResponse struct {
+	Found  bool                  `json:"found"`
+	Person *PersonDetailResponse `json:"person,omitempty"`
 }
 
 // CompletenessResponse respons kelengkapan data biodata (/me/completeness)

@@ -16,6 +16,7 @@ type EducationHistory struct {
 	NPSN           string         `gorm:"type:varchar(20)" json:"npsn"`
 	Major          string         `gorm:"type:varchar(100)" json:"major"` // mis. "IPA", "IPS", "Teknik Komputer"
 	GraduationYear int            `gorm:"not null" json:"graduation_year"`
+	ReportAverage  *float64       `gorm:"type:decimal(5,2)" json:"report_average"`
 	CreatedAt      time.Time      `json:"created_at"`
 	UpdatedAt      time.Time      `json:"updated_at"`
 	DeletedAt      gorm.DeletedAt `gorm:"index" json:"-"`

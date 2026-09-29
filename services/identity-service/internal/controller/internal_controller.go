@@ -7,6 +7,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/identity-service/internal/crypto"
 	"github.com/pkm-asia/pmb-backend/services/identity-service/internal/dto"
 	"github.com/pkm-asia/pmb-backend/services/identity-service/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/identity-service/internal/service"
@@ -92,4 +93,40 @@ func (ctrl *InternalController) BatchGetPersons(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Data batch identitas berhasil diambil", results)
+}
+
+// SearchNIK mencari identitas person berdasarkan NIK hash atau plain NIK (PRD 2.2)
+func (ctrl *InternalController) SearchNIK(c *gin.Context) {
+	var req dto.SearchNIKRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.UnprocessableEntity(c, "Format data pencarian NIK tidak valid", nil)
+		return
+	}
+
+	nikHash := req.NIKHash
+	if nikHash == "" && req.NIK != "" {
+		nikHash = crypto.HashNIK(req.NIK)
+	}
+
+	if nikHash == "" {
+		response.BadRequest(c, "INVALID_QUERY", "NIK atau hash NIK wajib disediakan")
+		return
+	}
+
+	detail, err := ctrl.identitySvc.SearchNIK(c.Request.Context(), nikHash)
+	if err != nil {
+		if errors.Is(err, repository.ErrPersonNotFound) {
+			response.Success(c, http.StatusOK, "Pencarian NIK selesai", dto.SearchNIKResponse{
+				Found: false,
+			})
+			return
+		}
+		response.InternalServerError(c, "Gagal memproses pencarian NIK")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Data NIK ditemukan", dto.SearchNIKResponse{
+		Found:  true,
+		Person: detail,
+	})
 }

@@ -37,6 +37,7 @@ type IdentityService interface {
 	UpdatePhoto(ctx context.Context, userID uuid.UUID, reader io.Reader, size int64, contentType string) (string, error)
 	GetPersonDetail(ctx context.Context, targetUserID uuid.UUID, callerUserID uuid.UUID, callerRoles []string) (*dto.PersonDetailResponse, error)
 	BatchGetPersons(ctx context.Context, userIDs []uuid.UUID) ([]dto.PersonDetailResponse, error)
+	SearchNIK(ctx context.Context, nikHash string) (*dto.PersonDetailResponse, error)
 }
 
 type identityService struct {
@@ -301,6 +302,7 @@ func (s *identityService) GetEducation(ctx context.Context, userID uuid.UUID) ([
 			NPSN:           e.NPSN,
 			Major:          e.Major,
 			GraduationYear: e.GraduationYear,
+			ReportAverage:  e.ReportAverage,
 		})
 	}
 	return res, nil
@@ -314,6 +316,7 @@ func (s *identityService) SaveEducation(ctx context.Context, userID uuid.UUID, r
 		NPSN:           strings.TrimSpace(req.NPSN),
 		Major:          strings.TrimSpace(req.Major),
 		GraduationYear: req.GraduationYear,
+		ReportAverage:  req.ReportAverage,
 		UpdatedAt:      time.Now(),
 	}
 
@@ -329,6 +332,7 @@ func (s *identityService) SaveEducation(ctx context.Context, userID uuid.UUID, r
 		NPSN:           e.NPSN,
 		Major:          e.Major,
 		GraduationYear: e.GraduationYear,
+		ReportAverage:  e.ReportAverage,
 	}, nil
 }
 
@@ -468,6 +472,7 @@ func (s *identityService) GetPersonDetail(ctx context.Context, targetUserID uuid
 			NPSN:           e.NPSN,
 			Major:          e.Major,
 			GraduationYear: e.GraduationYear,
+			ReportAverage:  e.ReportAverage,
 		})
 	}
 
@@ -532,6 +537,7 @@ func (s *identityService) BatchGetPersons(ctx context.Context, userIDs []uuid.UU
 			edus = append(edus, dto.EducationHistoryResponse{
 				ID: e.ID, UserID: e.UserID, Level: e.Level, SchoolName: e.SchoolName,
 				NPSN: e.NPSN, Major: e.Major, GraduationYear: e.GraduationYear,
+				ReportAverage:  e.ReportAverage,
 			})
 		}
 
@@ -544,4 +550,12 @@ func (s *identityService) BatchGetPersons(ctx context.Context, userIDs []uuid.UU
 	}
 
 	return result, nil
+}
+
+func (s *identityService) SearchNIK(ctx context.Context, nikHash string) (*dto.PersonDetailResponse, error) {
+	person, err := s.personRepo.FindByNIKHash(ctx, nikHash)
+	if err != nil {
+		return nil, err
+	}
+	return s.GetPersonDetail(ctx, person.UserID, person.UserID, []string{"superadmin"})
 }

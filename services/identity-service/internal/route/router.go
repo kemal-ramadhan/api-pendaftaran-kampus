@@ -33,6 +33,7 @@ func SetupRouter(
 		internalGroup.GET("/persons/:user_id", internalCtrl.GetPersonByID)
 		internalGroup.GET("/persons/:user_id/completeness", internalCtrl.GetPersonCompleteness)
 		internalGroup.POST("/persons/batch", internalCtrl.BatchGetPersons)
+		internalGroup.POST("/persons/search-nik", internalCtrl.SearchNIK)
 	}
 
 	// 3. Downstream API endpoints (wajib signature gateway)
