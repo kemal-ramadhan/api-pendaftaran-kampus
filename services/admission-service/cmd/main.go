@@ -62,6 +62,7 @@ func main() {
 		&model.ApplicationChange{},
 		&model.PathChangeRequest{},
 		&model.Withdrawal{},
+		&model.OfficialDocument{},
 		&outbox.Event{},
 	)
 	if err != nil {
@@ -98,6 +99,15 @@ func main() {
 	if cfg.FinanceServiceURL != "" {
 		financeCli = internalclient.NewClient(internalclient.Config{
 			BaseURL:       cfg.FinanceServiceURL,
+			InternalToken: cfg.InternalToken,
+			Timeout:       10 * time.Second,
+		})
+	}
+
+	var orgCli internalclient.Client
+	if cfg.OrganizationServiceURL != "" {
+		orgCli = internalclient.NewClient(internalclient.Config{
+			BaseURL:       cfg.OrganizationServiceURL,
 			InternalToken: cfg.InternalToken,
 			Timeout:       10 * time.Second,
 		})
@@ -197,6 +207,7 @@ func main() {
 	docRepo := repository.NewApplicationDocumentRepository(db)
 	reqRepo := repository.NewDocumentRequirementRepository(db)
 	withdrawalRepo := repository.NewWithdrawalRepository(db)
+	officialDocRepo := repository.NewOfficialDocumentRepository(db)
 
 	// 8. Inisialisasi Service
 	admissionSvc := service.NewAdmissionService(
@@ -206,9 +217,11 @@ func main() {
 		appRepo,
 		docRepo,
 		outboxRepo,
+		officialDocRepo,
 		notifCli,
 		identityCli,
 		financeCli,
+		orgCli,
 		storageCli,
 		*cfg,
 	)

@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/controller"
 )
 
@@ -34,6 +35,7 @@ func SetupRouter(
 	{
 		publicGroup.GET("/periods/active", publicCtrl.GetActivePeriod)
 		publicGroup.GET("/paths", publicCtrl.GetAdmissionPaths)
+		publicGroup.GET("/options", publicCtrl.GetOptions)
 		publicGroup.GET("/withdrawals/verify/:code", withdrawalCtrl.VerifyWithdrawalPublic)
 	}
 	r.GET("/withdrawals/verify/:code", withdrawalCtrl.VerifyWithdrawalPublic)
@@ -53,6 +55,9 @@ func SetupRouter(
 	authGroup := r.Group("")
 	authGroup.Use(gatewayauth.Middleware(cfg.GatewaySecret))
 	{
+		// Camaba v2 Dashboard
+		authGroup.GET("/admission/dashboard", publicCtrl.GetDashboard)
+
 		// Pendaftar endpoints
 		registerUserRoutes := func(prefix string) {
 			userGroup := authGroup.Group(prefix)
@@ -63,7 +68,7 @@ func SetupRouter(
 				userGroup.GET("/me/eligibility", appCtrl.GetEligibility)
 				userGroup.POST("/me/cancel", appCtrl.CancelApplication)
 				userGroup.GET("/me/progress", appCtrl.GetProgress)
-				userGroup.GET("/me/dashboard", changeCtrl.GetDashboard)
+				userGroup.GET("/me/dashboard", publicCtrl.GetDashboard)
 				userGroup.POST("/me/documents", appCtrl.UploadDocument)
 				userGroup.DELETE("/me/documents/:code", appCtrl.DeleteDocument)
 				userGroup.GET("/me/documents/:code/url", appCtrl.GetDocumentURL)
@@ -95,43 +100,64 @@ func SetupRouter(
 		registerUserRoutes("/admission/applications")
 		registerUserRoutes("/applications")
 
-		// Admin, Staf Prodi, & Pimpinan endpoints
+		// Admin & Staf PMB endpoints (RBAC)
 		registerAdminRoutes := func(prefix string) {
 			adminGroup := authGroup.Group(prefix)
-			adminGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb", "prodi", "pimpinan"))
 			{
-				adminGroup.GET("/stats", adminCtrl.GetStats)
-				adminGroup.GET("/applications", adminCtrl.ListApplications)
-				adminGroup.GET("/applications/export", adminCtrl.ExportApplications)
-				adminGroup.GET("/applications/:id", adminCtrl.GetApplicationDetail)
-				adminGroup.POST("/applications/:id/verify", adminCtrl.VerifyDocuments)
-				adminGroup.GET("/applications/:id/documents/:code/url", adminCtrl.GetDocumentURL)
+				// Ringkasan & KPI (dashboard.overview.read)
+				adminGroup.GET("/header-summary", rbac.RequirePermission("dashboard.overview.read"), adminCtrl.GetHeaderSummary)
+				adminGroup.GET("/overview", rbac.RequirePermission("dashboard.overview.read"), adminCtrl.GetOverview)
+				adminGroup.GET("/stats", rbac.RequirePermission("dashboard.overview.read"), adminCtrl.GetStats)
 
-				// CR-006 Admin (Riwayat & Pindah Jalur)
-				adminGroup.GET("/path-change-requests", changeCtrl.AdminListPathChangeRequests)
-				adminGroup.POST("/path-change-requests/:id/approve", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminApprovePathChangeRequest)
-				adminGroup.POST("/path-change-requests/:id/reject", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminRejectPathChangeRequest)
-				adminGroup.POST("/applications/:id/move", gatewayauth.RequireRole("admin_pmb", "superadmin"), changeCtrl.AdminMoveApplication)
-				adminGroup.GET("/applications/:id/changes", changeCtrl.AdminGetApplicationChanges)
-				adminGroup.GET("/path-changes/export", changeCtrl.AdminExportPathChanges)
+				// Verifikasi Berkas (admission.document.verify)
+				adminGroup.GET("/document-queue", rbac.RequirePermission("admission.document.verify"), adminCtrl.GetDocumentQueue)
+				adminGroup.GET("/applications/:id/documents", rbac.RequirePermission("admission.document.verify"), adminCtrl.GetApplicationDocuments)
+				adminGroup.POST("/applications/:id/verify", rbac.RequirePermission("admission.document.verify"), adminCtrl.VerifyDocuments)
+				adminGroup.PUT("/applications/:id/documents/:doc_id/verify", rbac.RequirePermission("admission.document.verify"), adminCtrl.VerifyDocuments)
+				adminGroup.GET("/applications/:id/documents/:code/url", rbac.RequirePermission("admission.document.verify"), adminCtrl.GetDocumentURL)
+				adminGroup.GET("/applications", rbac.RequirePermission("admission.document.verify", "dashboard.overview.read"), adminCtrl.ListApplications)
+				adminGroup.GET("/applications/:id", rbac.RequirePermission("admission.document.verify", "dashboard.overview.read"), adminCtrl.GetApplicationDetail)
 
-				// CR-007 Admin (Pengunduran Diri)
-				adminGroup.GET("/withdrawals", withdrawalCtrl.AdminListWithdrawals)
-				adminGroup.POST("/withdrawals/:id/approve", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminApproveWithdrawal)
-				adminGroup.POST("/withdrawals/:id/reject", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminRejectWithdrawal)
-				adminGroup.POST("/applications/:id/withdraw", gatewayauth.RequireRole("admin_pmb", "superadmin"), withdrawalCtrl.AdminWithdrawApplication)
-				adminGroup.GET("/withdrawals/stats", withdrawalCtrl.AdminGetWithdrawalStats)
-				adminGroup.GET("/withdrawals/export", withdrawalCtrl.AdminExportWithdrawalsXLSX)
+				// Dashboard Institusi (dashboard.institution.read)
+				adminGroup.GET("/institution-dashboard", rbac.RequirePermission("dashboard.institution.read"), adminCtrl.GetInstitutionDashboard)
 
-				// Master data management (PRD C.4.4 / TINGGI-1)
+				// Laporan & Ekspor (report.export & report.official.print)
+				adminGroup.GET("/reports/preview", rbac.RequirePermission("report.export"), adminCtrl.GetReportsPreview)
+				adminGroup.GET("/reports/applicants/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
+				adminGroup.GET("/reports/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
+				adminGroup.GET("/applications/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
+				adminGroup.GET("/reports/official.pdf", rbac.RequirePermission("report.official.print"), adminCtrl.PrintOfficialReport)
+				adminGroup.GET("/reports/:type/official.pdf", rbac.RequirePermission("report.official.print"), adminCtrl.PrintOfficialReport)
+
+				// CR-006 Admin (Riwayat & Pindah Jalur - admission.path_change.manage)
+				adminGroup.GET("/path-change-requests", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminListPathChangeRequests)
+				adminGroup.POST("/path-change-requests/:id/approve", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminApprovePathChangeRequest)
+				adminGroup.POST("/path-change-requests/:id/reject", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminRejectPathChangeRequest)
+				adminGroup.POST("/applications/:id/move", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminMoveApplication)
+				adminGroup.POST("/path-changes/direct", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminMoveApplication)
+				adminGroup.POST("/path-changes/:id/review", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminApprovePathChangeRequest)
+				adminGroup.GET("/applications/:id/changes", rbac.RequirePermission("admission.path_change.manage", "admission.document.verify"), changeCtrl.AdminGetApplicationChanges)
+				adminGroup.GET("/path-changes/export", rbac.RequirePermission("report.export", "admission.path_change.manage"), changeCtrl.AdminExportPathChanges)
+
+				// CR-007 Admin (Pengunduran Diri - admission.withdrawal.manage)
+				adminGroup.GET("/withdrawals", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminListWithdrawals)
+				adminGroup.POST("/withdrawals/:id/approve", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminApproveWithdrawal)
+				adminGroup.POST("/withdrawals/:id/reject", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminRejectWithdrawal)
+				adminGroup.POST("/withdrawals/:id/review", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminApproveWithdrawal)
+				adminGroup.POST("/applications/:id/withdraw", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminWithdrawApplication)
+				adminGroup.POST("/withdrawals/direct", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminWithdrawApplication)
+				adminGroup.GET("/withdrawals/stats", rbac.RequirePermission("admission.withdrawal.manage", "dashboard.overview.read"), withdrawalCtrl.AdminGetWithdrawalStats)
+				adminGroup.GET("/withdrawals/export", rbac.RequirePermission("report.export", "admission.withdrawal.manage"), withdrawalCtrl.AdminExportWithdrawalsXLSX)
+
+				// Master data management (organization.program.manage)
 				adminGroup.GET("/periods", adminCtrl.ListPeriods)
-				adminGroup.POST("/periods", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePeriod)
+				adminGroup.POST("/periods", rbac.RequirePermission("organization.program.manage"), adminCtrl.CreatePeriod)
 				adminGroup.GET("/paths", adminCtrl.ListPaths)
-				adminGroup.POST("/paths", gatewayauth.RequireRole("superadmin"), adminCtrl.CreatePath)
+				adminGroup.POST("/paths", rbac.RequirePermission("organization.program.manage"), adminCtrl.CreatePath)
 				adminGroup.GET("/quotas", adminCtrl.ListQuotas)
-				adminGroup.POST("/quotas", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateQuota)
+				adminGroup.POST("/quotas", rbac.RequirePermission("organization.program.manage"), adminCtrl.CreateQuota)
 				adminGroup.GET("/requirements", adminCtrl.ListRequirements)
-				adminGroup.POST("/requirements", gatewayauth.RequireRole("superadmin"), adminCtrl.CreateRequirement)
+				adminGroup.POST("/requirements", rbac.RequirePermission("organization.program.manage"), adminCtrl.CreateRequirement)
 			}
 		}
 

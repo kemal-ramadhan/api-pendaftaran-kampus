@@ -15,13 +15,22 @@ func SeedAdmissionData(ctx context.Context, db *gorm.DB) error {
 	var periodCount int64
 	db.WithContext(ctx).Model(&model.Period{}).Count(&periodCount)
 	var activePeriod model.Period
+	examDate := time.Now().AddDate(0, 1, 0)
+	announcementDate := time.Now().AddDate(0, 1, 14)
+	reregStart := time.Now().AddDate(0, 1, 15)
+	reregEnd := time.Now().AddDate(0, 1, 30)
+
 	if periodCount == 0 {
 		activePeriod = model.Period{
-			Name:         "Gelombang 1 PMB 2026/2027",
-			AcademicYear: "2026/2027",
-			StartDate:    time.Now().AddDate(0, -1, 0), // Mulai 1 bulan lalu
-			EndDate:      time.Now().AddDate(0, 3, 0),  // Berakhir 3 bulan ke depan
-			IsActive:     true,
+			Name:                "Gelombang 1 PMB 2026/2027",
+			AcademicYear:        "2026/2027",
+			StartDate:           time.Now().AddDate(0, -1, 0), // Mulai 1 bulan lalu
+			EndDate:             time.Now().AddDate(0, 3, 0),  // Berakhir 3 bulan ke depan
+			IsActive:            true,
+			ExamDate:            &examDate,
+			AnnouncementDate:    &announcementDate,
+			ReregistrationStart: &reregStart,
+			ReregistrationEnd:   &reregEnd,
 		}
 		if err := db.WithContext(ctx).Create(&activePeriod).Error; err != nil {
 			return err
@@ -29,6 +38,14 @@ func SeedAdmissionData(ctx context.Context, db *gorm.DB) error {
 		log.Println("[ADMISSION-SEEDER] Berhasil seed periode aktif:", activePeriod.Name)
 	} else {
 		_ = db.WithContext(ctx).Where("is_active = ?", true).First(&activePeriod).Error
+		if activePeriod.ExamDate == nil {
+			db.WithContext(ctx).Model(&activePeriod).Updates(map[string]interface{}{
+				"exam_date":            examDate,
+				"announcement_date":    announcementDate,
+				"reregistration_start": reregStart,
+				"reregistration_end":   reregEnd,
+			})
+		}
 	}
 
 	// 2. Seed 4 Jalur Masuk
@@ -76,52 +93,52 @@ func SeedAdmissionData(ctx context.Context, db *gorm.DB) error {
 				return err
 			}
 
-			// Tambahkan persyaratan dokumen dasar untuk setiap jalur
+			// Tambahkan 5 persyaratan dokumen default (PRD 2.2 & 3.4)
 			docs := []model.DocumentRequirement{
 				{
 					AdmissionPathID: pathItem.ID,
-					DocumentType:    "ijazah",
+					DocumentType:    "IJAZAH_SKL",
 					Name:            "Ijazah / Surat Keterangan Lulus (SKL)",
-					Description:     "Scan dokumen asli Ijazah atau SKL bagi lulusan tahun berjalan",
+					Description:     "Unggah pindaian ijazah atau SKL asli terlegalisasi",
 					IsRequired:      true,
-					MaxSizeMB:       5,
+					MaxSizeMB:       2,
 					AllowedFormats:  "pdf,jpg,jpeg,png",
 				},
 				{
 					AdmissionPathID: pathItem.ID,
-					DocumentType:    "rapor",
-					Name:            "Transkrip Nilai / Rapor Semester 1-5",
-					Description:     "Scan buku rapor atau transkrip nilai resmi yang telah dilegalisir",
+					DocumentType:    "KTP_KIA_KP",
+					Name:            "Kartu Identitas (KTP / KIA / Kartu Pelajar)",
+					Description:     "Unggah pindaian KTP, KIA, atau Kartu Pelajar asli",
 					IsRequired:      true,
-					MaxSizeMB:       10,
-					AllowedFormats:  "pdf",
+					MaxSizeMB:       2,
+					AllowedFormats:  "pdf,jpg,jpeg,png",
 				},
 				{
 					AdmissionPathID: pathItem.ID,
-					DocumentType:    "ktp",
-					Name:            "Kartu Tanda Penduduk (KTP) / Kartu Pelajar",
-					Description:     "Scan KTP asli atau Kartu Pelajar yang masih berlaku",
-					IsRequired:      true,
-					MaxSizeMB:       3,
-					AllowedFormats:  "jpg,jpeg,png,pdf",
-				},
-				{
-					AdmissionPathID: pathItem.ID,
-					DocumentType:    "kk",
+					DocumentType:    "KK",
 					Name:            "Kartu Keluarga (KK)",
-					Description:     "Scan Kartu Keluarga terbaru",
+					Description:     "Unggah pindaian Kartu Keluarga terbaru",
 					IsRequired:      true,
-					MaxSizeMB:       3,
+					MaxSizeMB:       2,
 					AllowedFormats:  "pdf,jpg,jpeg,png",
 				},
 				{
 					AdmissionPathID: pathItem.ID,
-					DocumentType:    "pas_foto",
+					DocumentType:    "PAS_FOTO",
 					Name:            "Pas Foto Formal Berwarna",
-					Description:     "Pas foto terbaru berpakaian rapi dengan latar belakang merah/biru",
+					Description:     "Unggah pas foto formal terbaru ukuran 4x6 latar belakang merah atau biru",
 					IsRequired:      true,
 					MaxSizeMB:       2,
 					AllowedFormats:  "jpg,jpeg,png",
+				},
+				{
+					AdmissionPathID: pathItem.ID,
+					DocumentType:    "SURAT_SEHAT",
+					Name:            "Surat Keterangan Sehat",
+					Description:     "Unggah surat keterangan sehat asli dari puskesmas, rumah sakit, atau klinik",
+					IsRequired:      true,
+					MaxSizeMB:       2,
+					AllowedFormats:  "pdf,jpg,jpeg,png",
 				},
 			}
 
@@ -131,7 +148,7 @@ func SeedAdmissionData(ctx context.Context, db *gorm.DB) error {
 					DocumentType:    "sertifikat_prestasi",
 					Name:            "Sertifikat Prestasi / Piagam Kejuaraan",
 					Description:     "Scan sertifikat kejuaraan minimal tingkat kota/kabupaten",
-					IsRequired:      true,
+					IsRequired:      false,
 					MaxSizeMB:       5,
 					AllowedFormats:  "pdf,jpg,jpeg,png",
 				})
@@ -145,7 +162,30 @@ func SeedAdmissionData(ctx context.Context, db *gorm.DB) error {
 				_ = db.WithContext(ctx).Create(&docItem).Error
 			}
 		}
-		log.Println("[ADMISSION-SEEDER] Berhasil seed 4 jalur masuk dan dokumen persyaratan")
+		log.Println("[ADMISSION-SEEDER] Berhasil seed 4 jalur masuk dan 5 dokumen persyaratan default")
+	} else {
+		// Pastikan SURAT_SEHAT selalu ada di setiap jalur aktif
+		var existingPaths []model.AdmissionPath
+		db.WithContext(ctx).Find(&existingPaths)
+		for _, ep := range existingPaths {
+			var suratSehatCount int64
+			db.WithContext(ctx).Model(&model.DocumentRequirement{}).
+				Where("admission_path_id = ? AND UPPER(document_type) = ?", ep.ID, "SURAT_SEHAT").
+				Count(&suratSehatCount)
+			if suratSehatCount == 0 {
+				docItem := model.DocumentRequirement{
+					ID:              uuid.New(),
+					AdmissionPathID: ep.ID,
+					DocumentType:    "SURAT_SEHAT",
+					Name:            "Surat Keterangan Sehat",
+					Description:     "Unggah surat keterangan sehat asli dari puskesmas, rumah sakit, atau klinik",
+					IsRequired:      true,
+					MaxSizeMB:       2,
+					AllowedFormats:  "pdf,jpg,jpeg,png",
+				}
+				_ = db.WithContext(ctx).Create(&docItem).Error
+			}
+		}
 	}
 
 	return nil

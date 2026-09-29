@@ -430,9 +430,11 @@ func TestAdmissionService_DocumentsAndSubmitFlow(t *testing.T) {
 		appRepo,
 		docRepo,
 		outboxRepo,
+		nil,
 		notifCli,
 		identityCli,
 		financeCli,
+		nil,
 		storageCli,
 		cfg,
 	)

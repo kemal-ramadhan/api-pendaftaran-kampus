@@ -11,8 +11,12 @@ type Period struct {
 	StartDate    time.Time `gorm:"not null" json:"start_date"`
 	EndDate      time.Time `gorm:"not null" json:"end_date"`
 	IsActive     bool      `gorm:"not null;default:true" json:"is_active"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ExamDate           *time.Time `json:"exam_date,omitempty"`
+	AnnouncementDate   *time.Time `json:"announcement_date,omitempty"`
+	ReregistrationStart *time.Time `json:"reregistration_start,omitempty"`
+	ReregistrationEnd   *time.Time `json:"reregistration_end,omitempty"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
 }
 
 func (p *Period) IsOpenNow() bool {

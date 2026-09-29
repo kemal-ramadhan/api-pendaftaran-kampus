@@ -18,6 +18,7 @@ type Config struct {
 	DBName                 string
 	GatewaySharedSecret    string
 	InternalToken          string
+	OrganizationServiceURL string
 	NotificationServiceURL string
 	FinanceServiceURL      string
 	IdentityServiceURL     string
@@ -48,6 +49,7 @@ func LoadConfig() (*Config, error) {
 		DBName:                 getEnv("DB_NAME", "pmb_admission"),
 		GatewaySharedSecret:    getEnv("GATEWAY_SHARED_SECRET", "secret-gateway-hmac"),
 		InternalToken:          getEnv("INTERNAL_TOKEN", "secret-internal-token"),
+		OrganizationServiceURL: getEnv("ORGANIZATION_SERVICE_URL", "http://localhost:8081"),
 		NotificationServiceURL: getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://localhost:8085"),
 		IdentityServiceURL:     getEnv("IDENTITY_SERVICE_URL", "http://localhost:8082"),

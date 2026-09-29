@@ -95,6 +95,9 @@ func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string
 	req.Header.Set(gatewayauth.HeaderRequestID, reqID)
 	req.Header.Set(gatewayauth.HeaderUserID, userID)
 	req.Header.Set(gatewayauth.HeaderUserRoles, role)
+	if role == "admin_pmb" {
+		req.Header.Set("X-User-Permissions", "admission.document.verify,dashboard.overview.read")
+	}
 }
 
 func TestAdmissionRouter_PublicEndpoints(t *testing.T) {

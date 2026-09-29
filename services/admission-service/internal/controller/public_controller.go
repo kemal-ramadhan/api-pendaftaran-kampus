@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/service"
@@ -40,4 +41,25 @@ func (ctrl *PublicController) GetAdmissionPaths(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Daftar jalur pendaftaran berhasil diambil", paths)
+}
+
+// GetOptions menangani GET /admission/options (PRD 3.3)
+func (ctrl *PublicController) GetOptions(c *gin.Context) {
+	opts, err := ctrl.svc.GetAdmissionOptions(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil opsi jalur dan prodi: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Opsi jalur dan program studi berhasil diambil", opts)
+}
+
+// GetDashboard menangani GET /admission/dashboard (PRD 3.1)
+func (ctrl *PublicController) GetDashboard(c *gin.Context) {
+	userID, _ := gatewayauth.GetUserID(c)
+	dash, err := ctrl.svc.GetCamabaDashboardV2(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil dashboard calon mahasiswa: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Dashboard pendaftaran berhasil diambil", dash)
 }

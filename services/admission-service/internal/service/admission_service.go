@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
 	"github.com/pkm-asia/pmb-backend/pkg/outbox"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/pkg/storage"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/exporter"
@@ -119,20 +120,33 @@ type AdmissionService interface {
 	GetDocumentPresignedURL(ctx context.Context, appID uuid.UUID, reqCode string, requesterID uuid.UUID, role string) (string, error)
 	ExportApplicationsXLSX(ctx context.Context, filter repository.ApplicationFilter) ([]byte, error)
 	GetStats(ctx context.Context) (*model.AdmissionStats, error)
+
+	// CR-009 & CR-010 Admin Portal & Camaba v2
+	GetHeaderSummary(ctx context.Context, periodID *uint, scope rbac.ScopeResult) (*HeaderSummaryResponse, error)
+	GetOverview(ctx context.Context, periodID *uint, scope rbac.ScopeResult, role string) (*OverviewResponse, error)
+	GetDocumentQueue(ctx context.Context, periodID *uint, status, q string, page, limit int, scope rbac.ScopeResult) (*DocumentQueueResponse, error)
+	GetApplicationDocumentsModal(ctx context.Context, appID uuid.UUID, scope rbac.ScopeResult) (*ApplicationDocumentsModalResponse, error)
+	GetInstitutionDashboard(ctx context.Context, periodID *uint, level, code string, scope rbac.ScopeResult) (*InstitutionDashboardResponse, error)
+	GetReportsPreview(ctx context.Context, periodID *uint, programCode string, scope rbac.ScopeResult) (*ReportPreviewResponse, error)
+	GenerateOfficialReportPDF(ctx context.Context, docType string, periodID *uint, actorID uuid.UUID, actorName string) ([]byte, string, error)
+	GetCamabaDashboardV2(ctx context.Context, userID uuid.UUID) (*CamabaDashboardV2Response, error)
+	GetAdmissionOptions(ctx context.Context) (*AdmissionOptionsResponse, error)
 }
 
 type admissionService struct {
-	periodRepo  repository.PeriodRepository
-	pathRepo    repository.AdmissionPathRepository
-	quotaRepo   repository.QuotaRepository
-	appRepo     repository.ApplicationRepository
-	docRepo     repository.ApplicationDocumentRepository
-	outboxRepo  outbox.Repository
-	notifCli    internalclient.Client
-	identityCli internalclient.Client
-	financeCli  internalclient.Client
-	storageCli  storage.Client
-	cfg         config.Config
+	periodRepo      repository.PeriodRepository
+	pathRepo        repository.AdmissionPathRepository
+	quotaRepo       repository.QuotaRepository
+	appRepo         repository.ApplicationRepository
+	docRepo         repository.ApplicationDocumentRepository
+	outboxRepo      outbox.Repository
+	officialDocRepo repository.OfficialDocumentRepository
+	notifCli        internalclient.Client
+	identityCli     internalclient.Client
+	financeCli      internalclient.Client
+	orgCli          internalclient.Client
+	storageCli      storage.Client
+	cfg             config.Config
 }
 
 func NewAdmissionService(
@@ -142,24 +156,28 @@ func NewAdmissionService(
 	appRepo repository.ApplicationRepository,
 	docRepo repository.ApplicationDocumentRepository,
 	outboxRepo outbox.Repository,
+	officialDocRepo repository.OfficialDocumentRepository,
 	notifCli internalclient.Client,
 	identityCli internalclient.Client,
 	financeCli internalclient.Client,
+	orgCli internalclient.Client,
 	storageCli storage.Client,
 	cfg config.Config,
 ) AdmissionService {
 	return &admissionService{
-		periodRepo:  periodRepo,
-		pathRepo:    pathRepo,
-		quotaRepo:   quotaRepo,
-		appRepo:     appRepo,
-		docRepo:     docRepo,
-		outboxRepo:  outboxRepo,
-		notifCli:    notifCli,
-		identityCli: identityCli,
-		financeCli:  financeCli,
-		storageCli:  storageCli,
-		cfg:         cfg,
+		periodRepo:      periodRepo,
+		pathRepo:        pathRepo,
+		quotaRepo:       quotaRepo,
+		appRepo:         appRepo,
+		docRepo:         docRepo,
+		outboxRepo:      outboxRepo,
+		officialDocRepo: officialDocRepo,
+		notifCli:        notifCli,
+		identityCli:     identityCli,
+		financeCli:      financeCli,
+		orgCli:          orgCli,
+		storageCli:      storageCli,
+		cfg:             cfg,
 	}
 }
 

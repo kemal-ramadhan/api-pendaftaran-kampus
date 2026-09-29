@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/repository"
@@ -391,5 +392,171 @@ func (ctrl *AdminController) CreateRequirement(c *gin.Context) {
 		return
 	}
 	response.Success(c, http.StatusCreated, "Persyaratan dokumen berhasil dibuat", input)
+}
+
+// GetHeaderSummary menangani GET /admission/admin/header-summary
+func (ctrl *AdminController) GetHeaderSummary(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	res, err := ctrl.svc.GetHeaderSummary(c.Request.Context(), periodID, scope)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil ringkasan header: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Ringkasan header pendaftaran berhasil diambil", res)
+}
+
+// GetOverview menangani GET /admission/admin/overview
+func (ctrl *AdminController) GetOverview(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	roles := gatewayauth.GetUserRoles(c)
+	role := "admin_pmb"
+	if len(roles) > 0 {
+		role = roles[0]
+	}
+
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	res, err := ctrl.svc.GetOverview(c.Request.Context(), periodID, scope, role)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memuat overview eksekutif: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Overview pendaftaran berhasil diambil", res)
+}
+
+// GetDocumentQueue menangani GET /admission/admin/document-queue
+func (ctrl *AdminController) GetDocumentQueue(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	status := c.Query("status")
+	q := c.Query("q")
+	if q == "" {
+		q = c.Query("search")
+	}
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	res, err := ctrl.svc.GetDocumentQueue(c.Request.Context(), periodID, status, q, page, limit, scope)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memuat antrean berkas: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Antrean berkas pendaftaran berhasil diambil", res)
+}
+
+// GetApplicationDocuments menangani GET /admission/admin/applications/:id/documents
+func (ctrl *AdminController) GetApplicationDocuments(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	idStr := c.Param("id")
+	appID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID pendaftaran tidak valid")
+		return
+	}
+
+	res, err := ctrl.svc.GetApplicationDocumentsModal(c.Request.Context(), appID, scope)
+	if err != nil {
+		if errors.Is(err, repository.ErrApplicationNotFound) {
+			response.NotFound(c, "Data pendaftaran tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal memuat dokumen pendaftaran: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Dokumen pendaftaran berhasil diambil", res)
+}
+
+// GetInstitutionDashboard menangani GET /admission/admin/institution-dashboard
+func (ctrl *AdminController) GetInstitutionDashboard(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+	level := c.Query("level")
+	code := c.Query("code")
+
+	res, err := ctrl.svc.GetInstitutionDashboard(c.Request.Context(), periodID, level, code, scope)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memuat dashboard institusi: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Dashboard institusi berhasil diambil", res)
+}
+
+// GetReportsPreview menangani GET /admission/admin/reports/preview
+func (ctrl *AdminController) GetReportsPreview(c *gin.Context) {
+	scope := rbac.ScopeFilter(c)
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+	program := c.Query("program")
+
+	res, err := ctrl.svc.GetReportsPreview(c.Request.Context(), periodID, program, scope)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memuat pratinjau laporan: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Pratinjau laporan berhasil diambil", res)
+}
+
+// PrintOfficialReport menangani GET /admission/admin/reports/:type/official.pdf dan /reports/official.pdf
+func (ctrl *AdminController) PrintOfficialReport(c *gin.Context) {
+	docType := c.Param("type")
+	if docType == "" {
+		docType = c.DefaultQuery("type", "registrant")
+	}
+
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	actorID, _ := gatewayauth.GetUserID(c)
+	actorName := c.GetHeader("X-User-Name")
+	if actorName == "" {
+		actorName = "Admin PMB"
+	}
+
+	pdfBytes, fileName, err := ctrl.svc.GenerateOfficialReportPDF(c.Request.Context(), docType, periodID, actorID, actorName)
+	if err != nil {
+		response.InternalServerError(c, "Gagal menghasilkan berita acara resmi: "+err.Error())
+		return
+	}
+
+	c.Header("Content-Type", "application/pdf")
+	c.Header("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", fileName))
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }
 
