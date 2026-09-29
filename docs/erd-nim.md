@@ -28,6 +28,7 @@ erDiagram
         uuid application_id UK "ID Pendaftaran (Idempoten)"
         uuid user_id FK "ID Pengguna Global"
         varchar(30) nim UK "Nomor Induk Mahasiswa Unik"
+        varchar(30) status "active / voided (default: active)"
         int entry_year
         varchar(30) study_program_code
         varchar(50) selection_path "Jalur Seleksi"
@@ -54,7 +55,12 @@ erDiagram
 2. **`nim_sequences`**:
    - Memiliki *unique constraint* kombinasi `(entry_year, study_program_code)`.
    - Baris di-lock secara atomik menggunakan query pesimistik `SELECT ... FOR UPDATE` dalam transaksi database PostgreSQL saat penerbitan, sehingga menjamin tidak ada duplikasi nomor urut walaupun terjadi puluhan permintaan penerbitan bersamaan.
+   - Sesuai Keputusan P4 (CR-007), sequence counter tidak pernah dimundurkan jika ada pembatalan NIM, agar nomor urut tetap unik dan audit trail terjaga.
 
 3. **`nim_issuances`**:
    - Kolom `application_id` berstatus `UNIQUE`. Jika layanan dipanggil berulang kali untuk ID pendaftaran yang sama, sistem langsung mengembalikan rekor NIM yang telah ada (*idempotent*) tanpa menaikkan sequence counter.
    - Kolom `nim` berstatus `UNIQUE` di tingkat basis data.
+   - Kolom `status`:
+     - `active`: NIM resmi aktif digunakan oleh mahasiswa.
+     - `voided`: NIM dibatalkan statusnya akibat mahasiswa mengundurkan diri (CR-007). Rekor dan nomor NIM tidak dihapus dari basis data demi integritas audit dan sejarah akademik.
+

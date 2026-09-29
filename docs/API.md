@@ -86,6 +86,13 @@ Semua respons error membungkus informasi kesalahan secara seragam:
 | `FILE_TYPE_NOT_ALLOWED` | 422 | Format berkas bukan PDF, JPG, atau PNG yang sah (validasi MIME magic header). |
 | `FILE_TOO_LARGE` | 422 | Ukuran berkas melebihi batas maksimal (maks 2 MB). |
 | `WEBHOOK_SIGNATURE_INVALID` | 401 | Tanda tangan verifikasi webhook payment gateway tidak sah. |
+| `PATH_CHANGE_PENDING` | 409 | Masih ada pengajuan pindah jalur yang berstatus pending. |
+| `PATH_CHANGE_LIMIT_REACHED` | 409 | Batas kuota perubahan jalur (maksimal 1x setelah bayar) telah tercapai. |
+| `PATH_CHANGE_NOT_ALLOWED` | 409 | Perubahan jalur tidak diizinkan pada status pendaftaran saat ini. |
+| `WITHDRAWAL_PENDING` | 409 | Masih ada permohonan pengunduran diri yang berstatus pending. |
+| `WITHDRAWAL_NOT_ALLOWED` | 409 | Pengunduran diri tidak diizinkan pada status pendaftaran saat ini (misal draft/unpaid). |
+| `PASSWORD_CONFIRMATION_FAILED` | 401 | Konfirmasi kata sandi salah saat mengajukan pengunduran diri. |
+| `PAYMENT_PROVIDER_ERROR` | 502 | Kesalahan respon atau kegagalan koneksi ke payment gateway Duitku. |
 
 ---
 
@@ -2334,6 +2341,165 @@ Dashboard Statistik Pimpinan (Executive Dashboard) mengintegrasikan visibilitas 
 - **`GET /api/v1/finance/invoices/me/:id/payments/:payment_id/status`**
   - **Akses**: `calon_mahasiswa`
   - **Fungsi**: Polling status pembayaran realtime setelah kembali dari portal Duitku sandbox/production.
+
+---
+
+## 18. Endpoint Tambahan — CR-006, CR-007, & CR-008
+
+### 18.1 CR-006: Riwayat Perubahan & Pindah Jalur Masuk
+
+#### A. Calon Mahasiswa
+
+- **`GET /api/v1/admission/applications/me/changes`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengambil kronologis riwayat perubahan pendaftaran (ganti prodi, pindah jalur, pembatalan/pengunduran diri) dengan label deskriptif.
+
+- **`GET /api/v1/admission/applications/me/path-change/options`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengambil opsi jalur tujuan yang tersedia beserta perhitungan selisih biaya pendaftaran (tagihan penyesuaian jika lebih mahal).
+
+- **`POST /api/v1/admission/applications/me/path-change`**
+  - **Akses**: `calon_mahasiswa`
+  - **Request Body**:
+    ```json
+    {
+      "target_path_id": 2,
+      "reason": "Ingin beralih ke jalur beasiswa prestasi"
+    }
+    ```
+  - **Logika**:
+    - Sebelum bayar (`awaiting_payment`): Pindah langsung tanpa persetujuan admin; invoice lama dibatalkan dan invoice baru diterbitkan.
+    - Setelah bayar: Berstatus `pending` (memerlukan persetujuan admin). Maksimal 1x pengajuan setelah bayar. Jika diajukan lagi akan menghasilkan `409 PATH_CHANGE_LIMIT_REACHED`.
+    - Ditolak jika pendaftaran berstatus `exam_scheduled` atau lebih lanjut (`409 PATH_CHANGE_NOT_ALLOWED`).
+
+#### B. Administrator
+
+- **`GET /api/v1/admission/admin/path-changes/pending`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Mengambil daftar antrean permohonan pindah jalur yang menunggu verifikasi admin.
+
+- **`POST /api/v1/admission/admin/applications/:id/move-path`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Request Body**:
+    ```json
+    {
+      "target_path_id": 2,
+      "reason": "Disetujui perpindahan jalur oleh panitia PMB",
+      "action": "approve"
+    }
+    ```
+  - **Fungsi**: Memproses persetujuan atau pemindahan paksa jalur pendaftaran oleh admin. Jika peserta sudah terjadwal ujian, peserta otomatis dikeluarkan dari sesi ujian jalur lama. Menerbitkan invoice penyesuaian (ADJ) jika tarif jalur baru lebih mahal.
+
+- **`GET /api/v1/admission/admin/path-changes/export`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Mengunduh rekap riwayat perpindahan jalur dalam format CSV.
+
+---
+
+### 18.2 CR-007: Pengunduran Diri (Withdrawal)
+
+#### A. Calon Mahasiswa
+
+- **`GET /api/v1/admission/applications/me/withdrawal/eligibility`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengecek apakah pendaftaran saat ini memenuhi syarat pengunduran diri, konsekuensi (pelepasan kursi/kelulusan, pembatalan NIM jika ada), dan estimasi pengembalian dana.
+  - **Syarat**: Status pendaftaran minimal `submitted`, `verified`, `passed`, atau `reregistered`. Menghasilkan `409 WITHDRAWAL_NOT_ALLOWED` bila masih `draft` atau `awaiting_payment`.
+
+- **`POST /api/v1/admission/applications/me/withdrawal`**
+  - **Akses**: `calon_mahasiswa`
+  - **Request Body**:
+    ```json
+    {
+      "reason": "Diterima di perguruan tinggi kedinasan",
+      "password": "PasswordAkunCalonMhs123!",
+      "bank_name": "BCA",
+      "bank_account_number": "1234567890",
+      "bank_account_holder": "Nama Rekening Mahasiswa"
+    }
+    ```
+  - **Logika**:
+    - Wajib konfirmasi kata sandi akun; jika salah menghasilkan `401 PASSWORD_CONFIRMATION_FAILED`.
+    - Sebelum lulus (`submitted`, `verified`): Langsung disetujui (`status: withdrawn`), tagihan dibatalkan, terbit surat bukti PDF.
+    - Setelah lulus / daftar ulang (`passed`, `reregistered`): Masuk status `pending` persetujuan admin. Mencegah pembayaran baru (`409 WITHDRAWAL_PENDING`).
+
+- **`POST /api/v1/admission/applications/me/withdrawal/cancel`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Membatalkan permohonan pengunduran diri yang masih berstatus `pending`.
+
+- **`GET /api/v1/admission/applications/me/withdrawal/letter`**
+  - **Akses**: `calon_mahasiswa`
+  - **Fungsi**: Mengunduh surat resmi bukti pengunduran diri berformat PDF yang memuat stempel digital dan QR code verifikasi publik.
+
+- **`GET /api/v1/admission/withdrawals/verify/:code`**
+  - **Akses**: Publik
+  - **Fungsi**: Memverifikasi keaslian surat pengunduran diri secara publik menggunakan kode verifikasi unik / QR code.
+
+#### B. Administrator PMB & Keuangan
+
+- **`GET /api/v1/admission/admin/withdrawals`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Menampilkan daftar antrean dan riwayat pengunduran diri calon mahasiswa (filter status: pending, approved, rejected).
+
+- **`POST /api/v1/admission/admin/withdrawals/:id/approve`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Menyetujui pengunduran diri. Sistem secara orkestrasi:
+    1. Mengubah status pendaftaran menjadi `withdrawn`.
+    2. Menandai NIM berstatus `voided` di NIM Service (nomor tetap dicatat, sequence tidak dimundurkan).
+    3. Mencabut status daftar ulang di Student Service.
+    4. Melepas kuota penerimaan prodi di Selection Service dan mengirim notifikasi `seat_released`.
+    5. Mendaftarkan transaksi pembayaran yang sudah lunas ke antrean `refund_reviews` di Finance Service.
+    6. Mencabut role `mahasiswa` di Auth Service dan merotasi sesi pengguna.
+
+- **`POST /api/v1/admission/admin/withdrawals/:id/reject`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Request Body**: `{"reason": "Alasan penolakan pengunduran diri"}`
+  - **Fungsi**: Menolak permohonan pengunduran diri; pendaftaran kembali ke status sebelumnya.
+
+- **`POST /api/v1/admission/admin/applications/:id/withdraw`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Pengunduran diri langsung oleh administrator (misal atas instruksi resmi atau pelanggaran).
+
+- **`GET /api/v1/admission/admin/withdrawals/stats`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Statistik agregat pengunduran diri (total, pending, approved, rejected).
+
+- **`GET /api/v1/admission/admin/withdrawals/export`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Unduh rekapitulasi data pengunduran diri dalam format CSV.
+
+- **`GET /api/v1/finance/admin/refund-reviews`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Fungsi**: Mengambil daftar antrean peninjauan refund akibat pengunduran diri.
+
+- **`POST /api/v1/finance/admin/refund-reviews/:id`**
+  - **Akses**: `admin_pmb`, `superadmin`
+  - **Request Body**: `{"action": "approve | reject | process", "notes": "Nomor referensi mutasi bank"}`
+  - **Fungsi**: Menyetujui, mencairkan, atau menolak permohonan pengembalian dana.
+
+---
+
+### 18.3 CR-008: Integrasi Duitku Sandbox Sungguhan
+
+- **`GET /api/v1/finance/payment-methods`**
+  - **Akses**: Publik
+  - **Query Params**: `amount` (integer Rupiah, opsional)
+  - **Response 200 OK**:
+    ```json
+    {
+      "success": true,
+      "message": "Metode pembayaran berhasil diambil",
+      "data": [
+        {
+          "code": "VA",
+          "name": "BCA Virtual Account",
+          "image": "https://images.duitku.com/icon/va.png",
+          "fee": 4000
+        }
+      ]
+    }
+    ```
+  - **Error Mapping**: Jika gateway Duitku offline atau mengembalikan error, sistem memetakan secara konsisten ke `502 PAYMENT_PROVIDER_ERROR` dengan pesan kesalahan dalam Bahasa Indonesia.
+
 
 
 

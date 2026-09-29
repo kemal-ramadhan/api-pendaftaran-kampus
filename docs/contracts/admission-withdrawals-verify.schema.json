@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VerifyWithdrawalPublicResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "valid": { "type": "boolean" },
+        "letter_number": { "type": "string" },
+        "full_name_masked": { "type": "string" },
+        "registration_number": { "type": "string" },
+        "program_name": { "type": "string" },
+        "path_name": { "type": "string" },
+        "effective_date": { "type": "string" },
+        "reason_category": { "type": "string" },
+        "status": { "type": "string" }
+      },
+      "required": ["valid", "letter_number", "full_name_masked", "registration_number", "effective_date", "status"]
+    }
+  },
+  "required": ["success", "message", "data"]
+}

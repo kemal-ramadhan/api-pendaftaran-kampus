@@ -103,15 +103,36 @@ classDiagram
         +ExportFinancialReport(summary *FinancialSummaryDTO, invoices []Invoice) ([]byte, error)
     }
 
+    class RefundReviewController {
+        -svc RefundReviewService
+        +ListRefundReviews(c *gin.Context)
+        +ReviewRefund(c *gin.Context)
+    }
+
     class PaymentProvider {
         <<interface>>
         +CreateVA(ctx context.Context, invoiceID uuid.UUID, amount int64) (*VAResult, error)
         +VerifyWebhookSignature(signature string, payload []byte) bool
         +ParseWebhookPayload(payload []byte) (*WebhookPayload, error)
+        +GetPaymentMethods(ctx context.Context, amount int64) ([]PaymentMethodItem, error)
     }
 
     class MockProvider {
         -secretKey string
+    }
+
+    class DuitkuProvider {
+        -merchantCode string
+        -apiKey string
+        -popBaseURL string
+        -webAPIBaseURL string
+    }
+
+    class RefundReviewService {
+        <<interface>>
+        +ListRefundReviews(ctx context.Context, status string, page, limit int) ([]RefundReview, int64, error)
+        +ReviewRefund(ctx context.Context, id, reviewerID uuid.UUID, req *ReviewRefundRequest) (*RefundReview, error)
+        +ProcessApplicationWithdrawal(ctx context.Context, appID uuid.UUID) (int, error)
     }
 
     class InvoiceRepository {
@@ -175,6 +196,28 @@ classDiagram
         +FindByProviderRef(ctx context.Context, providerRef string) (*PaymentWebhookLog, error)
     }
 
+    class RefundReviewRepository {
+        <<interface>>
+        +CreateInTx(tx *gorm.DB, review *RefundReview) error
+        +FindByID(ctx context.Context, id uuid.UUID) (*RefundReview, error)
+        +List(ctx context.Context, status string, page, limit int) ([]RefundReview, int64, error)
+        +UpdateInTx(tx *gorm.DB, review *RefundReview) error
+        +FindByPaymentID(ctx context.Context, paymentID uuid.UUID) (*RefundReview, error)
+    }
+
+    class RefundReview {
+        +UUID ID
+        +UUID PaymentID
+        +UUID InvoiceID
+        +UUID ApplicationID
+        +int64 Amount
+        +string Status
+        +string Notes
+        +UUID ReviewedBy
+        +Time ReviewedAt
+        +Time CreatedAt
+    }
+
     InvoiceController --> InvoiceService
     PaymentController --> PaymentService
     InstallmentController --> InstallmentService
@@ -185,9 +228,11 @@ classDiagram
     DevController --> PaymentService
     AdminController --> PaymentService
     InternalController --> InvoiceService
+    RefundReviewController --> RefundReviewService
 
     PaymentService ..> PaymentProvider
     MockProvider ..|> PaymentProvider
+    DuitkuProvider ..|> PaymentProvider
 
     InvoiceService ..> InvoiceRepository
     PaymentService ..> PaymentRepository
@@ -195,6 +240,7 @@ classDiagram
     PaymentService ..> InstallmentRepository
     PaymentService ..> ReceiptRepository
     PaymentService ..> WebhookLogRepository
+    RefundReviewService ..> RefundReviewRepository
 
     InstallmentService ..> InstallmentRepository
     InstallmentService ..> InvoiceRepository

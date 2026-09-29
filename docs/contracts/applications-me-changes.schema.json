@@ -1,0 +1,49 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ApplicationChangesResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string", "format": "uuid" },
+              "application_id": { "type": "string", "format": "uuid" },
+              "user_id": { "type": "string", "format": "uuid" },
+              "change_type": { "type": "string" },
+              "from_values": { "type": "string" },
+              "to_values": { "type": "string" },
+              "reason": { "type": "string" },
+              "fee_difference": { "type": "integer" },
+              "actor_role": { "type": "string" },
+              "source": { "type": "string" },
+              "title_label": { "type": "string" },
+              "description": { "type": "string" },
+              "actor_label": { "type": "string" },
+              "created_at_label": { "type": "string" },
+              "created_at": { "type": "string", "format": "date-time" }
+            },
+            "required": ["id", "application_id", "user_id", "change_type", "created_at"]
+          }
+        },
+        "meta": {
+          "type": "object",
+          "properties": {
+            "total": { "type": "integer" },
+            "limit": { "type": "integer" },
+            "offset": { "type": "integer" }
+          },
+          "required": ["total", "limit", "offset"]
+        }
+      },
+      "required": ["items", "meta"]
+    }
+  },
+  "required": ["success", "message", "data"]
+}

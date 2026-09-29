@@ -15,6 +15,7 @@ classDiagram
         +GetFormat(c: *gin.Context)
         +CreateFormat(c: *gin.Context)
         +UpdateFormat(c: *gin.Context)
+        +VoidNIM(c: *gin.Context)
     }
 
     class NIMService {
@@ -26,6 +27,7 @@ classDiagram
         +GetFormatByID(ctx: Context, id: UUID) (*NIMFormat, error)
         +CreateFormat(ctx: Context, req: *CreateNIMFormatRequest) (*NIMFormat, error)
         +UpdateFormat(ctx: Context, id: UUID, req: *UpdateNIMFormatRequest) (*NIMFormat, error)
+        +VoidNIM(ctx: Context, appID: UUID) (*NIMIssuance, error)
     }
 
     class nimServiceImpl {
@@ -54,6 +56,7 @@ classDiagram
         +GetFormatByID(ctx: Context, id: UUID) (*NIMFormat, error)
         +CreateFormat(ctx: Context, format: *NIMFormat) error
         +UpdateFormat(ctx: Context, format: *NIMFormat) error
+        +VoidIssuance(ctx: Context, appID: UUID) (*NIMIssuance, error)
     }
 
     class NIMFormat {
@@ -80,6 +83,7 @@ classDiagram
         +UUID ApplicationID
         +UUID UserID
         +string NIM
+        +string Status
         +int EntryYear
         +string StudyProgramCode
         +string SelectionPath

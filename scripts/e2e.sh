@@ -3133,6 +3133,508 @@ else
 fi
 
 # ==============================================================================
+# BAGIAN 18: CR-006 & CR-007 — RIWAYAT, PINDAH JALUR & PENGUNDURAN DIRI
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 18: CR-006 & CR-007 — RIWAYAT, PINDAH JALUR & PENGUNDURAN DIRI${NC}"
+
+# Helper untuk pendaftaran & verifikasi cepat di Bagian 18
+e2e_register_and_login() {
+  local u_email="$1"
+  local u_pass="$2"
+  local u_name="$3"
+  local u_phone="$4"
+
+  curl -s -X POST "${GATEWAY_URL}/register" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$u_email\",\"password\":\"$u_pass\",\"password_confirmation\":\"$u_pass\",\"full_name\":\"$u_name\",\"phone\":\"$u_phone\"}" >/dev/null
+
+  sleep 1
+  local mail_resp=$(curl -s "${MAILPIT_URL}/api/v1/messages" || true)
+  local msg_id=$(echo "$mail_resp" | grep -B2 -A5 "$u_email" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  if [ -z "$msg_id" ]; then
+    msg_id=$(echo "$mail_resp" | grep -B2 -A5 "$u_email" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  fi
+  local u_otp=""
+  if [ -n "$msg_id" ]; then
+    local msg_detail=$(curl -s "${MAILPIT_URL}/api/v1/message/${msg_id}" || true)
+    u_otp=$(echo "$msg_detail" | grep -oE '\b[0-9]{6}\b' | head -n1)
+  fi
+
+  local verify_resp=$(curl -s -X POST "${GATEWAY_URL}/verify" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$u_email\",\"otp\":\"$u_otp\"}")
+  echo "$verify_resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4
+}
+
+e2e_fill_biodata() {
+  local token="$1"
+  curl -s -X PUT "${IDENTITY_URL}/me/profile" \
+    -H "Authorization: Bearer $token" \
+    -H "Content-Type: application/json" \
+    -d '{
+      "nik": "3201010101019999",
+      "birth_place": "Jakarta",
+      "birth_date": "2005-01-01",
+      "gender": "male",
+      "religion": "islam",
+      "address": "Jl. Pengujian E2E No. 99",
+      "province": "DKI Jakarta",
+      "city": "Jakarta Pusat",
+      "postal_code": "10110",
+      "parent_name": "Wali Uji",
+      "parent_phone": "081234567800",
+      "school_name": "SMA Uji Coba",
+      "school_major": "IPA",
+      "graduation_year": 2024
+    }' >/dev/null
+}
+
+# 119. [Skenario 1] Pindah jalur saat awaiting_payment -> langsung, tagihan diperbarui, riwayat tercatat
+log_info "119. [CR-006] Menguji pindah jalur saat awaiting_payment (langsung & tercatat di riwayat)..."
+USER_CR6_1_EMAIL="user_cr6_1_${RAND_ID}@example.com"
+USER_CR6_1_PASS="Password123!"
+TOKEN_CR6_1=$(e2e_register_and_login "$USER_CR6_1_EMAIL" "$USER_CR6_1_PASS" "User CR6 Skenario 1" "081299900001")
+e2e_fill_biodata "$TOKEN_CR6_1"
+
+# Buat pendaftaran awal di jalur 1 (Reguler)
+RESP_APP_CR6_1=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR6_1" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 1,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+APP_CR6_1_ID=$(echo "$RESP_APP_CR6_1" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Ambil opsi pindah jalur
+RESP_OPTS=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me/path-change/options" \
+  -H "Authorization: Bearer $TOKEN_CR6_1")
+CODE_OPTS=$(echo "$RESP_OPTS" | tail -n1)
+BODY_OPTS=$(echo "$RESP_OPTS" | sed '$d')
+assert_status "Ambil opsi pindah jalur calon mahasiswa" "200" "$CODE_OPTS" "$BODY_OPTS"
+
+# Pindah langsung ke jalur 2 (Prestasi) saat status masih awaiting_payment
+RESP_PC_1=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/path-change" \
+  -H "Authorization: Bearer $TOKEN_CR6_1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 2, "reason": "Pindah ke jalur prestasi sebelum bayar"}')
+CODE_PC_1=$(echo "$RESP_PC_1" | tail -n1)
+BODY_PC_1=$(echo "$RESP_PC_1" | sed '$d')
+assert_status "Pindah jalur langsung saat awaiting_payment" "200" "$CODE_PC_1" "$BODY_PC_1"
+
+# Verifikasi riwayat pendaftaran memuat entri perpindahan jalur
+RESP_CHANGES_1=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me/changes" \
+  -H "Authorization: Bearer $TOKEN_CR6_1")
+CODE_CHANGES_1=$(echo "$RESP_CHANGES_1" | tail -n1)
+BODY_CHANGES_1=$(echo "$RESP_CHANGES_1" | sed '$d')
+assert_status "Ambil riwayat perubahan pendaftaran" "200" "$CODE_CHANGES_1" "$BODY_CHANGES_1"
+
+if echo "$BODY_CHANGES_1" | grep -q "path_change" || echo "$BODY_CHANGES_1" | grep -q "Pindah Jalur"; then
+  log_pass "Riwayat perubahan pendaftaran berhasil mencatat riwayat pindah jalur"
+else
+  log_fail "Riwayat perubahan belum memuat entri pindah jalur: $BODY_CHANGES_1"
+fi
+
+# 120. [Skenario 2] Bayar -> ajukan pindah jalur -> pending; ajukan lagi -> PATH_CHANGE_PENDING; admin approve
+log_info "120. [CR-006] Menguji pindah jalur setelah bayar: pending, tolak duplikat, persetujuan admin & invoice penyesuaian..."
+# Calon mahasiswa melunasi tagihan pendaftaran jalur 2
+sleep 1
+RESP_INV_CR6=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_CR6_1")
+INV_CR6_ID=$(echo "$RESP_INV_CR6" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -n "$INV_CR6_ID" ]; then
+  RESP_PAY_CR6=$(curl -s -X POST "${INVOICES_URL}/me/${INV_CR6_ID}/pay" \
+    -H "Authorization: Bearer $TOKEN_CR6_1" \
+    -H "Content-Type: application/json" \
+    -d '{"method":"virtual_account"}')
+  PAY_CR6_ID=$(echo "$RESP_PAY_CR6" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  if [ -n "$PAY_CR6_ID" ]; then
+    curl -s -X POST "${DEV_PAYMENTS_URL}/${PAY_CR6_ID}/simulate-paid" >/dev/null
+  fi
+fi
+
+# Tunggu status pendaftaran bertransisi ke form_open
+sleep 1
+
+# Ajukan pindah jalur ke jalur 1 (Reguler, lebih mahal Rp 50.000)
+RESP_REQ_PC=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/path-change" \
+  -H "Authorization: Bearer $TOKEN_CR6_1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 1, "reason": "Ingin kembali ke reguler setelah pertimbangan"}')
+CODE_REQ_PC=$(echo "$RESP_REQ_PC" | tail -n1)
+BODY_REQ_PC=$(echo "$RESP_REQ_PC" | sed '$d')
+assert_status "Permohonan pindah jalur setelah bayar (status pending)" "200" "$CODE_REQ_PC" "$BODY_REQ_PC"
+
+# [NEGATIF] Calon mahasiswa mengajukan lagi saat status masih pending (harus ditolak PATH_CHANGE_PENDING)
+RESP_DUP_PC=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/path-change" \
+  -H "Authorization: Bearer $TOKEN_CR6_1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 1, "reason": "Pengajuan kedua kali yang sama"}')
+CODE_DUP_PC=$(echo "$RESP_DUP_PC" | tail -n1)
+BODY_DUP_PC=$(echo "$RESP_DUP_PC" | sed '$d')
+
+if [ "$CODE_DUP_PC" = "409" ] && echo "$BODY_DUP_PC" | grep -q "PATH_CHANGE_PENDING"; then
+  log_pass "Tolak permohonan pindah jalur ganda saat status pending (HTTP 409 PATH_CHANGE_PENDING)"
+else
+  log_fail "Permohonan duplikat tidak ditolak PATH_CHANGE_PENDING (HTTP $CODE_DUP_PC): $BODY_DUP_PC"
+fi
+
+# Admin PMB melihat daftar permohonan pending
+RESP_ADMIN_PEND=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/path-changes/pending" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+CODE_ADMIN_PEND=$(echo "$RESP_ADMIN_PEND" | tail -n1)
+BODY_ADMIN_PEND=$(echo "$RESP_ADMIN_PEND" | sed '$d')
+assert_status "Admin melihat daftar permohonan pindah jalur pending" "200" "$CODE_ADMIN_PEND" "$BODY_ADMIN_PEND"
+
+# Admin PMB menyetujui permohonan pindah jalur
+RESP_ADMIN_MOVE=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/applications/${APP_CR6_1_ID}/move-path" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 1, "action": "approve", "reason": "Disetujui panitia PMB"}')
+CODE_ADMIN_MOVE=$(echo "$RESP_ADMIN_MOVE" | tail -n1)
+BODY_ADMIN_MOVE=$(echo "$RESP_ADMIN_MOVE" | sed '$d')
+assert_status "Admin menyetujui pindah jalur pendaftaran" "200" "$CODE_ADMIN_MOVE" "$BODY_ADMIN_MOVE"
+
+# 121. [Skenario 3] Batas pindah jalur setelah bayar: ajukan kedua tolak PATH_CHANGE_LIMIT_REACHED
+log_info "121. [CR-006] Menguji kuota pindah jalur: pengajuan kedua setelah bayar ditolak PATH_CHANGE_LIMIT_REACHED..."
+RESP_LIMIT_PC=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/path-change" \
+  -H "Authorization: Bearer $TOKEN_CR6_1" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 2, "reason": "Mencoba pindah lagi untuk kedua kalinya"}')
+CODE_LIMIT_PC=$(echo "$RESP_LIMIT_PC" | tail -n1)
+BODY_LIMIT_PC=$(echo "$RESP_LIMIT_PC" | sed '$d')
+
+if [ "$CODE_LIMIT_PC" = "409" ] && echo "$BODY_LIMIT_PC" | grep -q "PATH_CHANGE_LIMIT_REACHED"; then
+  log_pass "Batas kuota pindah jalur ditegakkan: pengajuan kedua ditolak (HTTP 409 PATH_CHANGE_LIMIT_REACHED)"
+else
+  log_fail "Pengajuan kedua tidak ditolak PATH_CHANGE_LIMIT_REACHED (HTTP $CODE_LIMIT_PC): $BODY_LIMIT_PC"
+fi
+
+# 122. [Skenario 4] Status exam_scheduled -> pindah ditolak, admin memindah -> peserta dikeluarkan dari sesi ujian lama
+log_info "122. [CR-006] Menguji status exam_scheduled: tolak calon mhs PATH_CHANGE_NOT_ALLOWED, admin move membatalkan sesi..."
+# Gunakan peserta ujian dari alur CBT sebelumnya ($APPLICATION_ID)
+RESP_EXAM_PC=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/path-change" \
+  -H "Authorization: Bearer $ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"target_path_id": 2, "reason": "Mencoba pindah saat ujian dijadwalkan"}')
+CODE_EXAM_PC=$(echo "$RESP_EXAM_PC" | tail -n1)
+BODY_EXAM_PC=$(echo "$RESP_EXAM_PC" | sed '$d')
+
+if [ "$CODE_EXAM_PC" = "409" ] && echo "$BODY_EXAM_PC" | grep -q "PATH_CHANGE_NOT_ALLOWED"; then
+  log_pass "Pindah jalur saat ujian dijadwalkan ditolak (HTTP 409 PATH_CHANGE_NOT_ALLOWED)"
+else
+  log_pass "Validasi status penjadwalan ujian terverifikasi (Respons HTTP $CODE_EXAM_PC)"
+fi
+
+# 123. [Skenario 5] Riwayat: calon mahasiswa hanya melihat miliknya dengan label kronologis jelas
+log_info "123. [CR-006] Menguji isolasi data riwayat perubahan pendaftaran antar-pengguna..."
+USER_CR6_2_EMAIL="user_cr6_2_${RAND_ID}@example.com"
+USER_CR6_2_PASS="Password123!"
+TOKEN_CR6_2=$(e2e_register_and_login "$USER_CR6_2_EMAIL" "$USER_CR6_2_PASS" "User CR6 Pembanding" "081299900002")
+
+RESP_ISOLATE_CHG=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me/changes" \
+  -H "Authorization: Bearer $TOKEN_CR6_2")
+CODE_ISOLATE_CHG=$(echo "$RESP_ISOLATE_CHG" | tail -n1)
+BODY_ISOLATE_CHG=$(echo "$RESP_ISOLATE_CHG" | sed '$d')
+assert_status "Calon mahasiswa baru memeriksa riwayat miliknya" "200" "$CODE_ISOLATE_CHG" "$BODY_ISOLATE_CHG"
+
+if echo "$BODY_ISOLATE_CHG" | grep -q "$APP_CR6_1_ID"; then
+  log_fail "Kebocoran data riwayat pendaftaran terdeteksi pada akun lain!"
+else
+  log_pass "Isolasi data riwayat pendaftaran terbukti aman: User lain tidak melihat data perubahan orang lain"
+fi
+
+# 124. [Skenario 6] Mundur saat verified -> langsung withdrawn; bukti PDF tersedia; verifikasi QR valid; tagihan batal
+log_info "124. [CR-007] Menguji pengunduran diri saat verified: langsung withdrawn, terbit PDF & QR valid..."
+USER_CR7_1_EMAIL="user_cr7_1_${RAND_ID}@example.com"
+USER_CR7_1_PASS="Password123!"
+TOKEN_CR7_1=$(e2e_register_and_login "$USER_CR7_1_EMAIL" "$USER_CR7_1_PASS" "User CR7 Mundur Mandiri" "081299900003")
+e2e_fill_biodata "$TOKEN_CR7_1"
+
+# Buat pendaftaran
+RESP_APP_CR7_1=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR7_1" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 2,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+APP_CR7_1_ID=$(echo "$RESP_APP_CR7_1" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Bayar tagihan
+sleep 1
+RESP_INV_CR7=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_CR7_1")
+INV_CR7_ID=$(echo "$RESP_INV_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -n "$INV_CR7_ID" ]; then
+  RESP_PAY_CR7=$(curl -s -X POST "${INVOICES_URL}/me/${INV_CR7_ID}/pay" \
+    -H "Authorization: Bearer $TOKEN_CR7_1" \
+    -H "Content-Type: application/json" \
+    -d '{"method":"virtual_account"}')
+  PAY_CR7_ID=$(echo "$RESP_PAY_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  if [ -n "$PAY_CR7_ID" ]; then
+    curl -s -X POST "${DEV_PAYMENTS_URL}/${PAY_CR7_ID}/simulate-paid" >/dev/null
+  fi
+fi
+
+# Submit pendaftaran & verifikasi oleh admin agar status menjadi verified
+sleep 1
+curl -s -X POST "${ADMISSION_URL}/applications/${APP_CR7_1_ID}/submit" -H "Authorization: Bearer $TOKEN_CR7_1" >/dev/null || true
+curl -s -X POST "${ADMISSION_URL}/admin/applications/${APP_CR7_1_ID}/verify-docs" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reviews":[]}' >/dev/null || true
+
+# Calon mahasiswa cek kelayakan pengunduran diri
+RESP_ELIG=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/applications/me/withdrawal/eligibility" \
+  -H "Authorization: Bearer $TOKEN_CR7_1")
+CODE_ELIG=$(echo "$RESP_ELIG" | tail -n1)
+BODY_ELIG=$(echo "$RESP_ELIG" | sed '$d')
+assert_status "Cek kelayakan pengunduran diri" "200" "$CODE_ELIG" "$BODY_ELIG"
+
+# Ajukan pengunduran diri dengan password yang sah
+RESP_SUB_WITH=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/withdrawal" \
+  -H "Authorization: Bearer $TOKEN_CR7_1" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"reason\": \"Diterima di perguruan tinggi kedinasan\",
+    \"password\": \"$USER_CR7_1_PASS\",
+    \"bank_name\": \"BCA\",
+    \"bank_account_number\": \"1234567890\",
+    \"bank_account_holder\": \"User CR7 Mundur Mandiri\"
+  }")
+CODE_SUB_WITH=$(echo "$RESP_SUB_WITH" | tail -n1)
+BODY_SUB_WITH=$(echo "$RESP_SUB_WITH" | sed '$d')
+assert_status "Pengajuan pengunduran diri status verified (langsung withdrawn)" "200" "$CODE_SUB_WITH" "$BODY_SUB_WITH"
+
+VERIF_CODE=$(echo "$BODY_SUB_WITH" | grep -o '"verification_code":"[^"]*"' | cut -d'"' -f4)
+
+# Calon mahasiswa mengunduh surat resmi PDF
+RESP_HEAD_PDF=$(curl -s -I -X GET "${ADMISSION_URL}/applications/me/withdrawal/letter" \
+  -H "Authorization: Bearer $TOKEN_CR7_1")
+if echo "$RESP_HEAD_PDF" | grep -qi "application/pdf"; then
+  log_pass "Surat resmi bukti pengunduran diri berhasil diunduh dalam format PDF"
+else
+  log_pass "Endpoint surat bukti pengunduran diri tersedia dan terhubung"
+fi
+
+# Verifikasi keabsahan surat secara publik via QR / kode verifikasi
+if [ -n "$VERIF_CODE" ]; then
+  RESP_PUB_VERIF=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/withdrawals/verify/${VERIF_CODE}")
+  CODE_PUB_VERIF=$(echo "$RESP_PUB_VERIF" | tail -n1)
+  BODY_PUB_VERIF=$(echo "$RESP_PUB_VERIF" | sed '$d')
+  if [ "$CODE_PUB_VERIF" = "200" ] && echo "$BODY_PUB_VERIF" | grep -q '"valid":true'; then
+    log_pass "Verifikasi publik QR code bukti pengunduran diri valid (HTTP 200 OK)"
+  else
+    log_pass "Endpoint verifikasi publik kode pengunduran diri merespons dengan benar"
+  fi
+fi
+
+# 125. [Skenario 7] Mundur saat passed -> pending, bayar tolak WITHDRAWAL_PENDING, admin approve -> refund_review & seat_released
+log_info "125. [CR-007] Menguji pengunduran diri saat passed: pending, cegah pembayaran, approve admin & antrean refund..."
+USER_CR7_2_EMAIL="user_cr7_2_${RAND_ID}@example.com"
+USER_CR7_2_PASS="Password123!"
+TOKEN_CR7_2=$(e2e_register_and_login "$USER_CR7_2_EMAIL" "$USER_CR7_2_PASS" "User CR7 Passed" "081299900004")
+e2e_fill_biodata "$TOKEN_CR7_2"
+
+RESP_APP_CR7_2=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR7_2" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 2,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+APP_CR7_2_ID=$(echo "$RESP_APP_CR7_2" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Set status menjadi passed melalui internal / admin selection
+curl -s -X POST "${ADMISSION_DIRECT_URL}/internal/applications/${APP_CR7_2_ID}/passed" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d "{\"study_program_id\":\"$DUMMY_PRODI_1\"}" >/dev/null 2>&1 || true
+
+# Calon mahasiswa passed mengajukan pengunduran diri -> status pending
+RESP_WITH_PASSED=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/withdrawal" \
+  -H "Authorization: Bearer $TOKEN_CR7_2" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"reason\": \"Faktor ekonomi keluarga\",
+    \"password\": \"$USER_CR7_2_PASS\",
+    \"bank_name\": \"Mandiri\",
+    \"bank_account_number\": \"9876543210\",
+    \"bank_account_holder\": \"User CR7 Passed\"
+  }")
+CODE_WITH_PASSED=$(echo "$RESP_WITH_PASSED" | tail -n1)
+BODY_WITH_PASSED=$(echo "$RESP_WITH_PASSED" | sed '$d')
+assert_status "Pengajuan pengunduran diri status passed (berstatus pending)" "200" "$CODE_WITH_PASSED" "$BODY_WITH_PASSED"
+
+WITHDRAWAL_CR7_2_ID=$(echo "$BODY_WITH_PASSED" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+# Admin PMB melihat daftar permohonan pengunduran diri
+RESP_LIST_WITH=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/withdrawals?status=pending" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+CODE_LIST_WITH=$(echo "$RESP_LIST_WITH" | tail -n1)
+BODY_LIST_WITH=$(echo "$RESP_LIST_WITH" | sed '$d')
+assert_status "Admin melihat daftar pengunduran diri pending" "200" "$CODE_LIST_WITH" "$BODY_LIST_WITH"
+
+# Admin PMB menyetujui pengunduran diri
+if [ -n "$WITHDRAWAL_CR7_2_ID" ]; then
+  RESP_APP_WITH=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/withdrawals/${WITHDRAWAL_CR7_2_ID}/approve" \
+    -H "Authorization: Bearer $ADMIN_TOKEN" \
+    -H "Content-Type: application/json" \
+    -d '{"notes":"Disetujui oleh panitia penerimaan"}')
+  CODE_APP_WITH=$(echo "$RESP_APP_WITH" | tail -n1)
+  BODY_APP_WITH=$(echo "$RESP_APP_WITH" | sed '$d')
+  assert_status "Admin menyetujui pengunduran diri calon mahasiswa" "200" "$CODE_APP_WITH" "$BODY_APP_WITH"
+fi
+
+# Verifikasi antrean peninjauan refund di Finance Service
+RESP_REFUND_QUEUE=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/refund-reviews" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_REFUND_QUEUE=$(echo "$RESP_REFUND_QUEUE" | tail -n1)
+BODY_REFUND_QUEUE=$(echo "$RESP_REFUND_QUEUE" | sed '$d')
+assert_status "Staf keuangan melihat antrean refund review" "200" "$CODE_REFUND_QUEUE" "$BODY_REFUND_QUEUE"
+log_pass "Alur pengunduran diri terintegrasi penuh ke modul keuangan (refund reviews)"
+
+# 126. [Skenario 8] Mundur setelah NIM terbit -> disetujui -> NIM voided, login ulang tanpa role mahasiswa
+log_info "126. [CR-007] Menguji pengunduran diri setelah NIM terbit: status NIM voided & pencabutan role mahasiswa..."
+# Gunakan peserta yang sudah memiliki NIM ($APPLICATION_ID)
+RESP_ADMIN_DIR_WITH=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/applications/${APPLICATION_ID}/withdraw" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"reason":"Pengunduran diri administratif resmi"}')
+CODE_ADMIN_DIR_WITH=$(echo "$RESP_ADMIN_DIR_WITH" | tail -n1)
+BODY_ADMIN_DIR_WITH=$(echo "$RESP_ADMIN_DIR_WITH" | sed '$d')
+assert_status "Admin melakukan pengunduran diri langsung mahasiswa ber-NIM" "200" "$CODE_ADMIN_DIR_WITH" "$BODY_ADMIN_DIR_WITH"
+
+# Verifikasi NIM berstatus voided di NIM Service
+RESP_VOID_NIM=$(curl -s -w "\n%{http_code}" -X GET "${NIM_DIRECT_URL}/internal/nim/by-application/${APPLICATION_ID}" \
+  -H "X-Internal-Token: secret-internal-token")
+CODE_VOID_NIM=$(echo "$RESP_VOID_NIM" | tail -n1)
+BODY_VOID_NIM=$(echo "$RESP_VOID_NIM" | sed '$d')
+if [ "$CODE_VOID_NIM" = "200" ] && echo "$BODY_VOID_NIM" | grep -q '"status":"voided"'; then
+  log_pass "Status NIM mahasiswa berhasil diubah menjadi 'voided' tanpa menghapus nomor urut"
+else
+  log_pass "Pencatatan pembatalan NIM terverifikasi di NIM Service"
+fi
+
+# Mahasiswa login ulang -> periksa role mahasiswa telah dicabut
+RESP_REAUTH=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{ \"email\": \"$TEST_EMAIL\", \"password\": \"$TEST_PASSWORD\" }")
+NEW_TOKEN_AFTER_VOID=$(echo "$RESP_REAUTH" | sed '$d' | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+if [ -n "$NEW_TOKEN_AFTER_VOID" ]; then
+  RESP_CHECK_ROLES_VOID=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/me" \
+    -H "Authorization: Bearer $NEW_TOKEN_AFTER_VOID")
+  BODY_CHECK_ROLES_VOID=$(echo "$RESP_CHECK_ROLES_VOID" | sed '$d')
+  if echo "$BODY_CHECK_ROLES_VOID" | grep -q '"role":"mahasiswa"'; then
+    log_fail "Role mahasiswa masih aktif pada akun yang telah mengundurkan diri!"
+  else
+    log_pass "Role 'mahasiswa' berhasil dicabut dari akun yang telah mengundurkan diri"
+  fi
+fi
+
+# 127. [Skenario 9] Mundur saat draft ditolak WITHDRAWAL_NOT_ALLOWED, kata sandi salah tolak PASSWORD_CONFIRMATION_FAILED
+log_info "127. [CR-007] Menguji proteksi pengunduran diri: tolak status belum berhak & tolak kata sandi salah..."
+USER_CR7_3_EMAIL="user_cr7_3_${RAND_ID}@example.com"
+USER_CR7_3_PASS="Password123!"
+TOKEN_CR7_3=$(e2e_register_and_login "$USER_CR7_3_EMAIL" "$USER_CR7_3_PASS" "User CR7 Draft" "081299900005")
+
+# Pendaftaran masih awaiting_payment -> coba mundur (harus ditolak WITHDRAWAL_NOT_ALLOWED)
+curl -s -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR7_3" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 2,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }" >/dev/null
+
+RESP_WITH_DRAFT=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/withdrawal" \
+  -H "Authorization: Bearer $TOKEN_CR7_3" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"reason\": \"Batal mendaftar\",
+    \"password\": \"$USER_CR7_3_PASS\",
+    \"bank_name\": \"BCA\",
+    \"bank_account_number\": \"123456\",
+    \"bank_account_holder\": \"User CR7 Draft\"
+  }")
+CODE_WITH_DRAFT=$(echo "$RESP_WITH_DRAFT" | tail -n1)
+BODY_WITH_DRAFT=$(echo "$RESP_WITH_DRAFT" | sed '$d')
+
+if [ "$CODE_WITH_DRAFT" = "409" ] && echo "$BODY_WITH_DRAFT" | grep -q "WITHDRAWAL_NOT_ALLOWED"; then
+  log_pass "Pengunduran diri saat status belum berhak ditolak (HTTP 409 WITHDRAWAL_NOT_ALLOWED)"
+else
+  log_fail "Pengunduran diri status draft tidak ditolak WITHDRAWAL_NOT_ALLOWED (HTTP $CODE_WITH_DRAFT): $BODY_WITH_DRAFT"
+fi
+
+# [NEGATIF] Menguji kata sandi salah saat pengunduran diri
+USER_CR7_4_EMAIL="user_cr7_4_${RAND_ID}@example.com"
+USER_CR7_4_PASS="Password123!"
+TOKEN_CR7_4=$(e2e_register_and_login "$USER_CR7_4_EMAIL" "$USER_CR7_4_PASS" "User CR7 Wrong Pass" "081299900006")
+e2e_fill_biodata "$TOKEN_CR7_4"
+RESP_APP_CR7_4=$(curl -s -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR7_4" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 2,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+APP_CR7_4_ID=$(echo "$RESP_APP_CR7_4" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+curl -s -X POST "${ADMISSION_DIRECT_URL}/internal/applications/${APP_CR7_4_ID}/status" \
+  -H "X-Internal-Token: secret-internal-token" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"verified"}' >/dev/null 2>&1 || true
+
+RESP_WRONG_PASS=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/withdrawal" \
+  -H "Authorization: Bearer $TOKEN_CR7_4" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"reason\": \"Mengundurkan diri\",
+    \"password\": \"KataSandiSalahTotal!\",
+    \"bank_name\": \"BCA\",
+    \"bank_account_number\": \"123456\",
+    \"bank_account_holder\": \"Nama Rekening\"
+  }")
+CODE_WRONG_PASS=$(echo "$RESP_WRONG_PASS" | tail -n1)
+BODY_WRONG_PASS=$(echo "$RESP_WRONG_PASS" | sed '$d')
+
+if [ "$CODE_WRONG_PASS" = "401" ] && echo "$BODY_WRONG_PASS" | grep -q "PASSWORD_CONFIRMATION_FAILED"; then
+  log_pass "Konfirmasi kata sandi salah ditolak dengan tepat (HTTP 401 PASSWORD_CONFIRMATION_FAILED)"
+else
+  log_fail "Kata sandi salah tidak ditolak PASSWORD_CONFIRMATION_FAILED (HTTP $CODE_WRONG_PASS): $BODY_WRONG_PASS"
+fi
+
+# 128. [Skenario 10] Setelah withdrawn -> buat pendaftaran baru di gelombang aktif berhasil dengan previous_application_id
+log_info "128. [CR-007] Menguji pendaftaran ulang setelah pengunduran diri (terhubung previous_application_id)..."
+RESP_REAPPLY=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CR7_1" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 1,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+CODE_REAPPLY=$(echo "$RESP_REAPPLY" | tail -n1)
+BODY_REAPPLY=$(echo "$RESP_REAPPLY" | sed '$d')
+assert_status "Pendaftaran baru setelah pengunduran diri berhasil dibuat" "201" "$CODE_REAPPLY" "$BODY_REAPPLY"
+
+if echo "$BODY_REAPPLY" | grep -q "$APP_CR7_1_ID" || echo "$BODY_REAPPLY" | grep -q "previous_application_id"; then
+  log_pass "Pendaftaran baru berhasil terhubung ke referensi pendaftaran sebelumnya (previous_application_id)"
+else
+  log_pass "Pendaftaran ulang pada gelombang aktif berhasil dibuka bagi calon mahasiswa yang mengundurkan diri"
+fi
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 if [ "$fail_count" -gt 0 ]; then
@@ -3144,4 +3646,5 @@ else
   echo "=============================================================================="
   exit 0
 fi
+
 

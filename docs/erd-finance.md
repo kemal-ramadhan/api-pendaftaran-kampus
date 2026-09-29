@@ -9,6 +9,8 @@ erDiagram
     INVOICES ||--o{ INSTALLMENTS : "terbagi_menjadi"
     INSTALLMENTS ||--o{ PAYMENTS : "dibayar_lewat"
     PAYMENTS ||--o| RECEIPTS : "menerbitkan"
+    PAYMENTS ||--o| REFUND_REVIEWS : "berpotensi_menjadi"
+    INVOICES ||--o{ REFUND_REVIEWS : "direview_pada"
     FEE_SCHEMES }o--|| PERIODS : "berlaku_pada"
 
     FEE_SCHEMES {
@@ -108,5 +110,28 @@ erDiagram
         text error_message "Pesan kegagalan pemrosesan"
         timestamptz created_at "Waktu penerimaan webhook"
     }
+
+    REFUND_REVIEWS {
+        uuid id PK "UUID Antrean Peninjauan Pengembalian Dana"
+        uuid payment_id UK "ID Pembayaran terkait (1-to-1)"
+        uuid invoice_id "ID Tagihan terkait"
+        uuid application_id "ID Pendaftaran yang mengundurkan diri"
+        bigint amount "Nominal dana yang ditinjau untuk refund"
+        varchar(30) status "pending, approved, rejected, processed"
+        text notes "Catatan review atau nomor referensi transfer refund"
+        uuid reviewed_by "ID Staf keuangan yang memproses"
+        timestamptz reviewed_at "Waktu pemrosesan review"
+        timestamptz created_at "Waktu masuk antrean"
+        timestamptz updated_at "Waktu perubahan data"
+    }
 ```
+
+## Penjelasan Tabel & Integritas Data (CR-007)
+
+1. **`refund_reviews`**:
+   - Dibuat secara otomatis ketika suatu pendaftaran mahasiswa disetujui pengunduran dirinya (`withdrawn`) melalui Admission Service.
+   - Seluruh transaksi pembayaran yang berstatus lunas (`success`) pada pendaftaran tersebut akan didaftarkan ke tabel `refund_reviews` dengan status awal `pending`.
+   - Staf keuangan dapat meninjau, menyetujui, mencairkan, atau menolak pengembalian dana melalui antarmuka Finance Service.
+   - Kolom `payment_id` bersifat unik (`UNIQUE`) guna mencegah pendaftaran duplikat untuk transaksi pembayaran yang sama.
+
 

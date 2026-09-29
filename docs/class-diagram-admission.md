@@ -127,13 +127,109 @@ classDiagram
         +Time VerifiedAt
     }
 
+    class ChangeController {
+        -svc ChangeService
+        +GetApplicationChanges(c *gin.Context)
+        +GetPathChangeOptions(c *gin.Context)
+        +RequestPathChange(c *gin.Context)
+        +ListPendingPathChanges(c *gin.Context)
+        +MoveApplicationPath(c *gin.Context)
+        +ExportPathChanges(c *gin.Context)
+    }
+
+    class WithdrawalController {
+        -svc WithdrawalService
+        +CheckEligibility(c *gin.Context)
+        +SubmitWithdrawal(c *gin.Context)
+        +CancelWithdrawal(c *gin.Context)
+        +DownloadWithdrawalLetter(c *gin.Context)
+        +VerifyWithdrawalPublic(c *gin.Context)
+        +ListWithdrawals(c *gin.Context)
+        +ApproveWithdrawal(c *gin.Context)
+        +RejectWithdrawal(c *gin.Context)
+        +AdminWithdraw(c *gin.Context)
+        +GetWithdrawalStats(c *gin.Context)
+        +ExportWithdrawals(c *gin.Context)
+    }
+
+    class ChangeService {
+        <<interface>>
+        +GetApplicationChanges(ctx context.Context, appID uuid.UUID) ([]ApplicationChange, error)
+        +GetPathChangeOptions(ctx context.Context, appID uuid.UUID) (*PathChangeOptionsResponse, error)
+        +RequestPathChange(ctx context.Context, appID, userID uuid.UUID, targetPathID uint, reason string) (*PathChangeRequestResult, error)
+        +ListPendingPathChanges(ctx context.Context) ([]PathChangeRequest, error)
+        +MoveApplicationPath(ctx context.Context, appID uuid.UUID, targetPathID uint, reason string, adminID uuid.UUID) (*Application, error)
+        +ExportPathChangesCSV(ctx context.Context) ([]byte, error)
+    }
+
+    class WithdrawalService {
+        <<interface>>
+        +CheckEligibility(ctx context.Context, appID uuid.UUID) (*WithdrawalEligibilityResponse, error)
+        +SubmitWithdrawal(ctx context.Context, appID, userID uuid.UUID, req *SubmitWithdrawalRequest) (*Withdrawal, error)
+        +CancelWithdrawal(ctx context.Context, appID, userID uuid.UUID) error
+        +GetWithdrawalByApplication(ctx context.Context, appID uuid.UUID) (*Withdrawal, error)
+        +GenerateWithdrawalLetterPDF(ctx context.Context, withdrawalID uuid.UUID) ([]byte, error)
+        +VerifyWithdrawal(ctx context.Context, code string) (*WithdrawalVerificationResponse, error)
+        +ListWithdrawals(ctx context.Context, filter WithdrawalFilter) ([]Withdrawal, int64, error)
+        +ApproveWithdrawal(ctx context.Context, withdrawalID, reviewerID uuid.UUID, notes string) (*Withdrawal, error)
+        +RejectWithdrawal(ctx context.Context, withdrawalID, reviewerID uuid.UUID, reason string) (*Withdrawal, error)
+        +AdminDirectWithdraw(ctx context.Context, appID, adminID uuid.UUID, reason string) (*Withdrawal, error)
+        +GetWithdrawalStats(ctx context.Context) (*WithdrawalStatsResponse, error)
+        +ExportWithdrawalsCSV(ctx context.Context, filter WithdrawalFilter) ([]byte, error)
+    }
+
+    class ApplicationChange {
+        +UUID ID
+        +UUID ApplicationID
+        +string ChangeType
+        +string FromValue
+        +string ToValue
+        +string Reason
+        +UUID ChangedBy
+        +Time ChangedAt
+    }
+
+    class PathChangeRequest {
+        +UUID ID
+        +UUID ApplicationID
+        +uint FromPathID
+        +uint ToPathID
+        +string Status
+        +string Reason
+        +UUID ReviewedBy
+        +Time ReviewedAt
+        +Time CreatedAt
+    }
+
+    class Withdrawal {
+        +UUID ID
+        +UUID ApplicationID
+        +UUID UserID
+        +string Reason
+        +string Status
+        +string VerificationCode
+        +string BankName
+        +string BankAccountNumber
+        +string BankAccountHolder
+        +Time CreatedAt
+        +Time ReviewedAt
+    }
+
+    class PDFGenerator {
+        +GenerateWithdrawalLetter(w *Withdrawal, app *Application, verifyURL string) ([]byte, error)
+    }
+
     PublicController --> AdmissionService : memanggil
     ApplicationController --> AdmissionService : memanggil
     AdminController --> AdmissionService : memanggil
+    ChangeController --> ChangeService : memanggil
+    WithdrawalController --> WithdrawalService : memanggil
     AdmissionService <|.. admissionServiceImpl : implementasi
     admissionServiceImpl --> ApplicationRepository : persistensi aplikasi
     admissionServiceImpl --> ApplicationDocumentRepository : persistensi dokumen
     admissionServiceImpl --> ExcelExporter : ekspor spreadsheet
+    WithdrawalService ..> PDFGenerator : menerbitkan surat PDF dengan QR
     ApplicationRepository ..> Application : mengelola entitas
     ApplicationDocumentRepository ..> ApplicationDocument : mengelola berkas
 ```
+

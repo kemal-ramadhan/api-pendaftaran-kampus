@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PathChangeOptionsResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "allowed": { "type": "boolean" },
+        "requires_approval": { "type": "boolean" },
+        "block_reason_label": { "type": "string" },
+        "current_selection": {
+          "type": "object",
+          "properties": {
+            "period_id": { "type": "integer" },
+            "path_id": { "type": "integer" },
+            "path_name": { "type": "string" },
+            "choice_1_id": { "type": "string", "format": "uuid" },
+            "choice_2_id": { "type": ["string", "null"] },
+            "registration_fee": { "type": "integer" }
+          },
+          "required": ["period_id", "path_id", "choice_1_id"]
+        },
+        "available_options": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "path_id": { "type": "integer" },
+              "path_name": { "type": "string" },
+              "registration_fee": { "type": "integer" },
+              "fee_difference": { "type": "integer" },
+              "available_programs": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": { "type": "string", "format": "uuid" },
+                    "code": { "type": "string" },
+                    "name": { "type": "string" }
+                  },
+                  "required": ["id", "code", "name"]
+                }
+              }
+            },
+            "required": ["path_id", "path_name", "registration_fee", "fee_difference", "available_programs"]
+          }
+        }
+      },
+      "required": ["allowed", "requires_approval", "available_options"]
+    }
+  },
+  "required": ["success", "message", "data"]
+}
