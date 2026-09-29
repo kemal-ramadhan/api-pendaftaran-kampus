@@ -40,21 +40,31 @@ func main() {
 
 	appLog.Info("Memulai "+cfg.AppName, zap.String("env", cfg.AppEnv), zap.String("port", cfg.AppPort))
 
-	// Koneksi Database
-	db, err := gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
-	if err != nil {
-		appLog.Warn("Database belum dapat dihubungi saat startup", zap.Error(err))
-	} else {
-		// AutoMigrate entitas
-		if err := db.AutoMigrate(&model.Faculty{}, &model.StudyProgram{}, &model.InstitutionProfile{}); err != nil {
-			appLog.Error("Gagal menjalankan migrasi schema", zap.Error(err))
-		} else {
-			appLog.Info("Migrasi basis data organization selesai")
-			// Jalankan seeder
-			if err := seeder.Seed(context.Background(), db, appLog); err != nil {
-				appLog.Error("Gagal menjalankan seeder organization", zap.Error(err))
+	// Koneksi Database dengan retry
+	var db *gorm.DB
+	for attempt := 1; attempt <= 15; attempt++ {
+		db, err = gorm.Open(postgres.Open(cfg.DSN()), &gorm.Config{})
+		if err == nil {
+			if sqlDB, errPing := db.DB(); errPing == nil && sqlDB.Ping() == nil {
+				break
 			}
 		}
+		appLog.Warn("Menunggu koneksi database organization...", zap.Int("attempt", attempt), zap.Error(err))
+		time.Sleep(1 * time.Second)
+	}
+	if err != nil {
+		appLog.Fatal("Gagal terhubung ke basis data organization setelah beberapa percobaan", zap.Error(err))
+	}
+
+	// AutoMigrate entitas
+	if err := db.AutoMigrate(&model.Faculty{}, &model.StudyProgram{}, &model.InstitutionProfile{}); err != nil {
+		appLog.Fatal("Gagal menjalankan migrasi schema organization", zap.Error(err))
+	}
+	appLog.Info("Migrasi basis data organization selesai")
+
+	// Jalankan seeder
+	if err := seeder.Seed(context.Background(), db, appLog); err != nil {
+		appLog.Fatal("Gagal menjalankan seeder organization", zap.Error(err))
 	}
 
 	// Inisialisasi Dependensi
