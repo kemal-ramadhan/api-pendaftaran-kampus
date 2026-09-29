@@ -46,7 +46,7 @@ func main() {
 		appLog.Warn("Database belum dapat dihubungi saat startup", zap.Error(err))
 	} else {
 		// AutoMigrate entitas
-		if err := db.AutoMigrate(&model.Faculty{}, &model.StudyProgram{}); err != nil {
+		if err := db.AutoMigrate(&model.Faculty{}, &model.StudyProgram{}, &model.InstitutionProfile{}); err != nil {
 			appLog.Error("Gagal menjalankan migrasi schema", zap.Error(err))
 		} else {
 			appLog.Info("Migrasi basis data organization selesai")
@@ -60,8 +60,9 @@ func main() {
 	// Inisialisasi Dependensi
 	facultyRepo := repository.NewFacultyRepository(db)
 	studyProgramRepo := repository.NewStudyProgramRepository(db)
+	institutionProfileRepo := repository.NewInstitutionProfileRepository(db)
 
-	orgService := service.NewOrganizationService(facultyRepo, studyProgramRepo)
+	orgService := service.NewOrganizationService(facultyRepo, studyProgramRepo, institutionProfileRepo)
 
 	pubCtl := controller.NewPublicController(orgService)
 	admCtl := controller.NewAdminController(orgService)

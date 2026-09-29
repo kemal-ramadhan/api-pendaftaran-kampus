@@ -15,6 +15,7 @@ type StudyProgramRepository interface {
 	FindByCodes(ctx context.Context, codes []string) ([]model.StudyProgram, error)
 	Create(ctx context.Context, sp *model.StudyProgram) error
 	Update(ctx context.Context, sp *model.StudyProgram) error
+	UpdateAdmissionOpen(ctx context.Context, code string, admissionOpen bool) error
 	Delete(ctx context.Context, id uint) error
 }
 
@@ -83,6 +84,10 @@ func (r *studyProgramRepository) Create(ctx context.Context, sp *model.StudyProg
 
 func (r *studyProgramRepository) Update(ctx context.Context, sp *model.StudyProgram) error {
 	return r.db.WithContext(ctx).Save(sp).Error
+}
+
+func (r *studyProgramRepository) UpdateAdmissionOpen(ctx context.Context, code string, admissionOpen bool) error {
+	return r.db.WithContext(ctx).Model(&model.StudyProgram{}).Where("code = ?", code).Update("admission_open", admissionOpen).Error
 }
 
 func (r *studyProgramRepository) Delete(ctx context.Context, id uint) error {

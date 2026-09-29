@@ -66,3 +66,42 @@ func (ctl *InternalController) GetBatchStudyPrograms(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Berhasil mengambil data batch program studi", programs)
 }
+
+// GetFacultyByCode godoc
+// @Summary Ambil Data Fakultas (Internal)
+// @Description Mengambil data fakultas berdasarkan kode untuk validasi scope dekan oleh Auth service.
+// @Tags Internal
+// @Produce json
+// @Param code path string true "Kode Fakultas"
+// @Success 200 {object} response.SuccessResponse{data=dto.FacultyResponse}
+// @Failure 404 {object} response.ErrorResponse
+// @Router /internal/faculties/{code} [get]
+func (ctl *InternalController) GetFacultyByCode(c *gin.Context) {
+	code := c.Param("code")
+	f, err := ctl.orgService.GetFacultyByCode(c.Request.Context(), code)
+	if err != nil {
+		if errors.Is(err, service.ErrFacultyNotFound) {
+			response.NotFound(c, "Fakultas tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil data fakultas")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil data fakultas", f)
+}
+
+// GetInstitutionProfile godoc
+// @Summary Ambil Profil Institusi (Internal)
+// @Description Mengambil data profil institusi, jam layanan, dan nomor berita acara untuk service lain.
+// @Tags Internal
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=dto.InstitutionProfileResponse}
+// @Router /internal/institution-profile [get]
+func (ctl *InternalController) GetInstitutionProfile(c *gin.Context) {
+	res, err := ctl.orgService.GetInstitutionProfile(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil profil institusi")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil profil institusi", res)
+}

@@ -134,6 +134,16 @@ func (m *mockStudyProgramRepo) Update(ctx context.Context, sp *model.StudyProgra
 	return nil
 }
 
+func (m *mockStudyProgramRepo) UpdateAdmissionOpen(ctx context.Context, code string, admissionOpen bool) error {
+	for i, existing := range m.programs {
+		if existing.Code == code {
+			m.programs[i].AdmissionOpen = admissionOpen
+			return nil
+		}
+	}
+	return nil
+}
+
 func (m *mockStudyProgramRepo) Delete(ctx context.Context, id uint) error {
 	for i, existing := range m.programs {
 		if existing.ID == id {
@@ -144,18 +154,39 @@ func (m *mockStudyProgramRepo) Delete(ctx context.Context, id uint) error {
 	return nil
 }
 
+type mockInstitutionProfileRepo struct {
+	profile *model.InstitutionProfile
+}
+
+func (m *mockInstitutionProfileRepo) Get(ctx context.Context) (*model.InstitutionProfile, error) {
+	return m.profile, nil
+}
+
+func (m *mockInstitutionProfileRepo) Update(ctx context.Context, p *model.InstitutionProfile) error {
+	m.profile = p
+	return nil
+}
+
 func setupTestService() (service.OrganizationService, *mockFacultyRepo, *mockStudyProgramRepo) {
 	now := time.Now()
 	f1 := model.Faculty{ID: 1, Code: "FT", Name: "Fakultas Teknik", IsActive: true, CreatedAt: now, UpdatedAt: now}
 	f2 := model.Faculty{ID: 2, Code: "FEB", Name: "Fakultas Ekonomi dan Bisnis", IsActive: true, CreatedAt: now, UpdatedAt: now}
 
-	p1 := model.StudyProgram{ID: 1, FacultyID: 1, Faculty: &f1, Code: "TI", NIMCode: "55", Name: "Teknik Informatika", Degree: "S1", Accreditation: "Unggul", IsActive: true}
-	p2 := model.StudyProgram{ID: 2, FacultyID: 1, Faculty: &f1, Code: "SI", NIMCode: "57", Name: "Sistem Informasi", Degree: "S1", Accreditation: "Baik Sekali", IsActive: true}
+	p1 := model.StudyProgram{ID: 1, FacultyID: 1, Faculty: &f1, Code: "TI", NIMCode: "55", Name: "Teknik Informatika", Degree: "S1", Accreditation: "Unggul", IsActive: true, AdmissionOpen: true}
+	p2 := model.StudyProgram{ID: 2, FacultyID: 1, Faculty: &f1, Code: "SI", NIMCode: "57", Name: "Sistem Informasi", Degree: "S1", Accreditation: "Baik Sekali", IsActive: true, AdmissionOpen: true}
 
 	facultyRepo := &mockFacultyRepo{faculties: []model.Faculty{f1, f2}}
 	spRepo := &mockStudyProgramRepo{programs: []model.StudyProgram{p1, p2}}
+	profileRepo := &mockInstitutionProfileRepo{
+		profile: &model.InstitutionProfile{
+			FoundationName:  "Yayasan Pendidikan Bakti Nusantara",
+			InstitutionName: "Universitas Bakti Teknologi Nusantara",
+			DocumentCode:    "UBTH",
+			City:            "Bandung",
+		},
+	}
 
-	svc := service.NewOrganizationService(facultyRepo, spRepo)
+	svc := service.NewOrganizationService(facultyRepo, spRepo, profileRepo)
 	return svc, facultyRepo, spRepo
 }
 

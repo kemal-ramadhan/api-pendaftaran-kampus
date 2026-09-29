@@ -84,6 +84,7 @@ func Seed(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 			Degree:        "S1",
 			Accreditation: "A",
 			IsActive:      true,
+			AdmissionOpen: true,
 		},
 	}
 
@@ -93,6 +94,7 @@ func Seed(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 		if err == gorm.ErrRecordNotFound {
 			p.CreatedAt = now
 			p.UpdatedAt = now
+			p.AdmissionOpen = true
 			if err := db.WithContext(ctx).Create(&p).Error; err != nil {
 				return err
 			}
@@ -100,6 +102,49 @@ func Seed(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 		} else if err != nil {
 			return err
 		}
+	}
+
+	// 3. Seed Institution Profile
+	var existingProfile model.InstitutionProfile
+	err := db.WithContext(ctx).First(&existingProfile).Error
+	if err == gorm.ErrRecordNotFound {
+		defaultProfile := model.InstitutionProfile{
+			FoundationName:      "Yayasan Pendidikan Bakti Nusantara",
+			InstitutionName:     "Universitas Bakti Teknologi Nusantara",
+			DocumentCode:        "UBTH",
+			Address:             "Jl. Jenderal Sudirman No. 123",
+			City:                "Bandung",
+			Email:               "pmb@ubth.ac.id",
+			Phone:               "(022) 1234567",
+			Hotline:             "0812-3456-7890",
+			ServiceHours:        "Senin–Jumat 08.00–16.00 WIB | Sabtu 08.00–13.00 WIB",
+			LogoURL:             "https://desainpakeai.com/assets/logo.png",
+			CommitteeChairName:  "Dr. Ir. H. Ahmad Sudrajat, M.T.",
+			CommitteeChairTitle: "Ketua Panitia PMB 2026",
+			CommitteeChairNIP:   "197805122003121002",
+			BankAccounts: model.BankAccounts{
+				{
+					BankName:      "Bank Mandiri",
+					AccountNumber: "1310012345678",
+					AccountName:   "Yayasan Bakti Teknologi PMB",
+					IsPrimary:     true,
+				},
+				{
+					BankName:      "Bank Central Asia (BCA)",
+					AccountNumber: "7820123456",
+					AccountName:   "Yayasan Bakti Teknologi PMB",
+					IsPrimary:     false,
+				},
+			},
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := db.WithContext(ctx).Create(&defaultProfile).Error; err != nil {
+			return err
+		}
+		logger.Info("Profil Institusi berhasil di-seed", zap.String("code", defaultProfile.DocumentCode))
+	} else if err != nil {
+		return err
 	}
 
 	logger.Info("Seeding Organization Service selesai")

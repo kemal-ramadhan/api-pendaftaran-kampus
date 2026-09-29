@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/organization-service/internal/dto"
 	"github.com/pkm-asia/pmb-backend/services/organization-service/internal/service"
@@ -177,11 +178,18 @@ func (ctl *AdminController) CreateStudyProgram(c *gin.Context) {
 // @Failure 404 {object} response.ErrorResponse
 // @Router /organization/admin/study-programs/{id} [put]
 func (ctl *AdminController) UpdateStudyProgram(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	paramVal := c.Param("code")
+	if paramVal == "" {
+		paramVal = c.Param("id")
+	}
+	id, err := strconv.ParseUint(paramVal, 10, 32)
 	if err != nil {
-		response.BadRequest(c, response.ErrCodeValidationError, "Format ID tidak valid")
-		return
+		sp, errFind := ctl.orgService.GetStudyProgramByCode(c.Request.Context(), paramVal)
+		if errFind != nil || sp == nil {
+			response.NotFound(c, "Program studi tidak ditemukan")
+			return
+		}
+		id = uint64(sp.ID)
 	}
 
 	var req dto.UpdateStudyProgramRequest
@@ -208,21 +216,28 @@ func (ctl *AdminController) UpdateStudyProgram(c *gin.Context) {
 
 // PatchStudyProgram godoc
 // @Summary Ubah Sebagian Data Program Studi (Admin)
-// @Description Memperbarui sebagian field program studi berdasarkan ID
+// @Description Memperbarui sebagian field program studi berdasarkan ID atau kode
 // @Tags Admin
 // @Accept json
 // @Produce json
-// @Param id path int true "Study Program ID"
+// @Param id path string true "Study Program ID atau Kode"
 // @Param request body dto.PatchStudyProgramRequest true "Data Program Studi"
 // @Success 200 {object} response.SuccessResponse{data=dto.StudyProgramResponse}
 // @Failure 404 {object} response.ErrorResponse
 // @Router /organization/admin/study-programs/{id} [patch]
 func (ctl *AdminController) PatchStudyProgram(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.ParseUint(idStr, 10, 32)
+	paramVal := c.Param("code")
+	if paramVal == "" {
+		paramVal = c.Param("id")
+	}
+	id, err := strconv.ParseUint(paramVal, 10, 32)
 	if err != nil {
-		response.BadRequest(c, response.ErrCodeValidationError, "Format ID tidak valid")
-		return
+		sp, errFind := ctl.orgService.GetStudyProgramByCode(c.Request.Context(), paramVal)
+		if errFind != nil || sp == nil {
+			response.NotFound(c, "Program studi tidak ditemukan")
+			return
+		}
+		id = uint64(sp.ID)
 	}
 
 	var req dto.PatchStudyProgramRequest
@@ -245,4 +260,105 @@ func (ctl *AdminController) PatchStudyProgram(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Program studi berhasil diperbarui", res)
+}
+
+// PatchAdmissionOpen godoc
+// @Summary Buka atau Tutup Pendaftaran Program Studi (Admin)
+// @Description Mengubah status buka/tutup pendaftaran PMB untuk program studi tertentu
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param code path string true "Kode Program Studi"
+// @Param request body dto.PatchAdmissionOpenRequest true "Status Pendaftaran"
+// @Success 200 {object} response.SuccessResponse{data=dto.StudyProgramResponse}
+// @Failure 404 {object} response.ErrorResponse
+// @Router /organization/admin/study-programs/{code}/admission [patch]
+func (ctl *AdminController) PatchAdmissionOpen(c *gin.Context) {
+	code := c.Param("code")
+	var req dto.PatchAdmissionOpenRequest
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	res, err := ctl.orgService.PatchAdmissionOpen(c.Request.Context(), code, req.AdmissionOpen)
+	if err != nil {
+		if errors.Is(err, service.ErrStudyProgramNotFound) {
+			response.NotFound(c, err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal memperbarui status pendaftaran program studi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Status pendaftaran program studi berhasil diperbarui", res)
+}
+
+// GetInstitutionProfile godoc
+// @Summary Profil Institusi (Admin)
+// @Description Mengambil data profil institusi, jam layanan, dan rekening transfer bank
+// @Tags Admin
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=dto.InstitutionProfileResponse}
+// @Router /organization/admin/institution-profile [get]
+func (ctl *AdminController) GetInstitutionProfile(c *gin.Context) {
+	res, err := ctl.orgService.GetInstitutionProfile(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil profil institusi")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil profil institusi", res)
+}
+
+// UpdateInstitutionProfile godoc
+// @Summary Perbarui Profil Institusi (Admin)
+// @Description Memperbarui profil universitas, pimpinan, jam layanan, dan rekening bank
+// @Tags Admin
+// @Accept json
+// @Produce json
+// @Param request body dto.UpdateInstitutionProfileRequest true "Data Profil Institusi"
+// @Success 200 {object} response.SuccessResponse{data=dto.InstitutionProfileResponse}
+// @Router /organization/admin/institution-profile [put]
+func (ctl *AdminController) UpdateInstitutionProfile(c *gin.Context) {
+	var req dto.UpdateInstitutionProfileRequest
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	res, err := ctl.orgService.UpdateInstitutionProfile(c.Request.Context(), req)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memperbarui profil institusi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Profil institusi berhasil diperbarui", res)
+}
+
+// GetProgramsOverview godoc
+// @Summary Ringkasan Program Studi & Kuota PMB (Admin)
+// @Description Mengambil agregat master data program studi, status PMB, dan estimasi UKT
+// @Tags Admin
+// @Produce json
+// @Param faculty query string false "Filter kode fakultas"
+// @Param q query string false "Pencarian nama atau kode prodi"
+// @Success 200 {object} response.SuccessResponse{data=dto.ProgramsOverviewResponse}
+// @Router /organization/admin/programs-overview [get]
+func (ctl *AdminController) GetProgramsOverview(c *gin.Context) {
+	facultyFilter := c.Query("faculty")
+	query := c.Query("q")
+
+	scope := rbac.ScopeFilter(c)
+	scopeProdi := ""
+	scopeFaculty := ""
+	if !scope.IsUnrestricted {
+		scopeProdi = scope.ProdiCode
+		scopeFaculty = scope.FacultyCode
+	}
+
+	res, err := ctl.orgService.GetProgramsOverview(c.Request.Context(), facultyFilter, query, scopeProdi, scopeFaculty)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil ringkasan program studi")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Berhasil mengambil ringkasan program studi", res)
 }

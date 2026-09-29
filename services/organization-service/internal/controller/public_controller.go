@@ -95,3 +95,19 @@ func (ctl *PublicController) GetStudyProgramByCode(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Berhasil mengambil detail program studi", sp)
 }
+
+// GetInstitutionProfile godoc
+// @Summary Profil Institusi (Publik)
+// @Description Mengambil data profil universitas, jam layanan, pusat bantuan, dan rekening transfer
+// @Tags Public
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=dto.InstitutionProfileResponse}
+// @Router /organization/institution-profile [get]
+func (ctl *PublicController) GetInstitutionProfile(c *gin.Context) {
+	res, err := ctl.orgService.GetInstitutionProfile(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil profil institusi")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil profil institusi", res)
+}

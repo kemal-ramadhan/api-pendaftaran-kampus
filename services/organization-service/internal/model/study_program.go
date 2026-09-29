@@ -17,6 +17,7 @@ type StudyProgram struct {
 	Degree        string         `gorm:"type:varchar(10);not null" json:"degree"`
 	Accreditation string         `gorm:"type:varchar(30);not null" json:"accreditation"`
 	IsActive      bool           `gorm:"not null;default:true" json:"is_active"`
+	AdmissionOpen bool           `gorm:"not null;default:true" json:"admission_open"`
 	CreatedAt     time.Time      `gorm:"not null" json:"created_at"`
 	UpdatedAt     time.Time      `gorm:"not null" json:"updated_at"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
