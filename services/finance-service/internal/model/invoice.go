@@ -28,6 +28,8 @@ type Invoice struct {
 	PaidAmount    int64         `gorm:"type:bigint;not null;default:0" json:"paid_amount"`
 	Status        InvoiceStatus `gorm:"type:varchar(30);not null;default:'unpaid';index" json:"status"`
 	DueDate       time.Time     `gorm:"not null" json:"due_date"`
+	RenewalCount  int           `gorm:"not null;default:0" json:"renewal_count"`
+	PeriodID      *uint         `gorm:"index" json:"period_id,omitempty"`
 	PaymentScheme       string               `gorm:"type:varchar(20);not null;default:'full'" json:"payment_scheme"` // full, installment
 	Payments            []Payment            `gorm:"foreignKey:InvoiceID" json:"payments,omitempty"`
 	InstallmentRequests []InstallmentRequest `gorm:"foreignKey:InvoiceID" json:"installment_requests,omitempty"`

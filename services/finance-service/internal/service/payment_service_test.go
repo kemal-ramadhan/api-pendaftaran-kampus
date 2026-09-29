@@ -94,6 +94,25 @@ func (m *mockPaymentRepo) FindPendingWithProviderRef(ctx context.Context, limit 
 	return list, nil
 }
 
+func (m *mockPaymentRepo) FindByBankReference(ctx context.Context, bankRef string) (*model.Payment, error) {
+	for _, p := range m.payments {
+		if p.BankReference == bankRef {
+			return p, nil
+		}
+	}
+	return nil, repository.ErrPaymentNotFound
+}
+
+func (m *mockPaymentRepo) FindSuccessfulPayments(ctx context.Context, periodID *uint, channel string, from, to *time.Time) ([]model.Payment, error) {
+	var list []model.Payment
+	for _, p := range m.payments {
+		if p.Status == model.PaymentStatusSuccess {
+			list = append(list, *p)
+		}
+	}
+	return list, nil
+}
+
 func (m *mockPaymentRepo) UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status model.PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error {
 	if p, ok := m.payments[paymentID]; ok {
 		p.Status = status

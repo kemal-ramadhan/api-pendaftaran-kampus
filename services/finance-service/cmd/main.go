@@ -170,15 +170,16 @@ func main() {
 
 	installmentSvc := service.NewInstallmentService(installmentRepo, invRepo, feeSchemeRepo, notifCli)
 	reportSvc := service.NewReportService(reportRepo, reportExp)
+	financeAdminSvc := service.NewFinanceAdminService(invRepo, payRepo, rcRepo, admissionCli, notifCli)
 
 	// 10. Inisialisasi Controller
 	healthCtrl := controller.NewHealthController(db)
-	invCtrl := controller.NewInvoiceController(invSvc)
-	payCtrl := controller.NewPaymentController(paySvc)
+	invCtrl := controller.NewInvoiceController(invSvc, financeAdminSvc)
+	payCtrl := controller.NewPaymentController(paySvc, financeAdminSvc)
 	rcCtrl := controller.NewReceiptController(paySvc)
 	webhookCtrl := controller.NewWebhookController(paySvc)
 	devCtrl := controller.NewDevController(paySvc, cfg)
-	adminCtrl := controller.NewAdminController(paySvc, feeSchemeRepo, refundReviewSvc)
+	adminCtrl := controller.NewAdminController(paySvc, feeSchemeRepo, refundReviewSvc, financeAdminSvc)
 	internalCtrl := controller.NewInternalController(invSvc)
 	installmentCtrl := controller.NewInstallmentController(installmentSvc)
 	reportCtrl := controller.NewReportController(reportSvc, installmentSvc)

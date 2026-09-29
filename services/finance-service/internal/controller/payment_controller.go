@@ -15,11 +15,12 @@ import (
 )
 
 type PaymentController struct {
-	svc service.PaymentService
+	svc      service.PaymentService
+	adminSvc service.FinanceAdminService
 }
 
-func NewPaymentController(svc service.PaymentService) *PaymentController {
-	return &PaymentController{svc: svc}
+func NewPaymentController(svc service.PaymentService, adminSvc service.FinanceAdminService) *PaymentController {
+	return &PaymentController{svc: svc, adminSvc: adminSvc}
 }
 
 type PayInput struct {
@@ -197,12 +198,20 @@ func (ctrl *PaymentController) GetPaymentStatus(c *gin.Context) {
 	})
 }
 
-// GetPaymentMethods menangani GET /finance/payment-methods dan GET /payment-methods
+// GetPaymentMethods menangani GET /finance/payment-methods dan GET /payment-methods (PRD 3.5)
 func (ctrl *PaymentController) GetPaymentMethods(c *gin.Context) {
 	amountStr := c.Query("amount")
 	amount, _ := strconv.ParseInt(amountStr, 10, 64)
 	if amount <= 0 {
 		amount = 250000 // default perkiraan biaya pendaftaran PMB
+	}
+
+	if ctrl.adminSvc != nil {
+		grouped, err := ctrl.adminSvc.GetPaymentMethodsGrouped(c.Request.Context(), amount)
+		if err == nil {
+			response.Success(c, http.StatusOK, "Daftar metode pembayaran berhasil diambil", grouped)
+			return
+		}
 	}
 
 	methods, err := ctrl.svc.GetPaymentMethods(c.Request.Context(), amount)

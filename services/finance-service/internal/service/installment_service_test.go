@@ -204,6 +204,24 @@ func (m *mockInvoiceRepoForInstallment) UpdateStatus(ctx context.Context, id uui
 	return nil
 }
 
+func (m *mockInvoiceRepoForInstallment) ListAllInvoices(ctx context.Context, periodID *uint, status string, feeType string, search string, limit, offset int) ([]model.Invoice, int64, error) {
+	var list []model.Invoice
+	for _, inv := range m.invoices {
+		list = append(list, *inv)
+	}
+	return list, int64(len(list)), nil
+}
+
+func (m *mockInvoiceRepoForInstallment) UpdateDueDateAndRenewal(ctx context.Context, id uuid.UUID, newDueDate time.Time, renewalCount int) error {
+	inv, ok := m.invoices[id]
+	if !ok {
+		return repository.ErrInvoiceNotFound
+	}
+	inv.DueDate = newDueDate
+	inv.RenewalCount = renewalCount
+	return nil
+}
+
 func TestInstallmentValidationAndPrecisionMath(t *testing.T) {
 	ctx := context.Background()
 	userID := uuid.New()

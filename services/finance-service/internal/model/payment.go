@@ -24,8 +24,10 @@ const (
 type PaymentMethod string
 
 const (
-	PaymentMethodVirtualAccount PaymentMethod = "virtual_account"
-	PaymentMethodManualTransfer PaymentMethod = "manual_transfer"
+	PaymentMethodVirtualAccount    PaymentMethod = "virtual_account"
+	PaymentMethodManualTransfer    PaymentMethod = "manual_transfer"
+	PaymentMethodManualConfirmation PaymentMethod = "manual_confirmation"
+	PaymentMethodQRIS              PaymentMethod = "qris"
 )
 
 type Payment struct {
@@ -34,6 +36,8 @@ type Payment struct {
 	Method         PaymentMethod `gorm:"type:varchar(30);not null" json:"method"`
 	Provider       string        `gorm:"type:varchar(50);not null;default:'mock'" json:"provider"`
 	ProviderRef    string        `gorm:"type:varchar(100);uniqueIndex;not null" json:"provider_ref"`
+	BankReference  string        `gorm:"type:varchar(100);index" json:"bank_reference,omitempty"`
+	Channel        string        `gorm:"type:varchar(50)" json:"channel,omitempty"`
 	VANumber         string        `gorm:"type:varchar(50)" json:"va_number,omitempty"`
 	PaymentURL       string        `gorm:"type:varchar(500)" json:"payment_url,omitempty"`
 	PaymentCode      string        `gorm:"type:varchar(50)" json:"payment_code,omitempty"`

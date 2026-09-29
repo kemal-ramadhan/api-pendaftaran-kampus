@@ -99,6 +99,23 @@ func (m *mockInvoiceRepo) UpdateStatusInTx(tx *gorm.DB, id uuid.UUID, status mod
 	return m.UpdateStatus(context.Background(), id, status, paidAmount)
 }
 
+func (m *mockInvoiceRepo) ListAllInvoices(ctx context.Context, periodID *uint, status string, feeType string, search string, limit, offset int) ([]model.Invoice, int64, error) {
+	var list []model.Invoice
+	for _, inv := range m.invoices {
+		list = append(list, *inv)
+	}
+	return list, int64(len(list)), nil
+}
+
+func (m *mockInvoiceRepo) UpdateDueDateAndRenewal(ctx context.Context, id uuid.UUID, newDueDate time.Time, renewalCount int) error {
+	if inv, ok := m.invoices[id]; ok {
+		inv.DueDate = newDueDate
+		inv.RenewalCount = renewalCount
+		return nil
+	}
+	return repository.ErrInvoiceNotFound
+}
+
 func (m *mockInvoiceRepo) DB() *gorm.DB {
 	return nil
 }

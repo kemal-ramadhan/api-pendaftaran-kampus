@@ -26,6 +26,8 @@ type InvoiceRepository interface {
 	GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error
 	UpdateAmount(ctx context.Context, id uuid.UUID, amount int64) error
+	ListAllInvoices(ctx context.Context, periodID *uint, status string, feeType string, search string, limit, offset int) ([]model.Invoice, int64, error)
+	UpdateDueDateAndRenewal(ctx context.Context, id uuid.UUID, newDueDate time.Time, renewalCount int) error
 }
 
 type invoiceRepository struct {
@@ -155,6 +157,54 @@ func (r *invoiceRepository) UpdateAmount(ctx context.Context, id uuid.UUID, amou
 	updates := map[string]interface{}{
 		"amount":     amount,
 		"updated_at": time.Now(),
+	}
+	return r.db.WithContext(ctx).Model(&model.Invoice{}).Where("id = ?", id).Updates(updates).Error
+}
+
+func (r *invoiceRepository) ListAllInvoices(ctx context.Context, periodID *uint, status string, feeType string, search string, limit, offset int) ([]model.Invoice, int64, error) {
+	var list []model.Invoice
+	var total int64
+
+	q := r.db.WithContext(ctx).Model(&model.Invoice{})
+	if periodID != nil && *periodID > 0 {
+		q = q.Where("period_id = ?", *periodID)
+	}
+	if status != "" && status != "all" {
+		q = q.Where("status = ?", status)
+	}
+	if feeType != "" && feeType != "all" {
+		q = q.Where("fee_type = ?", feeType)
+	}
+	if search != "" {
+		q = q.Where("invoice_number ILIKE ?", "%"+search+"%")
+	}
+
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	if limit <= 0 {
+		limit = 10
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	err := q.Preload("Payments.Receipt").
+		Order("created_at desc").
+		Limit(limit).
+		Offset(offset).
+		Find(&list).Error
+
+	return list, total, err
+}
+
+func (r *invoiceRepository) UpdateDueDateAndRenewal(ctx context.Context, id uuid.UUID, newDueDate time.Time, renewalCount int) error {
+	updates := map[string]interface{}{
+		"status":        model.InvoiceStatusUnpaid,
+		"due_date":      newDueDate,
+		"renewal_count": renewalCount,
+		"updated_at":    time.Now(),
 	}
 	return r.db.WithContext(ctx).Model(&model.Invoice{}).Where("id = ?", id).Updates(updates).Error
 }

@@ -21,6 +21,8 @@ type PaymentRepository interface {
 	FindByProviderRef(ctx context.Context, providerRef string) (*model.Payment, error)
 	ListAwaitingVerification(ctx context.Context, limit, offset int) ([]model.Payment, int64, error)
 	FindPendingWithProviderRef(ctx context.Context, limit int) ([]model.Payment, error)
+	FindByBankReference(ctx context.Context, bankRef string) (*model.Payment, error)
+	FindSuccessfulPayments(ctx context.Context, periodID *uint, channel string, from, to *time.Time) ([]model.Payment, error)
 	UpdateStatusInTx(tx *gorm.DB, paymentID uuid.UUID, status model.PaymentStatus, notes string, verifiedBy *uuid.UUID, paidAt *time.Time) error
 	Update(ctx context.Context, payment *model.Payment) error
 }
@@ -131,5 +133,36 @@ func (r *paymentRepository) FindPendingWithProviderRef(ctx context.Context, limi
 
 func (r *paymentRepository) Update(ctx context.Context, payment *model.Payment) error {
 	return r.db.WithContext(ctx).Save(payment).Error
+}
+
+func (r *paymentRepository) FindByBankReference(ctx context.Context, bankRef string) (*model.Payment, error) {
+	var p model.Payment
+	err := r.db.WithContext(ctx).Where("bank_reference = ?", bankRef).First(&p).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrPaymentNotFound
+		}
+		return nil, err
+	}
+	return &p, nil
+}
+
+func (r *paymentRepository) FindSuccessfulPayments(ctx context.Context, periodID *uint, channel string, from, to *time.Time) ([]model.Payment, error) {
+	var list []model.Payment
+	q := r.db.WithContext(ctx).Model(&model.Payment{}).
+		Where("status = ?", model.PaymentStatusSuccess)
+
+	if channel != "" && channel != "all" {
+		q = q.Where("channel ILIKE ? OR method ILIKE ?", "%"+channel+"%", "%"+channel+"%")
+	}
+	if from != nil {
+		q = q.Where("created_at >= ?", *from)
+	}
+	if to != nil {
+		q = q.Where("created_at <= ?", *to)
+	}
+
+	err := q.Order("created_at asc").Find(&list).Error
+	return list, err
 }
 

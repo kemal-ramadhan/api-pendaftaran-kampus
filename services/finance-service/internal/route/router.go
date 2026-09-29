@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/controller"
 )
 
@@ -61,17 +62,24 @@ func SetupRouter(
 	authGroup.Use(gatewayauth.Middleware(cfg.GatewaySecret))
 	{
 		// Tagihan calon mahasiswa
-		invGroup := authGroup.Group("/invoices/me")
-		{
-			invGroup.GET("", invCtrl.GetMyInvoices)
-			invGroup.GET("/:id", invCtrl.GetInvoiceDetail)
-			invGroup.POST("/:id/pay", payCtrl.PayWithVirtualAccount)
-			invGroup.POST("/:id/manual-transfer", payCtrl.PayWithManualTransfer)
-			invGroup.GET("/:id/payments/:payment_id", payCtrl.GetPaymentDetail)
-			invGroup.GET("/:id/payments/:payment_id/status", payCtrl.GetPaymentStatus)
-			invGroup.POST("/:id/installment-request", installmentCtrl.RequestInstallment)
-			invGroup.GET("/:id/installments", installmentCtrl.GetInstallmentSchedule)
+		registerCamabaInvoiceRoutes := func(base *gin.RouterGroup) {
+			base.GET("", invCtrl.GetMyInvoices)
+			base.GET("/:id", invCtrl.GetInvoiceDetail)
+			base.POST("/:id/pay", payCtrl.PayWithVirtualAccount)
+			base.POST("/:id/manual-transfer", payCtrl.PayWithManualTransfer)
+			base.POST("/:id/renew", invCtrl.RenewInvoice)
+			base.GET("/:id/receipt-view", invCtrl.GetReceiptView)
+			base.GET("/:id/payments/:payment_id", payCtrl.GetPaymentDetail)
+			base.GET("/:id/payments/:payment_id/status", payCtrl.GetPaymentStatus)
+			base.POST("/:id/installment-request", installmentCtrl.RequestInstallment)
+			base.GET("/:id/installments", installmentCtrl.GetInstallmentSchedule)
 		}
+
+		invGroup := authGroup.Group("/invoices/me")
+		registerCamabaInvoiceRoutes(invGroup)
+
+		invGroupAlt := authGroup.Group("/finance/me/invoices")
+		registerCamabaInvoiceRoutes(invGroupAlt)
 
 		// Kwitansi resmi
 		receiptGroup := authGroup.Group("/receipts/me")
@@ -83,29 +91,44 @@ func SetupRouter(
 		registerAdminRoutes := func(prefix string) {
 			adminGroup := authGroup.Group(prefix)
 			{
-				// Verifikasi transfer manual & kelola cicilan: role keuangan & superadmin
-				keuanganOnly := adminGroup.Group("")
-				keuanganOnly.Use(gatewayauth.RequireRole("keuangan", "superadmin", "admin_pmb"))
-				{
-					keuanganOnly.GET("/payments", adminCtrl.ListManualTransfers)
-					keuanganOnly.POST("/payments/:id/verify", adminCtrl.VerifyPayment)
-					keuanganOnly.GET("/installment-requests", installmentCtrl.ListInstallmentRequests)
-					keuanganOnly.POST("/installment-requests/:id/review", installmentCtrl.ReviewInstallmentRequest)
-					keuanganOnly.POST("/cron/process-due-dates", reportCtrl.ProcessDueDatesCron)
-					keuanganOnly.GET("/fee-schemes", adminCtrl.ListFeeSchemes)
-					keuanganOnly.POST("/fee-schemes", adminCtrl.CreateFeeScheme)
-					keuanganOnly.POST("/reconcile", adminCtrl.ReconcilePayments)
-					keuanganOnly.GET("/refund-reviews", adminCtrl.ListRefundReviews)
-					keuanganOnly.PATCH("/refund-reviews/:id", adminCtrl.UpdateRefundReview)
-				}
+				// RBAC Terlindungi (docs/RBAC.md)
+				// Rekonsiliasi & Ekspor
+				adminGroup.GET("/reconciliation", rbac.RequirePermission("finance.reconciliation.read"), adminCtrl.GetReconciliation)
+				adminGroup.GET("/reconciliation/export", rbac.RequirePermission("finance.reconciliation.read"), adminCtrl.ExportReconciliation)
 
-				// Laporan ringkasan & ekspor excel: role keuangan, pimpinan, superadmin
-				reportGroup := adminGroup.Group("/reports")
-				reportGroup.Use(gatewayauth.RequireRole("keuangan", "pimpinan", "superadmin", "admin_pmb"))
-				{
-					reportGroup.GET("/summary", reportCtrl.GetSummary)
-					reportGroup.GET("/export", reportCtrl.ExportXLSX)
-				}
+				// Konfirmasi Manual
+				adminGroup.POST("/invoices/:id/manual-confirm", rbac.RequirePermission("finance.payment.manual_confirm"), adminCtrl.ManualConfirmPayment)
+
+				// Buku Besar (Ledger)
+				adminGroup.GET("/ledger", rbac.RequirePermission("finance.ledger.read"), adminCtrl.GetLedger)
+				adminGroup.GET("/ledger/export", rbac.RequirePermission("finance.ledger.read"), adminCtrl.ExportLedger)
+
+				// Fee Schemes
+				adminGroup.GET("/fee-schemes", rbac.RequirePermission("finance.fee.manage"), adminCtrl.ListFeeSchemes)
+				adminGroup.POST("/fee-schemes", rbac.RequirePermission("finance.fee.manage"), adminCtrl.CreateFeeScheme)
+				adminGroup.PUT("/fee-schemes/:id", rbac.RequirePermission("finance.fee.manage"), adminCtrl.CreateFeeScheme)
+
+				// Pembayaran Manual & Verifikasi
+				adminGroup.GET("/payments", rbac.RequirePermission("finance.payment.manual_confirm", "finance.reconciliation.read"), adminCtrl.ListManualTransfers)
+				adminGroup.POST("/payments/:id/verify", rbac.RequirePermission("finance.payment.manual_confirm"), adminCtrl.VerifyPayment)
+
+				// Cicilan (Installments)
+				adminGroup.GET("/installment-requests", rbac.RequirePermission("finance.fee.manage", "finance.payment.manual_confirm"), installmentCtrl.ListInstallmentRequests)
+				adminGroup.POST("/installment-requests/:id/review", rbac.RequirePermission("finance.fee.manage", "finance.payment.manual_confirm"), installmentCtrl.ReviewInstallmentRequest)
+
+				// Refund Reviews
+				adminGroup.GET("/refund-reviews", rbac.RequirePermission("finance.payment.manual_confirm"), adminCtrl.ListRefundReviews)
+				adminGroup.PATCH("/refund-reviews/:id", rbac.RequirePermission("finance.payment.manual_confirm"), adminCtrl.UpdateRefundReview)
+
+				// Rekonsiliasi Pembayaran otomatis
+				adminGroup.POST("/reconcile", rbac.RequirePermission("finance.reconciliation.read"), adminCtrl.ReconcilePayments)
+
+				// Cron Jatuh Tempo
+				adminGroup.POST("/cron/process-due-dates", reportCtrl.ProcessDueDatesCron)
+
+				// Laporan ringkasan & ekspor excel
+				adminGroup.GET("/reports/summary", rbac.RequirePermission("finance.reconciliation.read", "finance.ledger.read"), reportCtrl.GetSummary)
+				adminGroup.GET("/reports/export", rbac.RequirePermission("finance.reconciliation.read", "finance.ledger.read"), reportCtrl.ExportXLSX)
 			}
 		}
 

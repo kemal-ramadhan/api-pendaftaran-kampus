@@ -2,8 +2,11 @@ package controller
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -18,17 +21,20 @@ type AdminController struct {
 	paymentSvc      service.PaymentService
 	feeSchemeRepo   repository.FeeSchemeRepository
 	refundReviewSvc service.RefundReviewService
+	adminSvc        service.FinanceAdminService
 }
 
 func NewAdminController(
 	paymentSvc service.PaymentService,
 	feeSchemeRepo repository.FeeSchemeRepository,
 	refundReviewSvc service.RefundReviewService,
+	adminSvc service.FinanceAdminService,
 ) *AdminController {
 	return &AdminController{
 		paymentSvc:      paymentSvc,
 		feeSchemeRepo:   feeSchemeRepo,
 		refundReviewSvc: refundReviewSvc,
+		adminSvc:        adminSvc,
 	}
 }
 
@@ -226,6 +232,186 @@ func (ctrl *AdminController) UpdateRefundReview(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Tinjauan pengembalian dana berhasil diperbarui", updated)
+}
+
+// GetReconciliation menangani GET /finance/admin/reconciliation (PRD 2.3)
+func (ctrl *AdminController) GetReconciliation(c *gin.Context) {
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	status := c.Query("status")
+	channel := c.Query("channel")
+	feeType := c.Query("type")
+	search := c.Query("search")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+
+	res, err := ctrl.adminSvc.GetReconciliation(c.Request.Context(), periodID, status, channel, feeType, search, page, limit)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil data rekonsiliasi keuangan: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Data rekonsiliasi keuangan berhasil diambil", res)
+}
+
+// ExportReconciliation menangani GET /finance/admin/reconciliation/export (PRD 2.3)
+func (ctrl *AdminController) ExportReconciliation(c *gin.Context) {
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	format := c.DefaultQuery("format", "xlsx")
+	data, fileName, err := ctrl.adminSvc.ExportReconciliation(c.Request.Context(), periodID, format)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengekspor data rekonsiliasi: "+err.Error())
+		return
+	}
+
+	contentType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	if strings.ToLower(format) == "csv" {
+		contentType = "text/csv"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
+	c.Data(http.StatusOK, contentType, data)
+}
+
+// ManualConfirmPayment menangani POST /finance/admin/invoices/:id/manual-confirm (PRD 2.3)
+func (ctrl *AdminController) ManualConfirmPayment(c *gin.Context) {
+	actorID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	actorName := c.GetHeader("X-User-Name")
+	if actorName == "" {
+		actorName = "Staf Keuangan"
+	}
+
+	idStr := c.Param("id")
+	invID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID tagihan tidak valid")
+		return
+	}
+
+	var req service.ManualConfirmRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data konfirmasi lunas tidak valid: "+err.Error())
+		return
+	}
+
+	payment, err := ctrl.adminSvc.ManualConfirmPayment(c.Request.Context(), invID, actorID, actorName, req)
+	if err != nil {
+		if errors.Is(err, service.ErrInvoiceAlreadyPaid) {
+			response.Error(c, http.StatusConflict, "INVOICE_ALREADY_PAID", err.Error(), nil)
+			return
+		}
+		if errors.Is(err, service.ErrDuplicateBankReference) {
+			response.BadRequest(c, "DUPLICATE_BANK_REFERENCE", err.Error())
+			return
+		}
+		if errors.Is(err, service.ErrInvalidAmount) {
+			response.BadRequest(c, "INVALID_AMOUNT", err.Error())
+			return
+		}
+		if errors.Is(err, repository.ErrInvoiceNotFound) {
+			response.NotFound(c, "Data tagihan tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal memproses konfirmasi lunas manual: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Konfirmasi pembayaran manual berhasil diselesaikan", payment)
+}
+
+// GetLedger menangani GET /finance/admin/ledger (PRD 2.7)
+func (ctrl *AdminController) GetLedger(c *gin.Context) {
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	channel := c.Query("channel")
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
+
+	var fromDate, toDate *time.Time
+	if fStr := c.Query("from"); fStr != "" {
+		if t, err := time.Parse("2006-01-02", fStr); err == nil {
+			fromDate = &t
+		}
+	}
+	if tStr := c.Query("to"); tStr != "" {
+		if t, err := time.Parse("2006-01-02", tStr); err == nil {
+			toDate = &t
+		}
+	}
+
+	res, err := ctrl.adminSvc.GetLedger(c.Request.Context(), periodID, channel, fromDate, toDate, page, limit)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil data buku besar: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Data buku besar kas berhasil diambil", res)
+}
+
+// ExportLedger menangani GET /finance/admin/ledger/export (PRD 2.7)
+func (ctrl *AdminController) ExportLedger(c *gin.Context) {
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	channel := c.Query("channel")
+	format := c.DefaultQuery("format", "xlsx")
+
+	var fromDate, toDate *time.Time
+	if fStr := c.Query("from"); fStr != "" {
+		if t, err := time.Parse("2006-01-02", fStr); err == nil {
+			fromDate = &t
+		}
+	}
+	if tStr := c.Query("to"); tStr != "" {
+		if t, err := time.Parse("2006-01-02", tStr); err == nil {
+			toDate = &t
+		}
+	}
+
+	data, fileName, err := ctrl.adminSvc.ExportLedger(c.Request.Context(), periodID, channel, fromDate, toDate, format)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengekspor data buku besar: "+err.Error())
+		return
+	}
+
+	contentType := "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	if strings.ToLower(format) == "csv" {
+		contentType = "text/csv"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
+	c.Data(http.StatusOK, contentType, data)
 }
 
 
