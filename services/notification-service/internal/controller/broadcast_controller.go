@@ -156,7 +156,7 @@ func (ctl *BroadcastController) PreviewBroadcast(c *gin.Context) {
 	res, err := ctl.svc.PreviewBroadcast(c.Request.Context(), req)
 	if err != nil {
 		if errors.Is(err, service.ErrUnknownVariable) {
-			response.UnprocessableEntity(c, err.Error(), nil)
+			response.Error(c, http.StatusUnprocessableEntity, "UNKNOWN_TEMPLATE_VARIABLE", err.Error(), nil)
 			return
 		}
 		response.InternalServerError(c, "Gagal memproses pratinjau broadcast: "+err.Error())
@@ -192,11 +192,11 @@ func (ctl *BroadcastController) SendBroadcast(c *gin.Context) {
 	res, err := ctl.svc.SendBroadcast(c.Request.Context(), req, actorID, actorName)
 	if err != nil {
 		if errors.Is(err, service.ErrRecipientCountMismatch) {
-			response.BadRequest(c, response.ErrCodeValidationError, err.Error())
+			response.Error(c, http.StatusBadRequest, "RECIPIENT_COUNT_MISMATCH", err.Error(), nil)
 			return
 		}
 		if errors.Is(err, service.ErrUnknownVariable) {
-			response.UnprocessableEntity(c, err.Error(), nil)
+			response.Error(c, http.StatusUnprocessableEntity, "UNKNOWN_TEMPLATE_VARIABLE", err.Error(), nil)
 			return
 		}
 		response.InternalServerError(c, "Gagal mengirim broadcast: "+err.Error())

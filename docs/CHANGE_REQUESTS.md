@@ -16,8 +16,8 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
 | **CR-006** | 2026-09-29 | Riwayat pendaftaran & pindah jalur (langsung / via permintaan admin), immutable DB triggers, reprice/ADJ invoice, penghitungan ulang dokumen | Pak Kemal Ramadhan (Lead / Product Owner) | Admission Service, Finance Service, Exam Service, API Gateway | Tahap 13 / CR-006 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 1 |
 | **CR-007** | 2026-09-29 | Fitur pengunduran diri resmi (verifikasi password Auth, pembatalan tagihan & refund review Finance, pelepasan kuota Selection, pencabutan role Auth, NIM voided, bukti PDF) | Pak Kemal Ramadhan (Lead / Product Owner) | Admission Service, Auth Service, Finance Service, Exam Service, Selection Service, Student Service, NIM Service, API Gateway | Tahap 13 / CR-007 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 2 |
 | **CR-008** | 2026-09-29 | Uji integrasi Duitku Sandbox sungguhan (pemisahan POP & WebAPI base URL, script powershell uji sandbox, penanganan PAYMENT_PROVIDER_ERROR, rekonsiliasi) | Pak Kemal Ramadhan (Lead / Product Owner) | Finance Service, API Gateway, Scripts, Docs | Tahap 13 / CR-008 | **done** | `PRD-TAMBAHAN-CR006-008.md` Bagian 3, `docs/DUITKU-SANDBOX.md` |
-| **CR-009** | 2026-09-29 | Portal Admin (8 modul) & RBAC berbasis permission (tabel permissions/role_permissions, role dekan scope fakultas, header X-User-Permissions di gateway, pkg/rbac, pemetaan permission, 8 modul portal admin) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Seluruh service (Auth, Gateway, Organization, Notification, Admission, Finance, Identity, Exam, Scoring, Selection, Student, NIM) | Tahap 14 / CR-009 | **open** | `PRD-TAMBAHAN-CR009-010.md` Bagian 1 & 2, `docs/RBAC.md` |
-| **CR-010** | 2026-09-29 | Penyesuaian desain Portal Calon Mahasiswa v2 (stepper 6 tahap, agenda & ringkasan, options admission_open & biaya formulir, 5 berkas wajib, tab pembayaran VA/Transfer/QRIS + badge + biaya gratis + jatuh tempo 3 hari kerja, pembukaan CBT otomatis K11, receipt-view) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Admission, Finance, Identity, Exam, Selection, Gateway, Organization | Tahap 14 / CR-010 | **open** | `PRD-TAMBAHAN-CR009-010.md` Bagian 3 |
+| **CR-009** | 2026-09-29 | Portal Admin (8 modul) & RBAC berbasis permission (tabel permissions/role_permissions, role dekan scope fakultas, header X-User-Permissions di gateway, pkg/rbac, pemetaan permission, 8 modul portal admin) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Seluruh service (Auth, Gateway, Organization, Notification, Admission, Finance, Identity, Exam, Scoring, Selection, Student, NIM) | Tahap 14 / CR-009 | **done** | `PRD-TAMBAHAN-CR009-010.md` Bagian 1 & 2, `docs/RBAC.md` |
+| **CR-010** | 2026-09-29 | Penyesuaian desain Portal Calon Mahasiswa v2 (stepper 6 tahap, agenda & ringkasan, options admission_open & biaya formulir, 5 berkas wajib, tab pembayaran VA/Transfer/QRIS + badge + biaya gratis + jatuh tempo 3 hari kerja, pembukaan CBT otomatis K11, receipt-view) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Admission, Finance, Identity, Exam, Selection, Gateway, Organization | Tahap 14 / CR-010 | **done** | `PRD-TAMBAHAN-CR009-010.md` Bagian 3 |
 
 ---
 
@@ -77,7 +77,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Selisih biaya: jika lebih mahal -> Finance terbitkan tagihan adjustment `INV-REG-{YYYY}-{urut}-ADJ`; jika lebih murah -> dicatat di riwayat & notifikasi keuangan (tidak ada refund otomatis).
   - Persyaratan dokumen: dihitung ulang untuk jalur baru.
   - Kompatibilitas CR-005: `GET /applications/me/dashboard` memuat field `pending_request`.
-- **Status**: **open** (menunggu persetujuan rencana implementasi).
+- **Status**: **done** (Tahap 13 / CR-006).
 
 ### CR-007 — Pengunduran Diri (29 September 2026)
 - **Arahan Lead**: Calon mahasiswa yang sudah membayar dapat mengundurkan diri secara resmi, tercatat, dan berdampak benar ke seluruh sistem (sebelum bayar tetap memakai Batalkan pendaftaran CR-002).
@@ -127,7 +127,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
     8. Master Data Organisasi: Fakultas & Program Studi (`admission_open` buka/tutup prodi PMB, estimasi UKT).
   - Notification Service: tabel `activity_events`, internal ingestion `POST /internal/activity`, baca log aktivitas `GET /notifications/admin/activity`.
   - Organization Service: profil institusi field tambahan (kop surat berita acara, rekening bank transfer institusi, dsb.).
-- **Status**: **open** (dalam proses implementasi).
+- **Status**: **done** (Tahap 14 / CR-009).
 
 ### CR-010 — Penyesuaian Desain Portal Calon Mahasiswa v2 (29 September 2026)
 - **Arahan Lead & Sumber Desain**: Desain Figma PMB v2 (24 halaman: 05–12 portal calon mahasiswa).
@@ -140,6 +140,6 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Pelaksanaan CBT (10): K11 kelayakan CBT (biaya lunas + biodata lengkap langsung membuka modul CBT tanpa menunggu berkas terverifikasi, verifikasi berkas berjalan paralel).
   - Pengumuman & Registrasi (11): Penugasan gugus PKKMB calon mahasiswa baru.
   - Kuitansi Resmi (12): Endpoint `GET /finance/me/invoices/:id/receipt-view`, kuitansi lunas, teks status penguncian pilihan jalur.
-- **Status**: **open** (dalam proses implementasi).
+- **Status**: **done** (Tahap 14 / CR-010).
 
 

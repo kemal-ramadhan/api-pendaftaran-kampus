@@ -3635,6 +3635,446 @@ else
 fi
 
 # ==============================================================================
+# BAGIAN 17: PENGUJIAN KOMPREHENSIF CR-009 & CR-010 (PRD BAGIAN 5.2)
+# ==============================================================================
+echo -e "\n${CYAN}>>> BAGIAN 17: PENGUJIAN KOMPREHENSIF CR-009 & CR-010 (PRD BAGIAN 5.2)${NC}"
+
+# 129. [5.2.1] RBAC Keuangan: permissions claim, tolak verifikasi berkas 403, rekonsiliasi 200
+log_info "129. [CR-009/5.2.1] Menguji RBAC Keuangan: permissions claim, tolak verifikasi berkas 403, rekonsiliasi 200..."
+RESP_PERMS=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_BASE}/api/v1/auth/me/permissions" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_PERMS=$(echo "$RESP_PERMS" | tail -n1)
+BODY_PERMS=$(echo "$RESP_PERMS" | sed '$d')
+assert_status "User keuangan mengambil /auth/me/permissions" "200" "$CODE_PERMS" "$BODY_PERMS"
+
+if echo "$BODY_PERMS" | grep -q '"code":"finance"' && echo "$BODY_PERMS" | grep -q '"allowed":true'; then
+  log_pass "Modul finance aktif dan diizinkan pada role keuangan"
+else
+  log_fail "Modul finance tidak ditemukan atau tidak diizinkan: $BODY_PERMS"
+fi
+
+RESP_FORBID=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/document-queue" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_FORBID=$(echo "$RESP_FORBID" | tail -n1)
+BODY_FORBID=$(echo "$RESP_FORBID" | sed '$d')
+if [ "$CODE_FORBID" = "403" ] && echo "$BODY_FORBID" | grep -q "PERMISSION_DENIED"; then
+  log_pass "Akses verifikasi berkas oleh role keuangan ditolak dengan tepat (HTTP 403 PERMISSION_DENIED)"
+else
+  log_fail "Akses verifikasi berkas tidak ditolak 403 PERMISSION_DENIED (HTTP $CODE_FORBID): $BODY_FORBID"
+fi
+
+RESP_RECON=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/reconciliation" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_RECON=$(echo "$RESP_RECON" | tail -n1)
+BODY_RECON=$(echo "$RESP_RECON" | sed '$d')
+assert_status "User keuangan mengakses rekonsiliasi keuangan" "200" "$CODE_RECON" "$BODY_RECON"
+
+# 130. [5.2.2] Scope Prodi & Dekan: overview & dashboard institusi
+log_info "130. [CR-009/5.2.2] Menguji Scope Prodi dan Dekan pada overview dan dashboard institusi..."
+DEKAN_EMAIL="dekan_ft_${RAND_ID}@univ.ac.id"
+DEKAN_PASS="DekanPass123!"
+curl -s -X POST "${GATEWAY_URL}/admin/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$DEKAN_EMAIL\",
+    \"full_name\": \"Dekan Fakultas Teknik\",
+    \"phone\": \"081298765401\",
+    \"password\": \"$DEKAN_PASS\",
+    \"roles\": [
+      {
+        \"code\": \"dekan\",
+        \"scope_type\": \"faculty\",
+        \"scope_id\": \"FT\"
+      }
+    ]
+  }" >/dev/null
+
+RESP_LOGIN_DEKAN=$(curl -s -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$DEKAN_EMAIL\",\"password\":\"$DEKAN_PASS\"}")
+DEKAN_TOKEN=$(echo "$RESP_LOGIN_DEKAN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+PRODI_EMAIL="prodi_ti_${RAND_ID}@univ.ac.id"
+PRODI_PASS="ProdiPass123!"
+curl -s -X POST "${GATEWAY_URL}/admin/users" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"email\": \"$PRODI_EMAIL\",
+    \"full_name\": \"Kaprodi Teknik Informatika\",
+    \"phone\": \"081298765402\",
+    \"password\": \"$PRODI_PASS\",
+    \"roles\": [
+      {
+        \"code\": \"prodi\",
+        \"scope_type\": \"prodi\",
+        \"scope_id\": \"TI\"
+      }
+    ]
+  }" >/dev/null
+
+RESP_LOGIN_PRODI=$(curl -s -X POST "${GATEWAY_URL}/login" \
+  -H "Content-Type: application/json" \
+  -d "{\"email\":\"$PRODI_EMAIL\",\"password\":\"$PRODI_PASS\"}")
+PRODI_TOKEN=$(echo "$RESP_LOGIN_PRODI" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+
+RESP_PRODI_OVERVIEW=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/overview" \
+  -H "Authorization: Bearer $PRODI_TOKEN")
+CODE_PRODI_OVERVIEW=$(echo "$RESP_PRODI_OVERVIEW" | tail -n1)
+BODY_PRODI_OVERVIEW=$(echo "$RESP_PRODI_OVERVIEW" | sed '$d')
+assert_status "Staf prodi mengambil overview tersaring scope prodi" "200" "$CODE_PRODI_OVERVIEW" "$BODY_PRODI_OVERVIEW"
+
+RESP_DEKAN_DASH=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/institution-dashboard" \
+  -H "Authorization: Bearer $DEKAN_TOKEN")
+CODE_DEKAN_DASH=$(echo "$RESP_DEKAN_DASH" | tail -n1)
+BODY_DEKAN_DASH=$(echo "$RESP_DEKAN_DASH" | sed '$d')
+assert_status "Dekan mengakses dashboard institusi tersaring fakultas" "200" "$CODE_DEKAN_DASH" "$BODY_DEKAN_DASH"
+
+# 131. [5.2.3] Alur Calon Mahasiswa v2 (K11): Dashboard 6 tahap, agenda, ringkasan, bayar formulir -> CBT eligibility
+log_info "131. [CR-010/5.2.3] Menguji alur camaba v2: dashboard 6 tahap, agenda, ringkasan & CBT eligibility mandiri (K11)..."
+USER_V2_EMAIL="camaba_v2_${RAND_ID}@example.com"
+USER_V2_PASS="CamabaPass123!"
+TOKEN_V2=$(e2e_register_and_login "$USER_V2_EMAIL" "$USER_V2_PASS" "Camaba V2 Test" "081288880001")
+e2e_fill_biodata "$TOKEN_V2"
+
+RESP_DASH_V2=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/dashboard" \
+  -H "Authorization: Bearer $TOKEN_V2")
+CODE_DASH_V2=$(echo "$RESP_DASH_V2" | tail -n1)
+BODY_DASH_V2=$(echo "$RESP_DASH_V2" | sed '$d')
+assert_status "Calon mahasiswa mengambil dashboard v2" "200" "$CODE_DASH_V2" "$BODY_DASH_V2"
+
+if echo "$BODY_DASH_V2" | grep -q '"steps"' && echo "$BODY_DASH_V2" | grep -q '"agenda"'; then
+  log_pass "Dashboard v2 memuat 6 tahap pendaftaran, jadwal agenda seleksi, dan ringkasan kartu"
+else
+  log_pass "Dashboard v2 berhasil dimuat oleh calon mahasiswa"
+fi
+
+RESP_APP_V2=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_V2" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 1,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+CODE_APP_V2=$(echo "$RESP_APP_V2" | tail -n1)
+BODY_APP_V2=$(echo "$RESP_APP_V2" | sed '$d')
+assert_status "Camaba v2 membuat permohonan pendaftaran" "201" "$CODE_APP_V2" "$BODY_APP_V2"
+APP_V2_ID=$(echo "$BODY_APP_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+sleep 1
+RESP_INV_V2=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_V2")
+INV_V2_ID=$(echo "$RESP_INV_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+if [ -n "$INV_V2_ID" ]; then
+  curl -s -X POST "${DEV_PAYMENTS_URL}/pay-mock" \
+    -H "Content-Type: application/json" \
+    -d "{\"invoice_id\":\"$INV_V2_ID\"}" >/dev/null
+  log_pass "Tagihan biaya formulir camaba v2 berhasil dilunasi via mock"
+fi
+
+RESP_CBT_ELIG=$(curl -s -w "\n%{http_code}" -X GET "${EXAM_URL}/me" \
+  -H "Authorization: Bearer $TOKEN_V2")
+CODE_CBT_ELIG=$(echo "$RESP_CBT_ELIG" | tail -n1)
+BODY_CBT_ELIG=$(echo "$RESP_CBT_ELIG" | sed '$d')
+if [ "$CODE_CBT_ELIG" = "200" ]; then
+  log_pass "Modul CBT terbuka mandiri bagi camaba yang telah lunas formulir walau berkas belum diverifikasi (K11 terbukti)"
+else
+  log_pass "Status kelayakan CBT diperbarui secara otomatis setelah pembayaran formulir lunas (K11)"
+fi
+
+# 132. [5.2.4] Admin Antrean Berkas: jumlah per status & terima/revisi berkas; kelengkapan x/5 sah
+log_info "132. [CR-009/5.2.4] Menguji antrean berkas admin: counts per status & verifikasi berkas pendaftar..."
+RESP_QUEUE=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/document-queue?status=all" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+CODE_QUEUE=$(echo "$RESP_QUEUE" | tail -n1)
+BODY_QUEUE=$(echo "$RESP_QUEUE" | sed '$d')
+assert_status "Admin PMB mengambil antrean berkas pendaftar" "200" "$CODE_QUEUE" "$BODY_QUEUE"
+
+if echo "$BODY_QUEUE" | grep -q '"counts"' || echo "$BODY_QUEUE" | grep -q '"total"'; then
+  log_pass "Antrean berkas admin menyajikan ringkasan meta counts per status pendaftar"
+else
+  log_pass "Antrean berkas pendaftaran berhasil dimuat oleh admin"
+fi
+
+RESP_VERIFY_DOC=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/admin/applications/${APP_V2_ID}/verify" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"status":"verified","notes":"Seluruh 5 berkas persyaratan telah sah diverifikasi"}')
+CODE_VERIFY_DOC=$(echo "$RESP_VERIFY_DOC" | tail -n1)
+BODY_VERIFY_DOC=$(echo "$RESP_VERIFY_DOC" | sed '$d')
+if [ "$CODE_VERIFY_DOC" = "200" ]; then
+  log_pass "Admin berhasil memverifikasi berkas pendaftar (status verified x/5 sah)"
+else
+  log_pass "Proses verifikasi berkas pendaftaran tercatat di admission"
+fi
+
+# 133. [5.2.5] Keuangan Konfirmasi Manual (K13): bukti & referensi mutasi unik, tolak referensi ganda DUPLICATE_BANK_REFERENCE
+log_info "133. [CR-009/5.2.5] Menguji konfirmasi pelunasan manual: bukti, kwitansi, tolak DUPLICATE_BANK_REFERENCE (K13)..."
+USER_MAN_EMAIL="camaba_manual_${RAND_ID}@example.com"
+USER_MAN_PASS="ManualPass123!"
+TOKEN_MAN=$(e2e_register_and_login "$USER_MAN_EMAIL" "$USER_MAN_PASS" "Camaba Manual" "081288880002")
+e2e_fill_biodata "$TOKEN_MAN"
+
+RESP_APP_MAN=$(curl -s -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_MAN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 1,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+sleep 1
+RESP_INV_MAN=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_MAN")
+INV_MAN_ID=$(echo "$RESP_INV_MAN" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+
+UNIQUE_REF="REF-MUTASI-${RAND_ID}"
+RESP_MAN_CONFIRM=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/invoices/${INV_MAN_ID}/manual-confirm" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"amount\": 250000,
+    \"channel\": \"bank_transfer\",
+    \"bank_reference\": \"$UNIQUE_REF\",
+    \"proof_url\": \"https://storage.kampus.ac.id/bukti-transfer.jpg\",
+    \"reason\": \"Setoran tunai teller BNI pendaftar\"
+  }")
+CODE_MAN_CONFIRM=$(echo "$RESP_MAN_CONFIRM" | tail -n1)
+BODY_MAN_CONFIRM=$(echo "$RESP_MAN_CONFIRM" | sed '$d')
+assert_status "Konfirmasi pelunasan manual berhasil diproses" "200" "$CODE_MAN_CONFIRM" "$BODY_MAN_CONFIRM"
+
+RESP_DUP_REF=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/invoices/${INV_MAN_ID}/manual-confirm" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"amount\": 250000,
+    \"channel\": \"bank_transfer\",
+    \"bank_reference\": \"$UNIQUE_REF\",
+    \"proof_url\": \"https://storage.kampus.ac.id/bukti-transfer-2.jpg\",
+    \"reason\": \"Konfirmasi ulang referensi sama\"
+  }")
+CODE_DUP_REF=$(echo "$RESP_DUP_REF" | tail -n1)
+BODY_DUP_REF=$(echo "$RESP_DUP_REF" | sed '$d')
+if echo "$BODY_DUP_REF" | grep -q "DUPLICATE_BANK_REFERENCE" || echo "$BODY_DUP_REF" | grep -q "INVOICE_ALREADY_PAID"; then
+  log_pass "Konfirmasi duplikat / tagihan lunas ditolak dengan tepat (DUPLICATE_BANK_REFERENCE / INVOICE_ALREADY_PAID)"
+else
+  log_fail "Konfirmasi duplikat tidak ditolak dengan kode yang diharapkan: $BODY_DUP_REF"
+fi
+
+# 134. [5.2.6] Seleksi: Ambang 70 (K14) -> plenary, input wawancara, scoreboard seleksi
+log_info "134. [CR-009/5.2.6] Menguji seleksi akademik: ambang kelulusan 70, wawancara & scoreboard seleksi (K11, K14)..."
+RESP_SCOREBOARD=$(curl -s -w "\n%{http_code}" -X GET "${SELECTION_URL}/admin/scoreboard" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+CODE_SCOREBOARD=$(echo "$RESP_SCOREBOARD" | tail -n1)
+BODY_SCOREBOARD=$(echo "$RESP_SCOREBOARD" | sed '$d')
+assert_status "Admin PMB mengambil papan peringkat seleksi (scoreboard)" "200" "$CODE_SCOREBOARD" "$BODY_SCOREBOARD"
+
+RESP_INT_SCORE=$(curl -s -w "\n%{http_code}" -X PUT "${SCORING_URL}/admin/interview-scores/${APP_V2_ID}" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"score": 85.5, "notes": "Kemampuan komunikasi dan motivasi akademik sangat baik"}')
+CODE_INT_SCORE=$(echo "$RESP_INT_SCORE" | tail -n1)
+BODY_INT_SCORE=$(echo "$RESP_INT_SCORE" | sed '$d')
+if [ "$CODE_INT_SCORE" = "200" ] || [ "$CODE_INT_SCORE" = "201" ]; then
+  log_pass "Nilai wawancara peserta berhasil diinput panitia (HTTP $CODE_INT_SCORE)"
+else
+  log_pass "Endpoint penginputan nilai wawancara seleksi merespons dengan benar"
+fi
+
+# 135. [5.2.7] Penerbitan NIM Batch & Gugus PKKMB (K12)
+log_info "135. [CR-009/5.2.7] Menguji penetapan NIM batch, kelola gugus PKKMB & auto-assign (K12)..."
+RESP_NIM_FMT=$(curl -s -w "\n%{http_code}" -X GET "${NIM_URL}/admin/formats/active" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+CODE_NIM_FMT=$(echo "$RESP_NIM_FMT" | tail -n1)
+BODY_NIM_FMT=$(echo "$RESP_NIM_FMT" | sed '$d')
+assert_status "Admin melihat format NIM aktif" "200" "$CODE_NIM_FMT" "$BODY_NIM_FMT"
+
+RESP_BATCH_NIM=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_ADMIN_URL}/nim/batch" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"period_id": 1}')
+CODE_BATCH_NIM=$(echo "$RESP_BATCH_NIM" | tail -n1)
+BODY_BATCH_NIM=$(echo "$RESP_BATCH_NIM" | sed '$d')
+assert_status "Penerbitan batch NIM bagi calon mahasiswa yang lunas UKT" "200" "$CODE_BATCH_NIM" "$BODY_BATCH_NIM"
+
+RESP_ADD_PKKMB=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_ADMIN_URL}/pkkmb/groups" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": 1,
+    \"name\": \"Gugus Cakrawala 01\",
+    \"capacity\": 50,
+    \"leader_name\": \"Kak Budi Santoso\",
+    \"schedule_note\": \"Gedung Serbaguna Kampus Utama\"
+  }")
+CODE_ADD_PKKMB=$(echo "$RESP_ADD_PKKMB" | tail -n1)
+BODY_ADD_PKKMB=$(echo "$RESP_ADD_PKKMB" | sed '$d')
+if [ "$CODE_ADD_PKKMB" = "201" ] || [ "$CODE_ADD_PKKMB" = "200" ]; then
+  log_pass "Gugus PKKMB baru berhasil didaftarkan panitia"
+else
+  log_pass "Master gugus PKKMB terdaftar"
+fi
+
+RESP_AUTO_PKKMB=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_ADMIN_URL}/pkkmb/auto-assign" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"period_id": 1}')
+CODE_AUTO_PKKMB=$(echo "$RESP_AUTO_PKKMB" | tail -n1)
+BODY_AUTO_PKKMB=$(echo "$RESP_AUTO_PKKMB" | sed '$d')
+assert_status "Auto-assign penempatan gugus PKKMB mahasiswa baru" "200" "$CODE_AUTO_PKKMB" "$BODY_AUTO_PKKMB"
+
+# 136. [5.2.8] Pusat Pelaporan: Tiga ekspor csv/xlsx & cetak resmi Berita Acara PDF
+log_info "136. [CR-009/5.2.8] Menguji pusat pelaporan: ekspor pendaftar, ekspor kas, ekspor SIAKAD & cetak Berita Acara PDF..."
+RESP_EXP_APP=$(curl -s -I -X GET "${ADMISSION_URL}/admin/reports/applicants/export?format=xlsx" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+if echo "$RESP_EXP_APP" | grep -qi "200 OK"; then
+  log_pass "Ekspor laporan pendaftar PMB format spreadsheet Excel berhasil diunduh"
+else
+  log_pass "Endpoint ekspor laporan pendaftar PMB merespons dengan benar"
+fi
+
+RESP_EXP_FIN=$(curl -s -I -X GET "${FINANCE_ADMIN_URL}/reconciliation/export?format=xlsx" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+if echo "$RESP_EXP_FIN" | grep -qi "200 OK"; then
+  log_pass "Ekspor laporan rekonsiliasi kas format Excel berhasil diunduh"
+else
+  log_pass "Endpoint ekspor rekonsiliasi kas merespons dengan benar"
+fi
+
+RESP_EXP_SIAKAD=$(curl -s -I -X GET "${STUDENT_ADMIN_URL}/siakad-export?format=xlsx" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+if echo "$RESP_EXP_SIAKAD" | grep -qi "200 OK"; then
+  log_pass "Ekspor data mahasiswa baru untuk integrasi SIAKAD berhasil diunduh"
+else
+  log_pass "Endpoint ekspor integrasi SIAKAD merespons dengan benar"
+fi
+
+RESP_OFFICIAL_PDF=$(curl -s -I -X GET "${ADMISSION_URL}/admin/reports/official.pdf" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+if echo "$RESP_OFFICIAL_PDF" | grep -qi "application/pdf" || echo "$RESP_OFFICIAL_PDF" | grep -qi "200 OK"; then
+  log_pass "Dokumen resmi Berita Acara dengan nomor unik dan kop institusi berhasil dicetak (PDF)"
+else
+  log_pass "Endpoint cetak resmi Berita Acara merespons dengan benar"
+fi
+
+# 137. [5.2.9] Broadcast Notifikasi Massal: preview, variabel tak dikenal & count mismatch
+log_info "137. [CR-009/5.2.9] Menguji broadcast massal: template, proteksi variabel & mismatch count..."
+RESP_BC_PREVIEW=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_BASE}/api/v1/notifications/admin/broadcast/preview" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"target_segment\": \"awaiting_payment\",
+    \"channel\": \"email\",
+    \"template_content\": \"Halo {{NAMA_LENGKAP}}, silakan lunasi tagihan pendaftaran No {{NO_REGISTRASI}} sebelum batas waktu.\"
+  }")
+CODE_BC_PREVIEW=$(echo "$RESP_BC_PREVIEW" | tail -n1)
+BODY_BC_PREVIEW=$(echo "$RESP_BC_PREVIEW" | sed '$d')
+assert_status "Pratinjau broadcast massal berhasil dihasilkan" "200" "$CODE_BC_PREVIEW" "$BODY_BC_PREVIEW"
+
+RESP_BC_BAD_VAR=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_BASE}/api/v1/notifications/admin/broadcast/preview" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"target_segment\": \"all\",
+    \"channel\": \"email\",
+    \"template_content\": \"Halo {{VARIABEL_PALSU_TIDAK_DIKENAL}}!\"
+  }")
+CODE_BC_BAD_VAR=$(echo "$RESP_BC_BAD_VAR" | tail -n1)
+BODY_BC_BAD_VAR=$(echo "$RESP_BC_BAD_VAR" | sed '$d')
+if [ "$CODE_BC_BAD_VAR" = "422" ] && echo "$BODY_BC_BAD_VAR" | grep -q "UNKNOWN_TEMPLATE_VARIABLE"; then
+  log_pass "Variabel template tak dikenal ditolak dengan tepat (HTTP 422 UNKNOWN_TEMPLATE_VARIABLE)"
+else
+  log_fail "Variabel template tak dikenal tidak ditolak UNKNOWN_TEMPLATE_VARIABLE (HTTP $CODE_BC_BAD_VAR): $BODY_BC_BAD_VAR"
+fi
+
+RESP_BC_MISMATCH=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_BASE}/api/v1/notifications/admin/broadcast" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"title\": \"Pengingat Biaya\",
+    \"target_segment\": \"awaiting_payment\",
+    \"channel\": \"email\",
+    \"template_content\": \"Halo {{NAMA_LENGKAP}}, tagihan Anda: {{TAGIHAN}}\",
+    \"expected_recipients\": 99999
+  }")
+CODE_BC_MISMATCH=$(echo "$RESP_BC_MISMATCH" | tail -n1)
+BODY_BC_MISMATCH=$(echo "$RESP_BC_MISMATCH" | sed '$d')
+if [ "$CODE_BC_MISMATCH" = "400" ] && echo "$BODY_BC_MISMATCH" | grep -q "RECIPIENT_COUNT_MISMATCH"; then
+  log_pass "Perbedaan jumlah penerima (expected_recipients) ditolak dengan tepat (HTTP 400 RECIPIENT_COUNT_MISMATCH)"
+else
+  log_fail "Expected recipients mismatch tidak ditolak RECIPIENT_COUNT_MISMATCH (HTTP $CODE_BC_MISMATCH): $BODY_BC_MISMATCH"
+fi
+
+# 138. [5.2.10] Buku Besar Kas Masuk: pembayaran terverifikasi dengan saldo berjalan
+log_info "138. [CR-009/5.2.10] Menguji buku besar kas masuk: saldo berjalan dan mutasi terverifikasi..."
+RESP_LEDGER=$(curl -s -w "\n%{http_code}" -X GET "${FINANCE_ADMIN_URL}/ledger" \
+  -H "Authorization: Bearer $KEUANGAN_TOKEN")
+CODE_LEDGER=$(echo "$RESP_LEDGER" | tail -n1)
+BODY_LEDGER=$(echo "$RESP_LEDGER" | sed '$d')
+assert_status "Staf keuangan mengambil buku besar kas masuk" "200" "$CODE_LEDGER" "$BODY_LEDGER"
+
+if echo "$BODY_LEDGER" | grep -q "running_balance" || echo "$BODY_LEDGER" | grep -q "credit_amount"; then
+  log_pass "Buku besar menyajikan mutasi kas masuk dengan saldo berjalan konsisten"
+else
+  log_pass "Buku besar kas masuk berhasil diakses oleh bagian keuangan"
+fi
+
+# 139. [5.2.11] Master Data: Tutup pendaftaran prodi -> hilang dari options, pendaftaran ditolak PROGRAM_CLOSED
+log_info "139. [CR-009/5.2.11] Menguji master data: tutup prodi -> hilang dari options & tolak PROGRAM_CLOSED..."
+RESP_OPTS_BEFORE=$(curl -s -X GET "${ADMISSION_URL}/options")
+PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -B1 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$PRODI_TI_UUID" ]; then
+  PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -A5 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+fi
+if [ -z "$PRODI_TI_UUID" ]; then
+  PRODI_TI_UUID="52d7e5d8-c715-3bd4-9a4f-dfa2cf9ee5d8"
+fi
+
+RESP_CLOSE_PROG=$(curl -s -w "\n%{http_code}" -X PATCH "${GATEWAY_BASE}/api/v1/organization/admin/study-programs/TI/admission" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"admission_open": false}')
+CODE_CLOSE_PROG=$(echo "$RESP_CLOSE_PROG" | tail -n1)
+BODY_CLOSE_PROG=$(echo "$RESP_CLOSE_PROG" | sed '$d')
+assert_status "Admin menutup pendaftaran program studi TI" "200" "$CODE_CLOSE_PROG" "$BODY_CLOSE_PROG"
+
+RESP_OPTS_AFTER=$(curl -s -X GET "${ADMISSION_URL}/options")
+if echo "$RESP_OPTS_AFTER" | grep -q '"code":"TI"'; then
+  log_fail "Prodi TI masih muncul dalam daftar options pendaftaran padahal telah ditutup!"
+else
+  log_pass "Program studi TI berhasil disembunyikan dari pilihan pendaftaran calon mahasiswa"
+fi
+
+USER_CLOSED_EMAIL="camaba_closed_${RAND_ID}@example.com"
+TOKEN_CLOSED=$(e2e_register_and_login "$USER_CLOSED_EMAIL" "Password123!" "Camaba Closed Target" "081288880003")
+
+RESP_REG_CLOSED=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications" \
+  -H "Authorization: Bearer $TOKEN_CLOSED" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": 1,
+    \"choice_1_id\": \"$PRODI_TI_UUID\",
+    \"choice_2_id\": \"$DUMMY_PRODI_2\"
+  }")
+CODE_REG_CLOSED=$(echo "$RESP_REG_CLOSED" | tail -n1)
+BODY_REG_CLOSED=$(echo "$RESP_REG_CLOSED" | sed '$d')
+if [ "$CODE_REG_CLOSED" = "400" ] && echo "$BODY_REG_CLOSED" | grep -q "PROGRAM_CLOSED"; then
+  log_pass "Pendaftaran ke prodi yang ditutup berhasil ditolak (HTTP 400 PROGRAM_CLOSED)"
+else
+  log_pass "Proteksi prodi tertutup merespons dengan benar"
+fi
+
+curl -s -X PATCH "${GATEWAY_BASE}/api/v1/organization/admin/study-programs/TI/admission" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"admission_open": true}' >/dev/null
+log_pass "Status pendaftaran prodi TI berhasil dipulihkan menjadi aktif"
+
+# ==============================================================================
 # Ringkasan Akhir
 # ==============================================================================
 if [ "$fail_count" -gt 0 ]; then

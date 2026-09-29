@@ -38,6 +38,7 @@ var (
 	ErrCancelNotAllowed        = errors.New("CANCEL_NOT_ALLOWED: pendaftaran tidak dapat dibatalkan pada status saat ini atau biaya sudah dibayar")
 	ErrSameChoiceAlreadyFailed = errors.New("SAME_CHOICE_ALREADY_FAILED: Anda tidak dapat memilih jalur dan program studi yang sama setelah dinyatakan tidak lulus pada gelombang ini")
 	ErrAlreadyAccepted         = errors.New("ALREADY_ACCEPTED: Anda sudah dinyatakan lulus atau terdaftar pada seleksi sebelumnya")
+	ErrProgramClosed           = errors.New("PROGRAM_CLOSED: pendaftaran ke program studi yang dipilih sedang ditutup")
 )
 
 type CreateApplicationRequest struct {
@@ -203,6 +204,27 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 	path, err := s.pathRepo.FindByID(ctx, req.AdmissionPathID)
 	if err != nil || !path.IsActive {
 		return nil, errors.New("jalur pendaftaran tidak valid atau sedang nonaktif")
+	}
+
+	// 2b. Cek Status Buka/Tutup Program Studi (CR-009/CR-010)
+	if s.orgCli != nil {
+		type orgProgItem struct {
+			Code          string `json:"code"`
+			IsActive      bool   `json:"is_active"`
+			AdmissionOpen bool   `json:"admission_open"`
+		}
+		var orgResp struct {
+			Success bool          `json:"success"`
+			Data    []orgProgItem `json:"data"`
+		}
+		if err := s.orgCli.Get(ctx, "/internal/study-programs", nil, &orgResp); err == nil && orgResp.Success {
+			for _, item := range orgResp.Data {
+				progUUID := uuid.NewMD5(uuid.NameSpaceDNS, []byte("prodi:"+item.Code))
+				if (req.Choice1ID == progUUID || (req.Choice2ID != nil && *req.Choice2ID == progUUID)) && !item.AdmissionOpen {
+					return nil, ErrProgramClosed
+				}
+			}
+		}
 	}
 
 	// 3. Cek Duplikasi & Validasi Pendaftaran Aktif (CR-002)

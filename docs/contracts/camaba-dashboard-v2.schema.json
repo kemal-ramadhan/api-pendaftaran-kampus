@@ -1,0 +1,38 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CamabaDashboardV2Response",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "status_label": { "type": "string" },
+        "current_step": { "type": "integer" },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "step": { "type": "integer" },
+              "key": { "type": "string" },
+              "title": { "type": "string" },
+              "status": { "type": "string", "enum": ["done", "current", "locked"] },
+              "action_url": { "type": "string" }
+            },
+            "required": ["step", "key", "title", "status"]
+          }
+        },
+        "summary": { "type": "object" },
+        "agenda": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "contacts": { "type": "object" }
+      },
+      "required": ["status_label", "current_step", "steps"]
+    }
+  },
+  "required": ["success", "data"]
+}

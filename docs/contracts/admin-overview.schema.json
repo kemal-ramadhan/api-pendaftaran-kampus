@@ -1,0 +1,35 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminOverviewResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "kpi": {
+          "type": "object",
+          "properties": {
+            "total_applicants": { "type": "integer" },
+            "verified_documents": { "type": "integer" },
+            "revenue": { "type": "integer" },
+            "passed_selection": { "type": "integer" }
+          }
+        },
+        "funnel": {
+          "type": "object",
+          "properties": {
+            "account_created": { "type": "integer" },
+            "form_paid": { "type": "integer" },
+            "documents_submitted": { "type": "integer" },
+            "cbt_completed": { "type": "integer" },
+            "passed": { "type": "integer" },
+            "reregistered": { "type": "integer" }
+          }
+        }
+      }
+    }
+  },
+  "required": ["success", "data"]
+}

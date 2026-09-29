@@ -53,6 +53,7 @@ func SetupRouter(
 	internal := r.Group("/internal")
 	internal.Use(internalauth.Middleware(internalToken))
 	{
+		internal.GET("/study-programs", internalCtl.ListStudyPrograms)
 		internal.GET("/study-programs/:code", internalCtl.GetStudyProgramByCode)
 		internal.POST("/study-programs/batch", internalCtl.GetBatchStudyPrograms)
 		internal.GET("/faculties/:code", internalCtl.GetFacultyByCode)

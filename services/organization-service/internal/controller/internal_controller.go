@@ -105,3 +105,19 @@ func (ctl *InternalController) GetInstitutionProfile(c *gin.Context) {
 	}
 	response.Success(c, http.StatusOK, "Berhasil mengambil profil institusi", res)
 }
+
+// ListStudyPrograms godoc
+// @Summary Ambil Seluruh Data Prodi (Internal)
+// @Description Mengambil data program studi untuk sinkronisasi inter-service (Admission). Dilindungi X-Internal-Token.
+// @Tags Internal
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=[]dto.StudyProgramResponse}
+// @Router /internal/study-programs [get]
+func (ctl *InternalController) ListStudyPrograms(c *gin.Context) {
+	programs, err := ctl.orgService.ListStudyPrograms(c.Request.Context(), "", nil)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar program studi")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil daftar program studi", programs)
+}

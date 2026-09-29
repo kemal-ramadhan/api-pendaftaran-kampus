@@ -1,0 +1,44 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminScoreboardResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "object",
+      "properties": {
+        "passing_threshold": { "type": "number" },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "application_id": { "type": "string", "format": "uuid" },
+              "registration_number": { "type": "string" },
+              "name": { "type": "string" },
+              "study_program_code": { "type": "string" },
+              "cbt_score": { "type": "number" },
+              "report_average": { "type": "number" },
+              "interview_score": { "type": "number" },
+              "final_score": { "type": "number" },
+              "decision_status": { "type": "string", "enum": ["passed", "plenary", "failed"] },
+              "is_second_choice": { "type": "boolean" }
+            },
+            "required": ["application_id", "decision_status"]
+          }
+        },
+        "counts": {
+          "type": "object",
+          "properties": {
+            "total": { "type": "integer" },
+            "passed": { "type": "integer" },
+            "plenary": { "type": "integer" },
+            "failed": { "type": "integer" }
+          }
+        }
+      }
+    }
+  },
+  "required": ["success", "data"]
+}

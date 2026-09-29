@@ -712,10 +712,43 @@ func (s *admissionService) GetAdmissionOptions(ctx context.Context) (*AdmissionO
 		})
 	}
 
-	progs := []StudyProgramOption{
-		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Code: "S1-FARM", Name: "S1 Farmasi", FacultyName: "Fakultas Ilmu Kesehatan", Degree: "S1", AdmissionOpen: true},
-		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Code: "D3-KEP", Name: "D3 Keperawatan", FacultyName: "Fakultas Ilmu Kesehatan", Degree: "D3", AdmissionOpen: true},
-		{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Code: "S1-INFOR", Name: "S1 Informatika", FacultyName: "Fakultas Teknologi & Informatika", Degree: "S1", AdmissionOpen: true},
+	var progs []StudyProgramOption
+	if s.orgCli != nil {
+		type orgProgItem struct {
+			ID            uint   `json:"id"`
+			Code          string `json:"code"`
+			Name          string `json:"name"`
+			FacultyName   string `json:"faculty_name"`
+			Degree        string `json:"degree"`
+			IsActive      bool   `json:"is_active"`
+			AdmissionOpen bool   `json:"admission_open"`
+		}
+		var orgResp struct {
+			Success bool          `json:"success"`
+			Data    []orgProgItem `json:"data"`
+		}
+		if err := s.orgCli.Get(ctx, "/internal/study-programs", nil, &orgResp); err == nil && orgResp.Success && len(orgResp.Data) > 0 {
+			for _, item := range orgResp.Data {
+				if item.IsActive && item.AdmissionOpen {
+					progUUID := uuid.NewMD5(uuid.NameSpaceDNS, []byte("prodi:"+item.Code))
+					progs = append(progs, StudyProgramOption{
+						ID:            progUUID,
+						Code:          item.Code,
+						Name:          item.Name,
+						FacultyName:   item.FacultyName,
+						Degree:        item.Degree,
+						AdmissionOpen: item.AdmissionOpen,
+					})
+				}
+			}
+		}
+	}
+	if len(progs) == 0 {
+		progs = []StudyProgramOption{
+			{ID: uuid.MustParse("00000000-0000-0000-0000-000000000001"), Code: "S1-FARM", Name: "S1 Farmasi", FacultyName: "Fakultas Ilmu Kesehatan", Degree: "S1", AdmissionOpen: true},
+			{ID: uuid.MustParse("00000000-0000-0000-0000-000000000002"), Code: "D3-KEP", Name: "D3 Keperawatan", FacultyName: "Fakultas Ilmu Kesehatan", Degree: "D3", AdmissionOpen: true},
+			{ID: uuid.MustParse("00000000-0000-0000-0000-000000000003"), Code: "S1-INFOR", Name: "S1 Informatika", FacultyName: "Fakultas Teknologi & Informatika", Degree: "S1", AdmissionOpen: true},
+		}
 	}
 
 	return &AdmissionOptionsResponse{

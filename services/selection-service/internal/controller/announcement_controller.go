@@ -42,6 +42,10 @@ func (ctrl *AnnouncementController) PublishAnnouncement(c *gin.Context) {
 			response.Error(c, http.StatusUnprocessableEntity, response.ErrCodeInvalidState, err.Error(), nil)
 			return
 		}
+		if errors.Is(err, service.ErrUnverifiedDocumentsRemaining) {
+			response.Error(c, http.StatusUnprocessableEntity, "PUBLISH_REQUIRES_VERIFIED_DOCUMENTS", err.Error(), nil)
+			return
+		}
 		response.InternalServerError(c, "Gagal mempublikasikan pengumuman hasil seleksi: "+err.Error())
 		return
 	}

@@ -2500,6 +2500,121 @@ Dashboard Statistik Pimpinan (Executive Dashboard) mengintegrasikan visibilitas 
     ```
   - **Error Mapping**: Jika gateway Duitku offline atau mengembalikan error, sistem memetakan secara konsisten ke `502 PAYMENT_PROVIDER_ERROR` dengan pesan kesalahan dalam Bahasa Indonesia.
 
+---
+
+## 19. Portal Admin (CR-009) & Portal Calon Mahasiswa v2 (CR-010)
+
+### 19.1 Matriks Permission RBAC
+Seluruh endpoint administratif dilindungi oleh middleware hak akses granular berbasis permission sesuai `docs/RBAC.md`.
+- Token access JWT memuat klaim `perms: ["permission.code", ...]`.
+- API Gateway mengekstrak klaim tersebut dan meneruskannya via header internal `X-User-Permissions`. Header palsu dari luar secara otomatis dibersihkan oleh gateway.
+- Downstream service memvalidasi kecukupan permission menggunakan `rbac.RequirePermission("...")`.
+
+### 19.2 Modul Portal Admin
+
+#### 1. Ringkasan Eksekutif & KPI
+- **`GET /api/v1/admission/admin/overview?period_id=`**
+  - **Permission**: `dashboard.overview.read`
+  - **Fungsi**: Agregasi data pendaftar, kelulusan, dan keuangan. Di-cache selama 60 detik.
+- **`GET /api/v1/admission/admin/institution-dashboard?period_id=&level=&code=`**
+  - **Permission**: `dashboard.overview.read`
+  - **Fungsi**: Kapasitas kuota, tingkat kelulusan CBT, rasio keketatan, dan komparasi fakultas/prodi.
+
+#### 2. Verifikasi Berkas
+- **`GET /api/v1/admission/admin/document-queue?period_id=&status=&q=`**
+  - **Permission**: `admission.document.verify`
+  - **Fungsi**: Antrean pendaftar untuk verifikasi berkas dengan counter status (semua, menunggu, terverifikasi, revisi, ditolak) dan pencarian nama/NIK.
+- **`GET /api/v1/admission/admin/applications/:id/documents`**
+  - **Permission**: `admission.document.verify`
+  - **Fungsi**: Detail 5 dokumen wajib (ijazah, KTP, KK, foto, surat sehat) beserta presigned URL dan riwayat audit.
+- **`POST /api/v1/admission/admin/applications/:id/verify`**
+  - **Permission**: `admission.document.verify`
+  - **Fungsi**: Verifikasi berkas per dokumen (terima atau minta revisi dengan catatan).
+
+#### 3. Rekonsiliasi Keuangan & Virtual Account
+- **`GET /api/v1/finance/admin/reconciliation?period_id=&channel=&type=&status=&q=`**
+  - **Permission**: `finance.reconciliation.read`
+  - **Fungsi**: Ringkasan kas masuk formulir & UKT serta daftar tagihan.
+- **`GET /api/v1/finance/admin/reconciliation/export?format=csv|xlsx`**
+  - **Permission**: `finance.reconciliation.read`
+  - **Fungsi**: Ekspor rekonsiliasi kas.
+- **`POST /api/v1/finance/admin/invoices/:id/manual-confirm`**
+  - **Permission**: `finance.payment.manual_confirm`
+  - **Fungsi**: Konfirmasi lunas manual unik 3-lapis (referensi mutasi unik, nominal cocok, file bukti transfer wajib).
+- **`GET /api/v1/finance/admin/ledger?period_id=&channel=&q=`**
+  - **Permission**: `finance.ledger.read`
+  - **Fungsi**: Buku besar penerimaan kas kronologis dengan saldo berjalan.
+- **`GET /api/v1/finance/admin/ledger/export?format=csv|xlsx`**
+  - **Permission**: `finance.ledger.read`
+  - **Fungsi**: Ekspor buku besar kas masuk.
+
+#### 4. Seleksi Akademik & CBT
+- **`GET /api/v1/selection/admin/scoreboard?period_id=&decision=&q=`**
+  - **Permission**: `selection.score.read`
+  - **Fungsi**: Scoreboard pendaftar dengan passing threshold 70.0 (K14), status keputusan (passed, plenary, failed), dan flag pilihan kedua.
+- **`PUT /api/v1/scoring/admin/interview-scores/:application_id`**
+  - **Permission**: `selection.interview.score`
+  - **Fungsi**: Input nilai wawancara.
+- **`POST /api/v1/selection/admin/announcements/publish`**
+  - **Permission**: `selection.announcement.publish`
+  - **Fungsi**: Publikasi kelulusan resmi dengan nomor SK Rektor (`decree_number`, `decree_date`). Memvalidasi bahwa seluruh calon lulus wajib telah terverifikasi berkasnya (K11).
+
+#### 5. Penetapan NIM & Registrasi Mahasiswa Baru
+- **`GET /api/v1/student/admin/enrolment?period_id=&filter=&q=`**
+  - **Permission**: `student.nim.issue`
+  - **Fungsi**: Rekapitulasi calon mahasiswa berstatus enrolment (filter: all, has_nim, ready_for_nim, waiting_tuition).
+- **`POST /api/v1/student/admin/students/:id/issue-nim`**
+  - **Permission**: `student.nim.issue`
+  - **Fungsi**: Penetapan NIM satuan secara manual oleh admin.
+- **`POST /api/v1/student/admin/nim/batch`**
+  - **Permission**: `student.nim.issue`
+  - **Fungsi**: Penerbitan NIM massal idempoten untuk semua pendaftar yang lunas dan selesai daftar ulang.
+- **`GET /api/v1/nim/admin/formats/active`**
+  - **Permission**: `student.nim.issue`
+  - **Fungsi**: Mengambil format pola penomoran NIM aktif.
+- **`GET /api/v1/student/admin/pkkmb/groups`** & **`POST /api/v1/student/admin/pkkmb/groups`**
+  - **Permission**: `student.pkkmb.manage`
+  - **Fungsi**: Manajemen grup gugus PKKMB dan kapasitas.
+- **`POST /api/v1/student/admin/pkkmb/auto-assign`**
+  - **Permission**: `student.pkkmb.manage`
+  - **Fungsi**: Pembagian gugus PKKMB otomatis seimbang prodi bagi mahasiswa yang sudah memiliki NIM.
+- **`GET /api/v1/student/admin/siakad-export?format=csv|xlsx`**
+  - **Permission**: `student.activation.manage`
+  - **Fungsi**: Ekspor data mahasiswa baru untuk integrasi aktivasi akun SIAKAD.
+
+#### 6. Pusat Pelaporan, Berita Acara & Broadcast
+- **`GET /api/v1/admission/admin/reports/:type/export?format=csv|xlsx`**
+  - **Permission**: `reports.export`
+  - **Fungsi**: Ekspor laporan pendaftar, kelulusan, dan keuangan.
+- **`GET /api/v1/admission/admin/reports/:type/official.pdf`**
+  - **Permission**: `reports.official_print`
+  - **Fungsi**: Cetak dokumen Berita Acara PDF resmi dengan nomor unik tahunan berurutan `{urut 3 digit}/BA-PMB/...`.
+- **`POST /api/v1/notifications/admin/broadcast`**
+  - **Permission**: `broadcast.send`
+  - **Fungsi**: Pengiriman broadcast pesan massal dengan segmentasi pendaftar dan validasi variabel dinamis.
+
+#### 7. Master Data Organisasi
+- **`GET /api/v1/organization/admin/programs-overview`**
+  - **Permission**: `organization.program.read`
+  - **Fungsi**: Ringkasan prodi, akreditasi, dan daya tampung.
+- **`PATCH /api/v1/organization/admin/study-programs/:code/admission`**
+  - **Permission**: `organization.program.manage`
+  - **Fungsi**: Membuka atau menutup pendaftaran program studi (`admission_open = true/false`).
+
+---
+
+### 19.3 Perubahan Kontrak Portal Calon Mahasiswa v2 (CR-010)
+- **`GET /api/v1/admission/applications/me/dashboard`**
+  - Response memuat stepper 6 tahap (`profile`, `path`, `payment`, `documents`, `selection`, `reregistration`), agenda seleksi, status label, dan kontak institusi.
+- **`GET /api/v1/finance/me/invoices/:id/receipt-view`**
+  - Tampilan kuitansi lunas resmi dengan informasi lock notice label.
+- **`POST /api/v1/invoices/me/:id/renew`**
+  - Pembaruan batas jatuh tempo tagihan kedaluwarsa 3 hari kerja (maksimal 2 kali perpanjangan).
+- **`GET /api/v1/exam/cbt/me/eligibility`**
+  - K11: Kelayakan ujian CBT langsung terbuka saat formulir lunas (`form_open`, `submitted`, `verified`, `documents_completed`, `exam_scheduled`).
+- **`GET /api/v1/student/me/reregistration`**
+  - Memuat informasi gugus PKKMB calon mahasiswa baru (`pkkmb_group`).
+
 
 
 

@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdminEnrolmentResponse",
+  "type": "object",
+  "properties": {
+    "success": { "type": "boolean" },
+    "message": { "type": "string" },
+    "data": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "student_id": { "type": ["string", "null"], "format": "uuid" },
+          "application_id": { "type": "string", "format": "uuid" },
+          "user_id": { "type": "string", "format": "uuid" },
+          "registration_number": { "type": "string" },
+          "name": { "type": "string" },
+          "study_program_code": { "type": "string" },
+          "selection_status": { "type": "string" },
+          "tuition_status": { "type": "string" },
+          "nim": { "type": "string" },
+          "pkkmb_group": { "type": "string" },
+          "can_issue_nim": { "type": "boolean" },
+          "actions": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "required": ["application_id", "can_issue_nim"]
+      }
+    },
+    "meta": {
+      "type": "object",
+      "properties": {
+        "page": { "type": "integer" },
+        "per_page": { "type": "integer" },
+        "total": { "type": "integer" }
+      }
+    }
+  },
+  "required": ["success", "data"]
+}

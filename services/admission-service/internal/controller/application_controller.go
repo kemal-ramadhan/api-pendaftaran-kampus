@@ -97,6 +97,10 @@ func (ctrl *ApplicationController) CreateApplication(c *gin.Context) {
 			response.Conflict(c, "ALREADY_ACCEPTED", err.Error())
 			return
 		}
+		if errors.Is(err, service.ErrProgramClosed) {
+			response.BadRequest(c, "PROGRAM_CLOSED", err.Error())
+			return
+		}
 		response.InternalServerError(c, "Gagal membuat formulir pendaftaran: "+err.Error())
 		return
 	}
