@@ -53,10 +53,46 @@ func (d *dummyWASender) Send(ctx context.Context, phone, message string) error {
 	return nil
 }
 
+type dummyActivityRepo struct{}
+
+func (d *dummyActivityRepo) Create(ctx context.Context, e *model.ActivityEvent) error { return nil }
+func (d *dummyActivityRepo) FindRecent(ctx context.Context, periodID string, limit int, allowedServices []string) ([]model.ActivityEvent, error) {
+	return []model.ActivityEvent{}, nil
+}
+
+type dummyBroadcastRepo struct{}
+
+func (d *dummyBroadcastRepo) FindAllTemplates(ctx context.Context) ([]model.BroadcastTemplate, error) {
+	return []model.BroadcastTemplate{}, nil
+}
+func (d *dummyBroadcastRepo) FindTemplateByID(ctx context.Context, id uint) (*model.BroadcastTemplate, error) {
+	return nil, nil
+}
+func (d *dummyBroadcastRepo) FindTemplateByCode(ctx context.Context, code string) (*model.BroadcastTemplate, error) {
+	return nil, nil
+}
+func (d *dummyBroadcastRepo) CreateTemplate(ctx context.Context, t *model.BroadcastTemplate) error {
+	return nil
+}
+func (d *dummyBroadcastRepo) UpdateTemplate(ctx context.Context, t *model.BroadcastTemplate) error {
+	return nil
+}
+func (d *dummyBroadcastRepo) DeleteTemplate(ctx context.Context, id uint) error { return nil }
+func (d *dummyBroadcastRepo) CreateLog(ctx context.Context, log *model.BroadcastLog) error {
+	return nil
+}
+func (d *dummyBroadcastRepo) FindLogs(ctx context.Context, periodID string, limit int) ([]model.BroadcastLog, error) {
+	return []model.BroadcastLog{}, nil
+}
+func (d *dummyBroadcastRepo) FindLogByID(ctx context.Context, id uuid.UUID) (*model.BroadcastLog, error) {
+	return nil, nil
+}
+
 func setupTestRouter() *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	cfg := RouterConfig{
-		InternalToken: "valid-secret-token",
+		InternalToken:       "valid-secret-token",
+		GatewaySharedSecret: "test-gateway-secret",
 	}
 
 	repo := &dummyRepo{data: make(map[string]*model.NotificationLog)}
@@ -67,10 +103,15 @@ func setupTestRouter() *gin.Engine {
 		template.NewTemplateEngine(),
 	)
 
+	actSvc := service.NewActivityService(&dummyActivityRepo{})
+	bcSvc := service.NewBroadcastService(&dummyBroadcastRepo{})
+
 	healthCtrl := controller.NewHealthController()
 	notifCtrl := controller.NewNotificationController(notifSvc)
+	actCtrl := controller.NewActivityController(actSvc)
+	bcCtrl := controller.NewBroadcastController(bcSvc)
 
-	return SetupRouter(cfg, healthCtrl, notifCtrl)
+	return SetupRouter(cfg, healthCtrl, notifCtrl, actCtrl, bcCtrl)
 }
 
 func TestRouter_HealthCheck(t *testing.T) {

@@ -16,7 +16,8 @@ type Config struct {
 	DBUser         string
 	DBPassword     string
 	DBName         string
-	InternalToken  string
+	InternalToken       string
+	GatewaySharedSecret string
 
 	// SMTP config (default to Mailpit)
 	SMTPHost      string
@@ -48,6 +49,7 @@ func LoadConfig() (*Config, error) {
 		DBPassword:            getEnv("DB_PASSWORD", "pmb_password"),
 		DBName:                getEnv("DB_NAME", "pmb_notification"),
 		InternalToken:         getEnv("INTERNAL_TOKEN", "secret-internal-token"),
+		GatewaySharedSecret:   getEnv("GATEWAY_SHARED_SECRET", "gateway-secret-key-12345"),
 		SMTPHost:              getEnv("SMTP_HOST", "localhost"),
 		SMTPPort:              getEnvAsInt("SMTP_PORT", 1025),
 		SMTPUser:              getEnv("SMTP_USER", ""),

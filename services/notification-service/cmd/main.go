@@ -49,11 +49,39 @@ func main() {
 	}
 
 	// Auto-migrate tabel notifikasi
-	err = db.AutoMigrate(&model.NotificationLog{})
+	err = db.AutoMigrate(&model.NotificationLog{}, &model.ActivityEvent{}, &model.BroadcastTemplate{}, &model.BroadcastLog{})
 	if err != nil {
 		log.Fatal("Gagal migrasi skema tabel notification", zap.Error(err))
 	}
 	log.Info("Migrasi basis data notification berhasil disiapkan")
+
+	// Seed template broadcast default
+	var countTemplates int64
+	db.Model(&model.BroadcastTemplate{}).Count(&countTemplates)
+	if countTemplates == 0 {
+		defaultTemplates := []model.BroadcastTemplate{
+			{
+				Code:         "PAYMENT_REMINDER",
+				Name:         "Pengingat Batas Waktu Pembayaran",
+				Channel:      "email",
+				Subject:      "Pengingat Pembayaran Formulir PMB",
+				BodyTemplate: "Halo {{NAMA_LENGKAP}}, tagihan formulir nomor registrasi {{NO_REGISTRASI}} sebesar {{TAGIHAN}} akan jatuh tempo pada {{BATAS_BAYAR}}. Mohon segera selesaikan pembayaran.",
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+			},
+			{
+				Code:         "CBT_INSTRUCTION",
+				Name:         "Instruksi Tahap Ujian CBT",
+				Channel:      "email",
+				Subject:      "Jadwal & Petunjuk Pelaksanaan Ujian CBT",
+				BodyTemplate: "Halo {{NAMA_LENGKAP}}, ujian CBT pilihan prodi {{PRODI}} jalur {{JALUR}} dijadwalkan pada {{JADWAL_CBT}}. Siapkan kartu ujian dan koneksi internet stabil.",
+				CreatedAt:    time.Now(),
+				UpdatedAt:    time.Now(),
+			},
+		}
+		db.Create(&defaultTemplates)
+		log.Info("Template broadcast bawaan berhasil di-seed")
+	}
 
 	// 4. Inisialisasi Sender dan Engine
 	emailSnd := sender.NewEmailSender(cfg)
@@ -63,6 +91,12 @@ func main() {
 	// 5. Inisialisasi Repository & Service
 	notifRepo := repository.NewNotificationRepository(db)
 	notifSvc := service.NewNotificationService(notifRepo, emailSnd, waSnd, tmplEngine)
+
+	actRepo := repository.NewActivityRepository(db)
+	actSvc := service.NewActivityService(actRepo)
+
+	bcRepo := repository.NewBroadcastRepository(db)
+	bcSvc := service.NewBroadcastService(bcRepo)
 
 	// 6. Inisialisasi & Jalankan Background Worker
 	workerCtx, workerCancel := context.WithCancel(context.Background())
@@ -76,14 +110,19 @@ func main() {
 	// 7. Inisialisasi Controller
 	healthCtrl := controller.NewHealthController()
 	notifCtrl := controller.NewNotificationController(notifSvc)
+	actCtrl := controller.NewActivityController(actSvc)
+	bcCtrl := controller.NewBroadcastController(bcSvc)
 
 	// 8. Setup Router
 	r := route.SetupRouter(
 		route.RouterConfig{
-			InternalToken: cfg.InternalToken,
+			InternalToken:       cfg.InternalToken,
+			GatewaySharedSecret: cfg.GatewaySharedSecret,
 		},
 		healthCtrl,
 		notifCtrl,
+		actCtrl,
+		bcCtrl,
 	)
 
 	// 9. Jalankan HTTP Server
