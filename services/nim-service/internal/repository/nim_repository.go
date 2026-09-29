@@ -27,6 +27,7 @@ type NIMRepository interface {
 	// Formats
 	GetFormatForProgram(ctx context.Context, studyProgramCode string) (*model.NIMFormat, error)
 	ListFormats(ctx context.Context) ([]model.NIMFormat, error)
+	ListActiveFormats(ctx context.Context) ([]model.NIMFormat, error)
 	GetFormatByID(ctx context.Context, id uuid.UUID) (*model.NIMFormat, error)
 	CreateFormat(ctx context.Context, format *model.NIMFormat) error
 	UpdateFormat(ctx context.Context, format *model.NIMFormat) error
@@ -190,6 +191,12 @@ func (r *nimRepository) GetFormatForProgram(ctx context.Context, studyProgramCod
 func (r *nimRepository) ListFormats(ctx context.Context) ([]model.NIMFormat, error) {
 	var formats []model.NIMFormat
 	err := r.db.WithContext(ctx).Order("created_at DESC").Find(&formats).Error
+	return formats, err
+}
+
+func (r *nimRepository) ListActiveFormats(ctx context.Context) ([]model.NIMFormat, error) {
+	var formats []model.NIMFormat
+	err := r.db.WithContext(ctx).Where("is_active = ?", true).Order("study_program_code ASC NULLS FIRST, created_at DESC").Find(&formats).Error
 	return formats, err
 }
 

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -274,5 +275,256 @@ func (ctrl *StudentController) InternalWithdraw(c *gin.Context) {
 		"application_id": appID,
 		"withdrawn":      true,
 	})
+}
+
+// -----------------------------------------------------------------------------
+// Endpoint Administrasi Enrolment & Penetapan NIM (Butir h)
+// -----------------------------------------------------------------------------
+
+func (ctrl *StudentController) GetEnrolmentList(c *gin.Context) {
+	roles := gatewayauth.GetUserRoles(c)
+	rawScopes := gatewayauth.GetUserScopes(c)
+	var scopes []string
+	for _, sc := range rawScopes {
+		if sc.ID != "" {
+			scopes = append(scopes, sc.ID)
+		}
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	perPage, _ := strconv.Atoi(c.DefaultQuery("per_page", "20"))
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 || perPage > 100 {
+		perPage = 20
+	}
+
+	filter := model.EnrolmentFilter{
+		PeriodID:         c.Query("period_id"),
+		Filter:           c.DefaultQuery("filter", "all"),
+		Search:           c.Query("q"),
+		StudyProgramCode: c.Query("study_program_code"),
+		Limit:            perPage,
+		Offset:           (page - 1) * perPage,
+	}
+
+	items, total, err := ctrl.svc.GetEnrolmentList(c.Request.Context(), filter, roles, scopes)
+	if err != nil {
+		if errors.Is(err, service.ErrForbiddenProdiAccess) {
+			response.Forbidden(c, response.ErrCodeForbidden, err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil daftar enrolment: "+err.Error())
+		return
+	}
+
+	response.SuccessWithMeta(c, http.StatusOK, "Daftar enrolment mahasiswa berhasil diambil", items, &response.Meta{
+		Page:    page,
+		PerPage: perPage,
+		Total:   total,
+	})
+}
+
+func (ctrl *StudentController) IssueNIMManual(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID mahasiswa tidak valid")
+		return
+	}
+
+	st, err := ctrl.svc.IssueNIMManual(c.Request.Context(), id)
+	if err != nil {
+		if errors.Is(err, service.ErrStudentNotFound) {
+			response.NotFound(c, "Data mahasiswa tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrPaymentRequired) {
+			response.Error(c, http.StatusUnprocessableEntity, "PAYMENT_REQUIRED", "Tagihan UKT belum lunas", nil)
+			return
+		}
+		response.InternalServerError(c, "Gagal menetapkan NIM: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "NIM berhasil ditetapkan", st)
+}
+
+func (ctrl *StudentController) IssueNIMBatch(c *gin.Context) {
+	var req model.BatchNIMRequest
+	_ = c.ShouldBindJSON(&req)
+
+	resp, err := ctrl.svc.IssueNIMBatch(c.Request.Context(), req)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memproses penerbitan NIM batch: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Proses penerbitan NIM massal berhasil dijalankan", resp)
+}
+
+// -----------------------------------------------------------------------------
+// Endpoint Gugus PKKMB (Butir h)
+// -----------------------------------------------------------------------------
+
+func (ctrl *StudentController) ListPKKMBGroups(c *gin.Context) {
+	var periodID *uuid.UUID
+	periodStr := c.Query("period_id")
+	if periodStr != "" {
+		if pid, err := uuid.Parse(periodStr); err == nil {
+			periodID = &pid
+		}
+	}
+
+	groups, err := ctrl.svc.ListPKKMBGroups(c.Request.Context(), periodID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Daftar gugus PKKMB berhasil diambil", groups)
+}
+
+func (ctrl *StudentController) CreatePKKMBGroup(c *gin.Context) {
+	var req model.CreatePKKMBGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data gugus PKKMB tidak valid: "+err.Error())
+		return
+	}
+
+	group, err := ctrl.svc.CreatePKKMBGroup(c.Request.Context(), &req)
+	if err != nil {
+		response.InternalServerError(c, "Gagal membuat gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusCreated, "Gugus PKKMB baru berhasil dibuat", group)
+}
+
+func (ctrl *StudentController) UpdatePKKMBGroup(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID gugus tidak valid")
+		return
+	}
+
+	var req model.UpdatePKKMBGroupRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data pembaruan tidak valid: "+err.Error())
+		return
+	}
+
+	group, err := ctrl.svc.UpdatePKKMBGroup(c.Request.Context(), id, &req)
+	if err != nil {
+		if errors.Is(err, service.ErrPKKMBGroupNotFound) {
+			response.NotFound(c, "Gugus PKKMB tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal memperbarui gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Gugus PKKMB berhasil diperbarui", group)
+}
+
+func (ctrl *StudentController) DeletePKKMBGroup(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID gugus tidak valid")
+		return
+	}
+
+	if err := ctrl.svc.DeletePKKMBGroup(c.Request.Context(), id); err != nil {
+		response.InternalServerError(c, "Gagal menghapus gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Gugus PKKMB berhasil dihapus", nil)
+}
+
+func (ctrl *StudentController) AutoAssignPKKMB(c *gin.Context) {
+	var req model.AutoAssignPKKMBRequest
+	_ = c.ShouldBindJSON(&req)
+
+	res, err := ctrl.svc.AutoAssignPKKMB(c.Request.Context(), &req)
+	if err != nil {
+		response.InternalServerError(c, "Gagal melakukan penugasan otomatis gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Penugasan otomatis gugus PKKMB berhasil", res)
+}
+
+func (ctrl *StudentController) AssignPKKMBManual(c *gin.Context) {
+	studentIDStr := c.Param("student_id")
+	studentID, err := uuid.Parse(studentIDStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format student_id tidak valid")
+		return
+	}
+
+	var req model.AssignPKKMBStudentRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", "Data penugasan tidak valid: "+err.Error())
+		return
+	}
+
+	var adminID *uuid.UUID
+	if uid, errU := gatewayauth.GetUserID(c); errU == nil {
+		adminID = &uid
+	}
+
+	if err := ctrl.svc.AssignPKKMBManual(c.Request.Context(), studentID, req.GroupID, adminID); err != nil {
+		if errors.Is(err, service.ErrPKKMBGroupNotFound) {
+			response.NotFound(c, "Gugus PKKMB tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal menugaskan mahasiswa ke gugus PKKMB: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Mahasiswa berhasil ditugaskan ke gugus PKKMB", nil)
+}
+
+func (ctrl *StudentController) ExportPKKMB(c *gin.Context) {
+	var periodID *uuid.UUID
+	periodStr := c.Query("period_id")
+	if periodStr != "" {
+		if pid, err := uuid.Parse(periodStr); err == nil {
+			periodID = &pid
+		}
+	}
+
+	data, err := ctrl.svc.ExportPKKMBXLSX(c.Request.Context(), periodID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengekspor data gugus PKKMB: "+err.Error())
+		return
+	}
+
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", "attachment; filename=gugus_pkkmb.xlsx")
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
+}
+
+func (ctrl *StudentController) ExportSIAKAD(c *gin.Context) {
+	format := strings.ToLower(c.DefaultQuery("format", "csv"))
+
+	data, err := ctrl.svc.ExportSIAKAD(c.Request.Context(), format)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengekspor data SIAKAD: "+err.Error())
+		return
+	}
+
+	if format == "xlsx" {
+		c.Header("Content-Disposition", "attachment; filename=siakad_export.xlsx")
+		c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", data)
+		return
+	}
+
+	c.Header("Content-Disposition", "attachment; filename=siakad_export.csv")
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", data)
 }
 

@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/controller"
 )
@@ -54,6 +55,45 @@ func SetupRouter(
 				meGroup.PUT("", studentCtrl.UpdateMyReregistration)
 				meGroup.POST("/complete", studentCtrl.CompleteReregistration)
 			}
+
+			// Enrolment: Rekapitulasi Daftar Ulang & Kesiapan NIM
+			pGroup.GET("/admin/enrolment",
+				gatewayauth.RequireRole("superadmin", "admin_pmb", "keuangan", "prodi", "pimpinan"),
+				rbac.RequirePermission("student.nim.issue"),
+				studentCtrl.GetEnrolmentList,
+			)
+
+			// Penetapan NIM Manual & Batch
+			pGroup.POST("/admin/students/:id/issue-nim",
+				gatewayauth.RequireRole("superadmin", "admin_pmb"),
+				rbac.RequirePermission("student.nim.issue"),
+				studentCtrl.IssueNIMManual,
+			)
+			pGroup.POST("/admin/nim/batch",
+				gatewayauth.RequireRole("superadmin", "admin_pmb"),
+				rbac.RequirePermission("student.nim.issue"),
+				studentCtrl.IssueNIMBatch,
+			)
+
+			// Gugus PKKMB
+			pkkmbGroup := pGroup.Group("/admin/pkkmb")
+			pkkmbGroup.Use(gatewayauth.RequireRole("superadmin", "admin_pmb"), rbac.RequirePermission("student.pkkmb.manage"))
+			{
+				pkkmbGroup.GET("/groups", studentCtrl.ListPKKMBGroups)
+				pkkmbGroup.POST("/groups", studentCtrl.CreatePKKMBGroup)
+				pkkmbGroup.PUT("/groups/:id", studentCtrl.UpdatePKKMBGroup)
+				pkkmbGroup.DELETE("/groups/:id", studentCtrl.DeletePKKMBGroup)
+				pkkmbGroup.POST("/auto-assign", studentCtrl.AutoAssignPKKMB)
+				pkkmbGroup.PUT("/students/:student_id/group", studentCtrl.AssignPKKMBManual)
+				pkkmbGroup.GET("/export", studentCtrl.ExportPKKMB)
+			}
+
+			// Ekspor SIAKAD
+			pGroup.GET("/admin/siakad-export",
+				gatewayauth.RequireRole("superadmin", "admin_pmb"),
+				rbac.RequirePermission("student.activation.manage"),
+				studentCtrl.ExportSIAKAD,
+			)
 
 			// Admin, Pimpinan, dan Program Studi: Rekap & Ekspor Mahasiswa Baru
 			adminGroup := pGroup.Group("/admin/students")

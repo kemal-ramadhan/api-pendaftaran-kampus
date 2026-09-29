@@ -97,6 +97,10 @@ func (m *mockConcurrentRepo) ListFormats(_ context.Context) ([]model.NIMFormat, 
 	return nil, nil
 }
 
+func (m *mockConcurrentRepo) ListActiveFormats(_ context.Context) ([]model.NIMFormat, error) {
+	return nil, nil
+}
+
 func (m *mockConcurrentRepo) GetFormatByID(_ context.Context, _ uuid.UUID) (*model.NIMFormat, error) {
 	return nil, nil
 }

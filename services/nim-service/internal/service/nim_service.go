@@ -26,6 +26,7 @@ type NIMService interface {
 	GetIssuanceByApplicationID(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error)
 	ListIssuances(ctx context.Context, filter model.IssuanceFilter) ([]model.NIMIssuance, int64, error)
 	ListFormats(ctx context.Context) ([]model.NIMFormat, error)
+	ListActiveFormats(ctx context.Context) ([]model.NIMFormat, error)
 	GetFormatByID(ctx context.Context, id uuid.UUID) (*model.NIMFormat, error)
 	CreateFormat(ctx context.Context, req *model.CreateNIMFormatRequest) (*model.NIMFormat, error)
 	UpdateFormat(ctx context.Context, id uuid.UUID, req *model.UpdateNIMFormatRequest) (*model.NIMFormat, error)
@@ -183,6 +184,10 @@ func (s *nimService) ListIssuances(ctx context.Context, filter model.IssuanceFil
 
 func (s *nimService) ListFormats(ctx context.Context) ([]model.NIMFormat, error) {
 	return s.repo.ListFormats(ctx)
+}
+
+func (s *nimService) ListActiveFormats(ctx context.Context) ([]model.NIMFormat, error) {
+	return s.repo.ListActiveFormats(ctx)
 }
 
 func (s *nimService) GetFormatByID(ctx context.Context, id uuid.UUID) (*model.NIMFormat, error) {

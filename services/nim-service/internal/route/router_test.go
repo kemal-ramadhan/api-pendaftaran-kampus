@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -42,6 +43,9 @@ func (d *dummyNIMRepo) GetFormatForProgram(_ context.Context, _ string) (*model.
 func (d *dummyNIMRepo) ListFormats(_ context.Context) ([]model.NIMFormat, error) {
 	return nil, nil
 }
+func (d *dummyNIMRepo) ListActiveFormats(_ context.Context) ([]model.NIMFormat, error) {
+	return []model.NIMFormat{}, nil
+}
 func (d *dummyNIMRepo) GetFormatByID(_ context.Context, _ uuid.UUID) (*model.NIMFormat, error) {
 	return nil, nil
 }
@@ -55,7 +59,7 @@ func (d *dummyNIMRepo) VoidIssuance(_ context.Context, _ uuid.UUID) (*model.NIMI
 	return nil, nil
 }
 
-func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string) {
+func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string, perms ...string) {
 	timestamp := fmt.Sprintf("%d", time.Now().Unix())
 	sig := gatewayauth.GenerateSignature(secret, reqID, userID, timestamp)
 
@@ -64,6 +68,9 @@ func setGatewayAuthHeaders(req *http.Request, secret, reqID, userID, role string
 	req.Header.Set(gatewayauth.HeaderRequestID, reqID)
 	req.Header.Set(gatewayauth.HeaderUserID, userID)
 	req.Header.Set(gatewayauth.HeaderUserRoles, role)
+	if len(perms) > 0 {
+		req.Header.Set("X-User-Permissions", strings.Join(perms, ","))
+	}
 }
 
 func TestNIMRouter(t *testing.T) {
@@ -100,6 +107,16 @@ func TestNIMRouter(t *testing.T) {
 	t.Run("GET /nim/admin/issuances dengan signature valid diterima gatewayauth", func(t *testing.T) {
 		req, _ := http.NewRequest(http.MethodGet, "/nim/admin/issuances", nil)
 		setGatewayAuthHeaders(req, cfg.GatewaySecret, "req-1", uuid.New().String(), "admin_pmb")
+
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+
+		assert.Equal(t, http.StatusOK, rec.Code)
+	})
+
+	t.Run("GET /nim/admin/formats/active dengan permission student.nim.issue diterima 200", func(t *testing.T) {
+		req, _ := http.NewRequest(http.MethodGet, "/nim/admin/formats/active", nil)
+		setGatewayAuthHeaders(req, cfg.GatewaySecret, "req-2", uuid.New().String(), "admin_pmb", "student.nim.issue")
 
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

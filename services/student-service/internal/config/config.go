@@ -27,6 +27,8 @@ type Config struct {
 	FinanceServiceURL      string
 	OrganizationServiceURL string
 	NIMServiceURL          string
+	IdentityServiceURL     string
+	NIMIssuanceMode        string
 }
 
 func LoadConfig() (*Config, error) {
@@ -53,6 +55,8 @@ func LoadConfig() (*Config, error) {
 		FinanceServiceURL:      getEnv("FINANCE_SERVICE_URL", "http://localhost:8085"),
 		OrganizationServiceURL: getEnv("ORGANIZATION_SERVICE_URL", "http://localhost:8081"),
 		NIMServiceURL:          getEnv("NIM_SERVICE_URL", "http://localhost:8092"),
+		IdentityServiceURL:     getEnv("IDENTITY_SERVICE_URL", "http://localhost:8083"),
+		NIMIssuanceMode:        getEnv("NIM_ISSUANCE_MODE", "manual"),
 	}
 
 	return cfg, nil

@@ -107,6 +107,97 @@ func (m *mockStudentRepository) ListStudents(ctx context.Context, filter model.S
 	return list, int64(len(list)), nil
 }
 
+func (m *mockStudentRepository) ListReregistrations(ctx context.Context, status string) ([]model.Reregistration, error) {
+	var list []model.Reregistration
+	for _, r := range m.reregistrations {
+		if status != "" && string(r.Status) != status {
+			continue
+		}
+		list = append(list, *r)
+	}
+	return list, nil
+}
+
+func (m *mockStudentRepository) GetStudentByID(ctx context.Context, id uuid.UUID) (*model.Student, error) {
+	for _, s := range m.students {
+		if s.ID == id {
+			return s, nil
+		}
+	}
+	return nil, nil
+}
+
+func (m *mockStudentRepository) ListStudentsReadyForNIM(ctx context.Context, prodi string) ([]model.Student, error) {
+	var list []model.Student
+	for _, s := range m.students {
+		if s.NIM == "" && (prodi == "" || s.StudyProgramCode == prodi) {
+			list = append(list, *s)
+		}
+	}
+	return list, nil
+}
+
+func (m *mockStudentRepository) ListStudentsWithNIM(ctx context.Context, prodi string) ([]model.Student, error) {
+	var list []model.Student
+	for _, s := range m.students {
+		if s.NIM != "" && (prodi == "" || s.StudyProgramCode == prodi) {
+			list = append(list, *s)
+		}
+	}
+	return list, nil
+}
+
+func (m *mockStudentRepository) UpdateStudent(ctx context.Context, s *model.Student) error {
+	m.students[s.ApplicationID] = s
+	return nil
+}
+
+func (m *mockStudentRepository) MarkSiakadExported(ctx context.Context, studentIDs []uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStudentRepository) ListPKKMBGroups(ctx context.Context, periodID *uuid.UUID) ([]model.PKKMBGroup, error) {
+	return []model.PKKMBGroup{
+		{ID: uuid.New(), Name: "Gugus 1", Capacity: 50},
+	}, nil
+}
+
+func (m *mockStudentRepository) GetPKKMBGroupByID(ctx context.Context, id uuid.UUID) (*model.PKKMBGroup, error) {
+	return &model.PKKMBGroup{ID: id, Name: "Gugus 1", Capacity: 50}, nil
+}
+
+func (m *mockStudentRepository) CreatePKKMBGroup(ctx context.Context, group *model.PKKMBGroup) error {
+	return nil
+}
+
+func (m *mockStudentRepository) UpdatePKKMBGroup(ctx context.Context, group *model.PKKMBGroup) error {
+	return nil
+}
+
+func (m *mockStudentRepository) DeletePKKMBGroup(ctx context.Context, id uuid.UUID) error {
+	return nil
+}
+
+func (m *mockStudentRepository) GetPKKMBAssignmentByStudentID(ctx context.Context, studentID uuid.UUID) (*model.PKKMBAssignment, error) {
+	return nil, nil
+}
+
+func (m *mockStudentRepository) CreateOrUpdatePKKMBAssignment(ctx context.Context, assignment *model.PKKMBAssignment) error {
+	return nil
+}
+
+func (m *mockStudentRepository) ListPKKMBAssignmentsByGroupID(ctx context.Context, groupID uuid.UUID) ([]model.PKKMBAssignment, error) {
+	return nil, nil
+}
+
+func (m *mockStudentRepository) ListAllPKKMBAssignments(ctx context.Context) ([]model.PKKMBAssignment, error) {
+	return nil, nil
+}
+
+func (m *mockStudentRepository) CountAssignedPerGroup(ctx context.Context) (map[uuid.UUID]int, error) {
+	return make(map[uuid.UUID]int), nil
+}
+
 func (m *mockStudentRepository) UpdateStudentNIMInTx(tx *gorm.DB, appID uuid.UUID, nim string) error {
 	if s, ok := m.students[appID]; ok {
 		s.NIM = nim
@@ -144,7 +235,7 @@ func (m *mockStudentRepository) UpdateOutboxEvent(ctx context.Context, event *mo
 func TestStudentService_BusinessValidation(t *testing.T) {
 	mockRepo := newMockRepository()
 	exp := exporter.NewStudentExporter()
-	svc := NewStudentService(mockRepo, exp, nil, nil, nil, nil)
+	svc := NewStudentService(mockRepo, exp, nil, nil, nil, nil, nil, nil)
 	ctx := context.Background()
 
 	userID := uuid.New()
@@ -240,5 +331,45 @@ func TestStudentService_BusinessValidation(t *testing.T) {
 		// Verifikasi header OpenXML / ZIP (PK)
 		assert.Equal(t, byte('P'), xlsxBytes[0])
 		assert.Equal(t, byte('K'), xlsxBytes[1])
+	})
+
+	t.Run("enrolment list filtering dan pencarian", func(t *testing.T) {
+		enrolmentList, total, err := svc.GetEnrolmentList(ctx, model.EnrolmentFilter{Filter: "all"}, []string{"admin_pmb"}, nil)
+		assert.NoError(t, err)
+		assert.GreaterOrEqual(t, total, int64(1))
+		assert.NotEmpty(t, enrolmentList)
+	})
+
+	t.Run("penetapan NIM manual dan batch", func(t *testing.T) {
+		// Manual issue NIM
+		st, err := svc.IssueNIMManual(ctx, appID)
+		assert.NoError(t, err)
+		assert.NotNil(t, st)
+		assert.NotEmpty(t, st.NIM)
+
+		// Batch issue NIM
+		batchResp, errBatch := svc.IssueNIMBatch(ctx, model.BatchNIMRequest{})
+		assert.NoError(t, errBatch)
+		assert.NotNil(t, batchResp)
+	})
+
+	t.Run("gugus PKKMB CRUD dan auto assign", func(t *testing.T) {
+		groups, err := svc.ListPKKMBGroups(ctx, nil)
+		assert.NoError(t, err)
+		assert.NotEmpty(t, groups)
+
+		autoRes, errAuto := svc.AutoAssignPKKMB(ctx, &model.AutoAssignPKKMBRequest{})
+		assert.NoError(t, errAuto)
+		assert.NotNil(t, autoRes)
+	})
+
+	t.Run("ekspor SIAKAD csv dan xlsx", func(t *testing.T) {
+		csvBytes, err := svc.ExportSIAKAD(ctx, "csv")
+		assert.NoError(t, err)
+		assert.NotEmpty(t, csvBytes)
+
+		xlsxBytes, errXlsx := svc.ExportSIAKAD(ctx, "xlsx")
+		assert.NoError(t, errXlsx)
+		assert.NotEmpty(t, xlsxBytes)
 	})
 }

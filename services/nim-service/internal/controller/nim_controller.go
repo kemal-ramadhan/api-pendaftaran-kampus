@@ -155,6 +155,15 @@ func (ctrl *NIMController) ListFormats(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Daftar format NIM berhasil diambil", formats)
 }
 
+func (ctrl *NIMController) ListActiveFormats(c *gin.Context) {
+	formats, err := ctrl.svc.ListActiveFormats(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil konfigurasi format NIM aktif: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar format NIM aktif berhasil diambil", formats)
+}
+
 func (ctrl *NIMController) GetFormat(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := uuid.Parse(idStr)

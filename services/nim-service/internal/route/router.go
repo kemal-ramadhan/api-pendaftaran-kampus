@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/internalauth"
+	"github.com/pkm-asia/pmb-backend/pkg/rbac"
 	"github.com/pkm-asia/pmb-backend/services/nim-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/nim-service/internal/controller"
 )
@@ -52,9 +53,12 @@ func SetupRouter(
 				issuancesGroup.GET("", nimCtrl.ListIssuances)
 			}
 
+			// Format NIM Aktif (admin_pmb, superadmin) dengan permission student.nim.issue
+			pGroup.GET("/admin/formats/active", gatewayauth.RequireRole("superadmin", "admin_pmb"), rbac.RequirePermission("student.nim.issue"), nimCtrl.ListActiveFormats)
+
 			// Superadmin: Konfigurasi Format Template NIM
 			formatsGroup := pGroup.Group("/admin/formats")
-			formatsGroup.Use(gatewayauth.RequireRole("superadmin"))
+			formatsGroup.Use(gatewayauth.RequireRole("superadmin"), rbac.RequirePermission("student.nim.issue"))
 			{
 				formatsGroup.GET("", nimCtrl.ListFormats)
 				formatsGroup.GET("/:id", nimCtrl.GetFormat)

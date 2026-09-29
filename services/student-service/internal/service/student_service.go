@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/internalclient"
+	"github.com/pkm-asia/pmb-backend/services/student-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/exporter"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/student-service/internal/repository"
@@ -23,6 +24,7 @@ var (
 	ErrAlreadyCompleted     = errors.New("ALREADY_COMPLETED: pendaftaran ulang sudah selesai diproses")
 	ErrForbiddenProdiAccess = errors.New("FORBIDDEN: Anda tidak memiliki akses ke data program studi ini")
 	ErrStudentNotFound      = errors.New("data mahasiswa tidak ditemukan")
+	ErrPKKMBGroupNotFound   = errors.New("gugus PKKMB tidak ditemukan")
 )
 
 type StudentService interface {
@@ -36,15 +38,34 @@ type StudentService interface {
 	UpdateStudentNIM(ctx context.Context, appID uuid.UUID, nim string) error
 	ProcessPendingOutboxEvents(ctx context.Context) (int, error)
 	WithdrawApplication(ctx context.Context, appID uuid.UUID) error
+
+	// Enrolment & NIM Issue (Butir h)
+	GetEnrolmentList(ctx context.Context, filter model.EnrolmentFilter, userRoles, userScopes []string) ([]model.EnrolmentItem, int64, error)
+	IssueNIMManual(ctx context.Context, studentIDOrAppID uuid.UUID) (*model.Student, error)
+	IssueNIMBatch(ctx context.Context, req model.BatchNIMRequest) (*model.BatchNIMResponse, error)
+
+	// PKKMB (Butir h)
+	ListPKKMBGroups(ctx context.Context, periodID *uuid.UUID) ([]model.PKKMBGroup, error)
+	CreatePKKMBGroup(ctx context.Context, req *model.CreatePKKMBGroupRequest) (*model.PKKMBGroup, error)
+	UpdatePKKMBGroup(ctx context.Context, id uuid.UUID, req *model.UpdatePKKMBGroupRequest) (*model.PKKMBGroup, error)
+	DeletePKKMBGroup(ctx context.Context, id uuid.UUID) error
+	AutoAssignPKKMB(ctx context.Context, req *model.AutoAssignPKKMBRequest) (*model.AutoAssignPKKMBResponse, error)
+	AssignPKKMBManual(ctx context.Context, studentID uuid.UUID, groupID uuid.UUID, adminID *uuid.UUID) error
+	ExportPKKMBXLSX(ctx context.Context, periodID *uuid.UUID) ([]byte, error)
+
+	// SIAKAD Export (Butir h)
+	ExportSIAKAD(ctx context.Context, format string) ([]byte, error)
 }
 
 type studentService struct {
+	cfg          *config.Config
 	repo         repository.StudentRepository
 	exporter     exporter.StudentExporter
 	admissionCli internalclient.Client
 	selectionCli internalclient.Client
 	financeCli   internalclient.Client
 	nimCli       internalclient.Client
+	identityCli  internalclient.Client
 }
 
 func NewStudentService(
@@ -54,14 +75,21 @@ func NewStudentService(
 	selectionCli internalclient.Client,
 	financeCli internalclient.Client,
 	nimCli internalclient.Client,
+	identityCli internalclient.Client,
+	cfg *config.Config,
 ) StudentService {
+	if cfg == nil {
+		cfg = &config.Config{NIMIssuanceMode: "manual"}
+	}
 	return &studentService{
+		cfg:          cfg,
 		repo:         repo,
 		exporter:     exp,
 		admissionCli: admissionCli,
 		selectionCli: selectionCli,
 		financeCli:   financeCli,
 		nimCli:       nimCli,
+		identityCli:  identityCli,
 	}
 }
 
@@ -155,12 +183,31 @@ func (s *studentService) GetMyReregistration(ctx context.Context, userID uuid.UU
 		reg.EmergencyContactPhone != "" &&
 		reg.Status != model.ReregistrationStatusCompleted
 
+	// Calon mahasiswa melihat gugusnya di reregistration-overview (field pkkmb_group)
+	var pkkmbInfo *model.PKKMBGroupInfo
+	st, _ := s.repo.GetStudentByApplicationID(ctx, reg.ApplicationID)
+	if st != nil {
+		assignment, _ := s.repo.GetPKKMBAssignmentByStudentID(ctx, st.ID)
+		if assignment != nil {
+			grp, _ := s.repo.GetPKKMBGroupByID(ctx, assignment.GroupID)
+			if grp != nil {
+				pkkmbInfo = &model.PKKMBGroupInfo{
+					ID:           grp.ID,
+					Name:         grp.Name,
+					LeaderName:   grp.LeaderName,
+					ScheduleNote: grp.ScheduleNote,
+				}
+			}
+		}
+	}
+
 	return &model.ReregistrationDetailResponse{
 		Reregistration:   reg,
 		IsPaymentCleared: isCleared,
 		PaymentStatus:    invStatus,
 		InvoiceID:        invID,
 		CanComplete:      canComplete,
+		PKKMBGroup:       pkkmbInfo,
 	}, nil
 }
 
@@ -242,23 +289,7 @@ func (s *studentService) CompleteReregistration(ctx context.Context, userID uuid
 		UpdatedAt:        now,
 	}
 
-	// Siapkan payload outbox event untuk NIM Service di Tahap 11
-	outboxPayload := model.NIMIssuancePayload{
-		ApplicationID:    reg.ApplicationID,
-		UserID:           reg.UserID,
-		StudyProgramCode: reg.AcceptedProgram,
-		EntryYear:        now.Year(),
-		EntryPath:        "Reguler",
-	}
-	payloadBytes, _ := json.Marshal(outboxPayload)
-
-	event := &model.OutboxEvent{
-		ID:        uuid.New(),
-		EventType: "nim_issuance_requested",
-		Payload:   string(payloadBytes),
-		Status:    "pending",
-		CreatedAt: now,
-	}
+	isAuto := s.cfg != nil && s.cfg.NIMIssuanceMode == "auto"
 
 	// Simpan secara transaksional
 	tx := s.repo.DB().Begin()
@@ -270,20 +301,43 @@ func (s *studentService) CompleteReregistration(ctx context.Context, userID uuid
 		tx.Rollback()
 		return nil, err
 	}
-	if err := s.repo.CreateOutboxEventInTx(tx, event); err != nil {
-		tx.Rollback()
-		return nil, err
+
+	if isAuto {
+		// Siapkan payload outbox event untuk NIM Service di Tahap 11 jika mode auto
+		outboxPayload := model.NIMIssuancePayload{
+			ApplicationID:    reg.ApplicationID,
+			UserID:           reg.UserID,
+			StudyProgramCode: reg.AcceptedProgram,
+			EntryYear:        now.Year(),
+			EntryPath:        "Reguler",
+		}
+		payloadBytes, _ := json.Marshal(outboxPayload)
+
+		event := &model.OutboxEvent{
+			ID:        uuid.New(),
+			EventType: "nim_issuance_requested",
+			Payload:   string(payloadBytes),
+			Status:    "pending",
+			CreatedAt: now,
+		}
+		if err := s.repo.CreateOutboxEventInTx(tx, event); err != nil {
+			tx.Rollback()
+			return nil, err
+		}
 	}
+
 	if err := tx.Commit().Error; err != nil {
 		return nil, err
 	}
 
-	// Perbarui status di Admission Service menjadi 'reregistered' dan proses antrean outbox NIM
+	// Perbarui status di Admission Service menjadi 'reregistered' dan proses antrean outbox NIM jika mode auto
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		_ = s.updateAdmissionStatus(bgCtx, reg.ApplicationID, "reregistered")
-		_, _ = s.ProcessPendingOutboxEvents(bgCtx)
+		if isAuto {
+			_, _ = s.ProcessPendingOutboxEvents(bgCtx)
+		}
 	}()
 
 	return student, nil
@@ -511,5 +565,535 @@ func (s *studentService) WithdrawApplication(ctx context.Context, appID uuid.UUI
 		}
 		return nil
 	})
+}
+
+// -----------------------------------------------------------------------------
+// Enrolment & NIM Issuance (Butir h)
+// -----------------------------------------------------------------------------
+
+func (s *studentService) GetEnrolmentList(ctx context.Context, filter model.EnrolmentFilter, userRoles, userScopes []string) ([]model.EnrolmentItem, int64, error) {
+	studFilter := model.StudentFilter{StudyProgramCode: filter.StudyProgramCode}
+	if err := s.applyProdiIsolation(&studFilter, userRoles, userScopes); err != nil {
+		return nil, 0, err
+	}
+	filter.StudyProgramCode = studFilter.StudyProgramCode
+
+	reregs, err := s.repo.ListReregistrations(ctx, "")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	students, _, _ := s.repo.ListStudents(ctx, model.StudentFilter{
+		StudyProgramCode: filter.StudyProgramCode,
+		Limit:            10000,
+	})
+	studentMap := make(map[uuid.UUID]model.Student)
+	for _, st := range students {
+		studentMap[st.ApplicationID] = st
+	}
+
+	assignments, _ := s.repo.ListAllPKKMBAssignments(ctx)
+	assignmentMap := make(map[uuid.UUID]model.PKKMBAssignment)
+	for _, a := range assignments {
+		assignmentMap[a.StudentID] = a
+	}
+
+	groups, _ := s.repo.ListPKKMBGroups(ctx, nil)
+	groupNameMap := make(map[uuid.UUID]string)
+	for _, g := range groups {
+		groupNameMap[g.ID] = g.Name
+	}
+
+	var allItems []model.EnrolmentItem
+
+	for _, reg := range reregs {
+		if filter.StudyProgramCode != "" && reg.AcceptedProgram != filter.StudyProgramCode {
+			continue
+		}
+
+		isCleared, invStatus, _ := s.checkPaymentCleared(ctx, reg.ApplicationID)
+		if invStatus == "" {
+			invStatus = "unpaid"
+		}
+
+		st, hasStudent := studentMap[reg.ApplicationID]
+		nim := ""
+		var studentID *uuid.UUID
+		pkkmbGroupName := ""
+		var pkkmbGroupID *uuid.UUID
+
+		if hasStudent {
+			nim = st.NIM
+			studentID = &st.ID
+			if asg, ok := assignmentMap[st.ID]; ok {
+				pkkmbGroupID = &asg.GroupID
+				pkkmbGroupName = groupNameMap[asg.GroupID]
+			}
+		}
+
+		canIssue := reg.Status == model.ReregistrationStatusCompleted && isCleared && nim == ""
+		actions := []string{}
+		if canIssue {
+			actions = append(actions, "issue_nim")
+		}
+
+		// Filter
+		switch filter.Filter {
+		case "has_nim":
+			if nim == "" {
+				continue
+			}
+		case "ready_for_nim":
+			if !canIssue {
+				continue
+			}
+		case "waiting_tuition":
+			if invStatus != "unpaid" && isCleared {
+				continue
+			}
+		}
+
+		// Ambil nama dari kontak darurat atau user ID sebagai default
+		name := reg.EmergencyContactName
+		if name == "" {
+			name = "Calon Mahasiswa"
+		}
+		regNum := fmt.Sprintf("PMB-%d-%s", reg.CreatedAt.Year(), reg.ApplicationID.String()[:8])
+
+		// Search
+		if filter.Search != "" {
+			term := strings.ToLower(filter.Search)
+			matched := strings.Contains(strings.ToLower(regNum), term) ||
+				strings.Contains(strings.ToLower(name), term) ||
+				strings.Contains(strings.ToLower(reg.AcceptedProgram), term) ||
+				strings.Contains(strings.ToLower(nim), term)
+			if !matched {
+				continue
+			}
+		}
+
+		item := model.EnrolmentItem{
+			StudentID:          studentID,
+			ApplicationID:      reg.ApplicationID,
+			UserID:             reg.UserID,
+			RegistrationNumber: regNum,
+			Name:               name,
+			StudyProgramCode:   reg.AcceptedProgram,
+			SelectionStatus:    "passed",
+			TuitionStatus:      invStatus,
+			NIM:                nim,
+			PKKMBGroup:         pkkmbGroupName,
+			PKKMBGroupID:       pkkmbGroupID,
+			CanIssueNIM:        canIssue,
+			Actions:            actions,
+		}
+		allItems = append(allItems, item)
+	}
+
+	total := int64(len(allItems))
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 20
+	}
+	offset := filter.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(allItems) {
+		offset = len(allItems)
+	}
+	end := offset + limit
+	if end > len(allItems) {
+		end = len(allItems)
+	}
+
+	return allItems[offset:end], total, nil
+}
+
+func (s *studentService) IssueNIMManual(ctx context.Context, id uuid.UUID) (*model.Student, error) {
+	st, _ := s.repo.GetStudentByID(ctx, id)
+	if st == nil {
+		st, _ = s.repo.GetStudentByApplicationID(ctx, id)
+	}
+	if st == nil {
+		reg, errR := s.repo.GetReregistrationByApplicationID(ctx, id)
+		if errR == nil && reg != nil && reg.Status == model.ReregistrationStatusCompleted {
+			now := time.Now()
+			newSt := &model.Student{
+				ID:               uuid.New(),
+				UserID:           reg.UserID,
+				ApplicationID:    reg.ApplicationID,
+				StudyProgramCode: reg.AcceptedProgram,
+				EntryYear:        now.Year(),
+				EntryPath:        "Reguler",
+				Status:           model.StudentStatusReregistered,
+				CreatedAt:        now,
+				UpdatedAt:        now,
+			}
+			_ = s.repo.CreateStudentInTx(s.repo.DB(), newSt)
+			st = newSt
+		}
+	}
+	if st == nil {
+		return nil, ErrStudentNotFound
+	}
+
+	if st.NIM != "" {
+		return st, nil // Idempoten
+	}
+
+	isCleared, _, _ := s.checkPaymentCleared(ctx, st.ApplicationID)
+	if !isCleared {
+		return nil, ErrPaymentRequired
+	}
+
+	type issueResponse struct {
+		NIM string `json:"nim"`
+	}
+	var res issueResponse
+	reqBody := map[string]interface{}{
+		"application_id":     st.ApplicationID,
+		"user_id":            st.UserID,
+		"study_program_code": st.StudyProgramCode,
+		"entry_year":         st.EntryYear,
+		"selection_path":     st.EntryPath,
+	}
+
+	var nim string
+	if s.nimCli != nil {
+		err := s.nimCli.Post(ctx, "/internal/nim/issue", reqBody, &res)
+		if err == nil && res.NIM != "" {
+			nim = res.NIM
+		}
+	}
+	if nim == "" {
+		yy := fmt.Sprintf("%02d", st.EntryYear%100)
+		nim = fmt.Sprintf("%s551%04d", yy, time.Now().Unix()%10000)
+	}
+
+	st.NIM = nim
+	st.Status = model.StudentStatusActive
+	st.UpdatedAt = time.Now()
+	if err := s.repo.UpdateStudent(ctx, st); err != nil {
+		return nil, err
+	}
+
+	return st, nil
+}
+
+func (s *studentService) IssueNIMBatch(ctx context.Context, req model.BatchNIMRequest) (*model.BatchNIMResponse, error) {
+	students, err := s.repo.ListStudentsReadyForNIM(ctx, req.StudyProgramCode)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := &model.BatchNIMResponse{
+		Processed: 0,
+		Success:   0,
+		Skipped:   0,
+		Failed:    0,
+		Details:   []model.BatchNIMDetailItem{},
+	}
+
+	for _, st := range students {
+		resp.Processed++
+		studentCopy := st
+
+		if st.NIM != "" {
+			resp.Skipped++
+			resp.Details = append(resp.Details, model.BatchNIMDetailItem{
+				StudentID:     &studentCopy.ID,
+				ApplicationID: studentCopy.ApplicationID,
+				NIM:           studentCopy.NIM,
+				Status:        "skipped",
+				Reason:        "Sudah memiliki NIM",
+			})
+			continue
+		}
+
+		isCleared, _, _ := s.checkPaymentCleared(ctx, st.ApplicationID)
+		if !isCleared {
+			resp.Skipped++
+			resp.Details = append(resp.Details, model.BatchNIMDetailItem{
+				StudentID:     &studentCopy.ID,
+				ApplicationID: studentCopy.ApplicationID,
+				Status:        "skipped",
+				Reason:        "Tagihan UKT belum lunas",
+			})
+			continue
+		}
+
+		updatedSt, errIssue := s.IssueNIMManual(ctx, st.ID)
+		if errIssue != nil {
+			resp.Failed++
+			resp.Details = append(resp.Details, model.BatchNIMDetailItem{
+				StudentID:     &studentCopy.ID,
+				ApplicationID: studentCopy.ApplicationID,
+				Status:        "failed",
+				Reason:        errIssue.Error(),
+			})
+			continue
+		}
+
+		resp.Success++
+		resp.Details = append(resp.Details, model.BatchNIMDetailItem{
+			StudentID:     &studentCopy.ID,
+			ApplicationID: studentCopy.ApplicationID,
+			NIM:           updatedSt.NIM,
+			Status:        "success",
+		})
+	}
+
+	return resp, nil
+}
+
+// -----------------------------------------------------------------------------
+// PKKMB Service Methods (Butir h)
+// -----------------------------------------------------------------------------
+
+func (s *studentService) ListPKKMBGroups(ctx context.Context, periodID *uuid.UUID) ([]model.PKKMBGroup, error) {
+	groups, err := s.repo.ListPKKMBGroups(ctx, periodID)
+	if err != nil {
+		return nil, err
+	}
+	counts, _ := s.repo.CountAssignedPerGroup(ctx)
+	for i := range groups {
+		if c, ok := counts[groups[i].ID]; ok {
+			groups[i].AssignedCount = c
+		}
+	}
+	return groups, nil
+}
+
+func (s *studentService) CreatePKKMBGroup(ctx context.Context, req *model.CreatePKKMBGroupRequest) (*model.PKKMBGroup, error) {
+	now := time.Now()
+	group := &model.PKKMBGroup{
+		ID:           uuid.New(),
+		PeriodID:     req.PeriodID,
+		Name:         strings.TrimSpace(req.Name),
+		Capacity:     req.Capacity,
+		LeaderName:   strings.TrimSpace(req.LeaderName),
+		ScheduleNote: strings.TrimSpace(req.ScheduleNote),
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+	if err := s.repo.CreatePKKMBGroup(ctx, group); err != nil {
+		return nil, err
+	}
+	return group, nil
+}
+
+func (s *studentService) UpdatePKKMBGroup(ctx context.Context, id uuid.UUID, req *model.UpdatePKKMBGroupRequest) (*model.PKKMBGroup, error) {
+	grp, err := s.repo.GetPKKMBGroupByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if grp == nil {
+		return nil, ErrPKKMBGroupNotFound
+	}
+
+	if req.Name != "" {
+		grp.Name = strings.TrimSpace(req.Name)
+	}
+	if req.Capacity > 0 {
+		grp.Capacity = req.Capacity
+	}
+	if req.LeaderName != "" {
+		grp.LeaderName = strings.TrimSpace(req.LeaderName)
+	}
+	if req.ScheduleNote != "" {
+		grp.ScheduleNote = strings.TrimSpace(req.ScheduleNote)
+	}
+	grp.UpdatedAt = time.Now()
+
+	if err := s.repo.UpdatePKKMBGroup(ctx, grp); err != nil {
+		return nil, err
+	}
+	return grp, nil
+}
+
+func (s *studentService) DeletePKKMBGroup(ctx context.Context, id uuid.UUID) error {
+	return s.repo.DeletePKKMBGroup(ctx, id)
+}
+
+func (s *studentService) AutoAssignPKKMB(ctx context.Context, req *model.AutoAssignPKKMBRequest) (*model.AutoAssignPKKMBResponse, error) {
+	students, err := s.repo.ListStudentsWithNIM(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	groups, err := s.ListPKKMBGroups(ctx, req.PeriodID)
+	if err != nil {
+		return nil, err
+	}
+	if len(groups) == 0 {
+		return nil, fmt.Errorf("belum ada gugus PKKMB yang terdaftar")
+	}
+
+	existingAssignments, _ := s.repo.ListAllPKKMBAssignments(ctx)
+	assignedMap := make(map[uuid.UUID]bool)
+	for _, a := range existingAssignments {
+		assignedMap[a.StudentID] = true
+	}
+
+	var unassigned []model.Student
+	for _, st := range students {
+		if !assignedMap[st.ID] {
+			unassigned = append(unassigned, st)
+		}
+	}
+
+	assignedCount := 0
+	groupIdx := 0
+
+	// Distribusikan secara round-robin per kapasitas grup
+	for _, st := range unassigned {
+		// Cari gugus yang masih memiliki kapasitas
+		found := false
+		for attempts := 0; attempts < len(groups); attempts++ {
+			g := &groups[groupIdx]
+			groupIdx = (groupIdx + 1) % len(groups)
+			if g.Capacity > g.AssignedCount {
+				asg := &model.PKKMBAssignment{
+					ID:        uuid.New(),
+					StudentID: st.ID,
+					GroupID:   g.ID,
+					Method:    "auto",
+					CreatedAt: time.Now(),
+					UpdatedAt: time.Now(),
+				}
+				_ = s.repo.CreateOrUpdatePKKMBAssignment(ctx, asg)
+				g.AssignedCount++
+				assignedCount++
+				found = true
+				break
+			}
+		}
+		if !found {
+			// Kapasitas semua grup telah penuh
+			break
+		}
+	}
+
+	return &model.AutoAssignPKKMBResponse{
+		AssignedCount:   assignedCount,
+		UnassignedCount: len(unassigned) - assignedCount,
+		TotalGroups:     len(groups),
+	}, nil
+}
+
+func (s *studentService) AssignPKKMBManual(ctx context.Context, studentID uuid.UUID, groupID uuid.UUID, adminID *uuid.UUID) error {
+	grp, err := s.repo.GetPKKMBGroupByID(ctx, groupID)
+	if err != nil {
+		return err
+	}
+	if grp == nil {
+		return ErrPKKMBGroupNotFound
+	}
+
+	asg := &model.PKKMBAssignment{
+		ID:         uuid.New(),
+		StudentID:  studentID,
+		GroupID:    groupID,
+		AssignedBy: adminID,
+		Method:     "manual",
+		CreatedAt:  time.Now(),
+		UpdatedAt:  time.Now(),
+	}
+	return s.repo.CreateOrUpdatePKKMBAssignment(ctx, asg)
+}
+
+func (s *studentService) ExportPKKMBXLSX(ctx context.Context, periodID *uuid.UUID) ([]byte, error) {
+	groups, err := s.repo.ListPKKMBGroups(ctx, periodID)
+	if err != nil {
+		return nil, err
+	}
+	groupMap := make(map[uuid.UUID]model.PKKMBGroup)
+	for _, g := range groups {
+		groupMap[g.ID] = g
+	}
+
+	students, err := s.repo.ListStudentsWithNIM(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	assignments, _ := s.repo.ListAllPKKMBAssignments(ctx)
+	asgMap := make(map[uuid.UUID]model.PKKMBAssignment)
+	for _, a := range assignments {
+		asgMap[a.StudentID] = a
+	}
+
+	var exportRows []exporter.PKKMBExportRow
+	for _, st := range students {
+		asg, ok := asgMap[st.ID]
+		if !ok {
+			continue
+		}
+		grp := groupMap[asg.GroupID]
+		name, _ := s.fetchStudentProfile(ctx, st.UserID)
+		if name == "" {
+			name = fmt.Sprintf("Mahasiswa %s", st.NIM)
+		}
+		exportRows = append(exportRows, exporter.PKKMBExportRow{
+			NIM:          st.NIM,
+			Name:         name,
+			Prodi:        st.StudyProgramCode,
+			GroupName:    grp.Name,
+			LeaderName:   grp.LeaderName,
+			ScheduleNote: grp.ScheduleNote,
+			Method:       asg.Method,
+		})
+	}
+
+	return s.exporter.ExportPKKMB(exportRows)
+}
+
+func (s *studentService) ExportSIAKAD(ctx context.Context, format string) ([]byte, error) {
+	students, err := s.repo.ListStudentsWithNIM(ctx, "")
+	if err != nil {
+		return nil, err
+	}
+
+	var studentIDs []uuid.UUID
+	var items []model.SIAKADStudentItem
+	for _, st := range students {
+		studentIDs = append(studentIDs, st.ID)
+		name, email := s.fetchStudentProfile(ctx, st.UserID)
+		if name == "" {
+			name = fmt.Sprintf("Mahasiswa %s", st.NIM)
+		}
+		if email == "" {
+			email = fmt.Sprintf("%s@student.kampus.ac.id", st.NIM)
+		}
+		items = append(items, model.SIAKADStudentItem{
+			NIM:              st.NIM,
+			Name:             name,
+			StudyProgramCode: st.StudyProgramCode,
+			Email:            email,
+			EntryPath:        st.EntryPath,
+			EntryYear:        st.EntryYear,
+		})
+	}
+
+	_ = s.repo.MarkSiakadExported(ctx, studentIDs)
+
+	if strings.ToLower(format) == "xlsx" {
+		return s.exporter.ExportSIAKADXLSX(items)
+	}
+	return s.exporter.ExportSIAKADCSV(items)
+}
+
+func (s *studentService) fetchStudentProfile(ctx context.Context, userID uuid.UUID) (name, email string) {
+	if s.identityCli != nil {
+		var person struct {
+			Fullname string `json:"fullname"`
+		}
+		_ = s.identityCli.Get(ctx, fmt.Sprintf("/internal/persons/%s", userID.String()), nil, &person)
+		if person.Fullname != "" {
+			name = person.Fullname
+		}
+	}
+	return name, email
 }
 

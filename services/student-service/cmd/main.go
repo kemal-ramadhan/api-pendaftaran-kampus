@@ -37,7 +37,7 @@ func main() {
 	}
 
 	// Auto-migrate schema tabel
-	if err := db.AutoMigrate(&model.Reregistration{}, &model.Student{}, &model.OutboxEvent{}); err != nil {
+	if err := db.AutoMigrate(&model.Reregistration{}, &model.Student{}, &model.PKKMBGroup{}, &model.PKKMBAssignment{}, &model.OutboxEvent{}); err != nil {
 		log.Fatalf("[STUDENT-SERVICE] Gagal melakukan AutoMigrate schema basis data: %v", err)
 	}
 	log.Println("[STUDENT-SERVICE] Schema basis data berhasil dimigrasi.")
@@ -59,6 +59,10 @@ func main() {
 		BaseURL:       cfg.NIMServiceURL,
 		InternalToken: cfg.InternalToken,
 	})
+	identityCli := internalclient.NewClient(internalclient.Config{
+		BaseURL:       cfg.IdentityServiceURL,
+		InternalToken: cfg.InternalToken,
+	})
 
 	// 3. Inisialisasi Lapisan Repositori & Domain Service
 	studentRepo := repository.NewStudentRepository(db)
@@ -71,6 +75,8 @@ func main() {
 		selectionCli,
 		financeCli,
 		nimCli,
+		identityCli,
+		cfg,
 	)
 
 	studentCtrl := controller.NewStudentController(studentSvc)
