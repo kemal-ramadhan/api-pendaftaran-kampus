@@ -21,12 +21,13 @@ type ScopeClaim struct {
 }
 
 type GatewayClaims struct {
-	Typ    string       `json:"typ"`
-	Email  string       `json:"email"`
-	Name   string       `json:"name"`
-	Roles  []string     `json:"roles"`
-	Scopes []ScopeClaim `json:"scopes"`
-	Sid    string       `json:"sid"`
+	Typ         string       `json:"typ"`
+	Email       string       `json:"email"`
+	Name        string       `json:"name"`
+	Roles       []string     `json:"roles"`
+	Scopes      []ScopeClaim `json:"scopes"`
+	Permissions []string     `json:"perms"`
+	Sid         string       `json:"sid"`
 	jwt.RegisteredClaims
 }
 

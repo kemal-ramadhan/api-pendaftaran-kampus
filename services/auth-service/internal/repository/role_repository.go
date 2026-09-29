@@ -18,6 +18,10 @@ type RoleRepository interface {
 	ReplaceUserRoles(ctx context.Context, userID uuid.UUID, roles []model.UserRole) error
 	RemoveUserRoleByCode(ctx context.Context, userID uuid.UUID, code string) error
 	CountActiveSuperadmins(ctx context.Context) (int64, error)
+	GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error)
+	GetAllPermissions(ctx context.Context) ([]model.Permission, error)
+	GetRolePermissions(ctx context.Context, roleCode string) ([]string, error)
+	UpdateRolePermissions(ctx context.Context, roleCode string, permissionCodes []string) error
 }
 
 type roleRepository struct {
@@ -113,4 +117,67 @@ func (r *roleRepository) CountActiveSuperadmins(ctx context.Context) (int64, err
 		Count(&count).Error
 	return count, err
 }
+
+func (r *roleRepository) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	var perms []string
+	err := r.db.WithContext(ctx).
+		Table("role_permissions").
+		Joins("JOIN user_roles ON user_roles.role_id = role_permissions.role_id").
+		Where("user_roles.user_id = ?", userID).
+		Distinct("role_permissions.permission_code").
+		Pluck("role_permissions.permission_code", &perms).Error
+	if err != nil {
+		return nil, err
+	}
+	return perms, nil
+}
+
+func (r *roleRepository) GetAllPermissions(ctx context.Context) ([]model.Permission, error) {
+	var permissions []model.Permission
+	err := r.db.WithContext(ctx).Order("module asc, code asc").Find(&permissions).Error
+	return permissions, err
+}
+
+func (r *roleRepository) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	var perms []string
+	err := r.db.WithContext(ctx).
+		Table("role_permissions").
+		Joins("JOIN roles ON roles.id = role_permissions.role_id").
+		Where("roles.code = ?", roleCode).
+		Order("role_permissions.permission_code asc").
+		Pluck("role_permissions.permission_code", &perms).Error
+	if err != nil {
+		return nil, err
+	}
+	return perms, nil
+}
+
+func (r *roleRepository) UpdateRolePermissions(ctx context.Context, roleCode string, permissionCodes []string) error {
+	var role model.Role
+	if err := r.db.WithContext(ctx).Where("code = ?", roleCode).First(&role).Error; err != nil {
+		return err
+	}
+
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("role_id = ?", role.ID).Delete(&model.RolePermission{}).Error; err != nil {
+			return err
+		}
+
+		for _, pc := range permissionCodes {
+			trimmed := pc
+			if trimmed == "" {
+				continue
+			}
+			rp := model.RolePermission{
+				RoleID:         role.ID,
+				PermissionCode: trimmed,
+			}
+			if err := tx.Create(&rp).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 

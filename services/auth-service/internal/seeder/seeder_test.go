@@ -15,12 +15,13 @@ func TestDefaultRolesList(t *testing.T) {
 		model.RoleKeuangan:       "Keuangan",
 		model.RoleDosen:          "Dosen",
 		model.RoleProdi:          "Prodi",
+		model.RoleDekan:          "Dekan",
 		model.RolePimpinan:       "Pimpinan Universitas",
 		model.RoleSuperadmin:     "Superadmin",
 	}
 
-	if len(defaultRoles) != 8 {
-		t.Fatalf("Jumlah role bawaan harus tepat 8, didapat %d", len(defaultRoles))
+	if len(defaultRoles) != 9 {
+		t.Fatalf("Jumlah role bawaan harus tepat 9, didapat %d", len(defaultRoles))
 	}
 
 	for _, role := range defaultRoles {

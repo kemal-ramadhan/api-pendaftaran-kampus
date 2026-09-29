@@ -81,6 +81,9 @@ func main() {
 		if err := seeder.SeedRoles(migCtx, db, appLog); err != nil {
 			appLog.Warn("Gagal seed role", zap.Error(err))
 		}
+		if err := seeder.SeedPermissions(migCtx, db, appLog); err != nil {
+			appLog.Warn("Gagal seed permission", zap.Error(err))
+		}
 		if err := seeder.SeedSuperadmin(migCtx, db, cfg, appLog); err != nil {
 			appLog.Warn("Gagal seed superadmin", zap.Error(err))
 		}

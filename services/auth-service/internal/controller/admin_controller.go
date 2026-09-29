@@ -289,3 +289,83 @@ func (ctl *AdminController) UpdateUserStatus(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Status pengguna berhasil diperbarui", user)
 }
+
+// GetPermissions godoc
+// @Summary Daftar Seluruh Permissions
+// @Description Mengambil seluruh master permission aksi dalam sistem PMB.
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=[]dto.PermissionResponseData}
+// @Router /auth/admin/permissions [get]
+func (ctl *AdminController) GetPermissions(c *gin.Context) {
+	perms, err := ctl.adminService.GetPermissions(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar permission")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil daftar permission", perms)
+}
+
+// GetRolePermissions godoc
+// @Summary Daftar Permission Berdasarkan Role
+// @Description Mengambil seluruh kode permission yang dimiliki oleh suatu role.
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Param code path string true "Kode Role"
+// @Success 200 {object} response.SuccessResponse{data=dto.RolePermissionsResponseData}
+// @Failure 404 {object} response.ErrorResponse
+// @Router /auth/admin/roles/{code}/permissions [get]
+func (ctl *AdminController) GetRolePermissions(c *gin.Context) {
+	code := c.Param("code")
+	res, err := ctl.adminService.GetRolePermissions(c.Request.Context(), code)
+	if err != nil {
+		if errors.Is(err, service.ErrRoleNotFound) {
+			response.NotFound(c, "Role tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil permissions role")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil permissions role", res)
+}
+
+// UpdateRolePermissions godoc
+// @Summary Perbarui Pemetaan Permission Role
+// @Description Mengganti pemetaan daftar permission untuk suatu role (khusus superadmin).
+// @Tags Admin
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Param code path string true "Kode Role"
+// @Param request body dto.UpdateRolePermissionsRequest true "Daftar Permission Baru"
+// @Success 200 {object} response.SuccessResponse{data=dto.RolePermissionsResponseData}
+// @Failure 400 {object} response.ErrorResponse
+// @Failure 404 {object} response.ErrorResponse
+// @Router /auth/admin/roles/{code}/permissions [put]
+func (ctl *AdminController) UpdateRolePermissions(c *gin.Context) {
+	actorID, _ := middleware.GetUserID(c)
+	code := c.Param("code")
+
+	var req dto.UpdateRolePermissionsRequest
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	res, err := ctl.adminService.UpdateRolePermissions(c.Request.Context(), code, req.Permissions, actorID)
+	if err != nil {
+		if errors.Is(err, service.ErrRoleNotFound) {
+			response.NotFound(c, "Role tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrValidation) {
+			response.BadRequest(c, response.ErrCodeValidationError, err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal memperbarui permissions role")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Permissions role berhasil diperbarui", res)
+}

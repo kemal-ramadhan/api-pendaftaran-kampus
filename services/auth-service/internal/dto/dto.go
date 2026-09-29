@@ -154,3 +154,33 @@ type VerifyPasswordRequest struct {
 	Password string `json:"password" binding:"required"`
 }
 
+type ModulePermissionDTO struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Sublabel string `json:"sublabel"`
+	Allowed  bool   `json:"allowed"`
+	ReadOnly bool   `json:"read_only"`
+}
+
+type UserPermissionsResponse struct {
+	Roles       []string              `json:"roles"`
+	Scopes      []token.ScopeClaim    `json:"scopes"`
+	Permissions []string              `json:"permissions"`
+	Modules     []ModulePermissionDTO `json:"modules"`
+}
+
+type PermissionResponseData struct {
+	Code        string `json:"code"`
+	Module      string `json:"module"`
+	Description string `json:"description"`
+}
+
+type RolePermissionsResponseData struct {
+	RoleCode    string   `json:"role_code"`
+	Permissions []string `json:"permissions"`
+}
+
+type UpdateRolePermissionsRequest struct {
+	Permissions []string `json:"permissions" binding:"required"`
+}
+

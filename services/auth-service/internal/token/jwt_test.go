@@ -105,9 +105,10 @@ func TestTokenManager_GenerateAndValidateTokens(t *testing.T) {
 		{Role: "calon_mahasiswa", Type: "jalur", ID: "reguler"},
 	}
 	sessionID := uuid.NewString()
+	permissions := []string{"admission.document.verify", "dashboard.overview.read"}
 
 	// 1. Generate Access Token
-	accessTokenStr, accessJTI, accessExp, err := tm.GenerateAccessToken(userID, email, name, roles, scopes, sessionID)
+	accessTokenStr, accessJTI, accessExp, err := tm.GenerateAccessToken(userID, email, name, roles, scopes, permissions, sessionID)
 	if err != nil {
 		t.Fatalf("GenerateAccessToken error: %v", err)
 	}
@@ -125,6 +126,9 @@ func TestTokenManager_GenerateAndValidateTokens(t *testing.T) {
 	}
 	if accessClaims.Typ != "access" {
 		t.Errorf("Claim typ = %s; expected 'access'", accessClaims.Typ)
+	}
+	if len(accessClaims.Permissions) != 2 || accessClaims.Permissions[0] != "admission.document.verify" {
+		t.Errorf("Claim permissions tidak sesuai: %v", accessClaims.Permissions)
 	}
 	if accessClaims.Email != email {
 		t.Errorf("Claim email = %s; expected %s", accessClaims.Email, email)

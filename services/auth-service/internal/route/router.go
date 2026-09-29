@@ -52,6 +52,7 @@ func SetupRoutes(
 	authProtected.Use(middleware.AuthMiddleware(tokenMgr, sessionStore))
 	{
 		authProtected.GET("/me", authCtrl.GetMe)
+		authProtected.GET("/me/permissions", authCtrl.GetMePermissions)
 		authProtected.PUT("/profile", authCtrl.UpdateProfile)
 		authProtected.PUT("/password", authCtrl.ChangePassword)
 		authProtected.POST("/logout", authCtrl.Logout)
@@ -64,6 +65,10 @@ func SetupRoutes(
 	admin.Use(middleware.RequireRole(model.RoleSuperadmin))
 	{
 		admin.GET("/roles", adminCtrl.GetRoles)
+		admin.GET("/permissions", adminCtrl.GetPermissions)
+		admin.GET("/roles/:code/permissions", adminCtrl.GetRolePermissions)
+		admin.PUT("/roles/:code/permissions", adminCtrl.UpdateRolePermissions)
+		admin.POST("/roles/:code/permissions", adminCtrl.UpdateRolePermissions)
 		admin.GET("/users", adminCtrl.ListUsers)
 		admin.POST("/users", adminCtrl.CreateUser)
 		admin.GET("/users/:id", adminCtrl.GetUser)

@@ -136,7 +136,7 @@ func TestAdminController_RBAC(t *testing.T) {
 	}
 
 	// 2. Token role calon_mahasiswa -> 403 Forbidden
-	tokenCalon, _, _, _ := tm.GenerateAccessToken(calonID, "calon@example.com", "Calon", []string{"calon_mahasiswa"}, nil, uuid.NewString())
+	tokenCalon, _, _, _ := tm.GenerateAccessToken(calonID, "calon@example.com", "Calon", []string{"calon_mahasiswa"}, nil, nil, uuid.NewString())
 	req2, _ := http.NewRequest(http.MethodGet, "/auth/admin/users", nil)
 	req2.Header.Set("Authorization", "Bearer "+tokenCalon)
 	w2 := httptest.NewRecorder()
@@ -146,7 +146,7 @@ func TestAdminController_RBAC(t *testing.T) {
 	}
 
 	// 3. Token role superadmin -> 200 OK
-	tokenSuper, _, _, _ := tm.GenerateAccessToken(superadminID, "superadmin@univ.ac.id", "Super Admin", []string{"superadmin"}, nil, uuid.NewString())
+	tokenSuper, _, _, _ := tm.GenerateAccessToken(superadminID, "superadmin@univ.ac.id", "Super Admin", []string{"superadmin"}, nil, nil, uuid.NewString())
 	req3, _ := http.NewRequest(http.MethodGet, "/auth/admin/users", nil)
 	req3.Header.Set("Authorization", "Bearer "+tokenSuper)
 	w3 := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestAdminController_RBAC(t *testing.T) {
 // Test Superadmin Membuat Akun Keuangan dan Prodi
 func TestAdminController_CreateUser(t *testing.T) {
 	r, tm, _, superadminID, _ := setupM2Router(t)
-	tokenSuper, _, _, _ := tm.GenerateAccessToken(superadminID, "superadmin@univ.ac.id", "Super Admin", []string{"superadmin"}, nil, uuid.NewString())
+	tokenSuper, _, _, _ := tm.GenerateAccessToken(superadminID, "superadmin@univ.ac.id", "Super Admin", []string{"superadmin"}, nil, nil, uuid.NewString())
 
 	// A. Buat User Keuangan
 	payloadKeuangan := dto.AdminCreateUserRequest{

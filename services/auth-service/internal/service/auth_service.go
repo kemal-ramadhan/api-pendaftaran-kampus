@@ -57,6 +57,7 @@ type AuthService interface {
 	ChangePassword(ctx context.Context, userID uuid.UUID, req dto.ChangePasswordRequest) error
 	ForgotPassword(ctx context.Context, req dto.ForgotPasswordRequest) error
 	ResetPassword(ctx context.Context, req dto.ResetPasswordRequest) error
+	GetMePermissions(ctx context.Context, userID uuid.UUID) (*dto.UserPermissionsResponse, error)
 }
 
 type authService struct {
@@ -443,12 +444,19 @@ func (s *authService) createAuthResponse(ctx context.Context, user *model.User) 
 
 	sessionID := uuid.NewString()
 
+	perms, err := s.roleRepo.GetUserPermissions(ctx, user.ID)
+	if err != nil {
+		s.log.Warn("gagal mengambil permissions user", zap.Error(err), zap.String("user_id", user.ID.String()))
+		perms = []string{}
+	}
+
 	accessToken, _, _, err := s.tokenManager.GenerateAccessToken(
 		user.ID,
 		user.Email,
 		user.FullName,
 		roles,
 		scopes,
+		perms,
 		sessionID,
 	)
 	if err != nil {
@@ -543,6 +551,12 @@ func (s *authService) Refresh(ctx context.Context, req dto.RefreshRequest) (*dto
 		}
 	}
 
+	perms, err := s.roleRepo.GetUserPermissions(ctx, user.ID)
+	if err != nil {
+		s.log.Warn("gagal mengambil permissions user", zap.Error(err), zap.String("user_id", user.ID.String()))
+		perms = []string{}
+	}
+
 	// Terbitkan pasangan token baru (rotasi!)
 	newAccessToken, _, _, err := s.tokenManager.GenerateAccessToken(
 		user.ID,
@@ -550,6 +564,7 @@ func (s *authService) Refresh(ctx context.Context, req dto.RefreshRequest) (*dto
 		user.FullName,
 		roles,
 		scopes,
+		perms,
 		sessionID,
 	)
 	if err != nil {
@@ -660,6 +675,130 @@ func (s *authService) GetMe(ctx context.Context, userID uuid.UUID) (*dto.UserRes
 		Roles:    roles,
 		Scopes:   scopes,
 		Status:   user.Status,
+	}, nil
+}
+
+func (s *authService) GetMePermissions(ctx context.Context, userID uuid.UUID) (*dto.UserPermissionsResponse, error) {
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	roles := make([]string, 0)
+	scopes := make([]token.ScopeClaim, 0)
+	isSuperadmin := false
+
+	for _, ur := range user.UserRoles {
+		if ur.Role.Code != "" {
+			roles = append(roles, ur.Role.Code)
+			if ur.Role.Code == model.RoleSuperadmin {
+				isSuperadmin = true
+			}
+		}
+		scopeType := ""
+		if ur.ScopeType != nil {
+			scopeType = *ur.ScopeType
+		}
+		scopeID := ""
+		if ur.ScopeID != nil {
+			scopeID = *ur.ScopeID
+		}
+
+		if scopeType != "" && scopeID != "" {
+			scopes = append(scopes, token.ScopeClaim{
+				Role: ur.Role.Code,
+				Type: scopeType,
+				ID:   scopeID,
+			})
+		}
+	}
+
+	perms, err := s.roleRepo.GetUserPermissions(ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil permissions: %w", err)
+	}
+
+	permMap := make(map[string]bool, len(perms))
+	for _, p := range perms {
+		permMap[p] = true
+	}
+
+	hasAny := func(keys ...string) bool {
+		if isSuperadmin {
+			return true
+		}
+		for _, k := range keys {
+			if permMap[k] {
+				return true
+			}
+		}
+		return false
+	}
+
+	modules := []dto.ModulePermissionDTO{
+		{
+			Key:      "overview",
+			Label:    "Ringkasan & KPI",
+			Sublabel: "Dashboard eksekutif",
+			Allowed:  hasAny("dashboard.overview.read"),
+			ReadOnly: !hasAny("admission.document.verify", "finance.payment.manual_confirm", "selection.approval.decide"),
+		},
+		{
+			Key:      "document",
+			Label:    "Verifikasi Berkas",
+			Sublabel: "Validasi berkas & pendaftaran",
+			Allowed:  hasAny("admission.document.verify", "admission.document.read"),
+			ReadOnly: !hasAny("admission.document.verify"),
+		},
+		{
+			Key:      "reconciliation",
+			Label:    "Rekonsiliasi VA",
+			Sublabel: "Pembayaran & mutasi bank",
+			Allowed:  hasAny("finance.reconciliation.read", "finance.payment.manual_confirm"),
+			ReadOnly: !hasAny("finance.payment.manual_confirm"),
+		},
+		{
+			Key:      "selection",
+			Label:    "Seleksi & CBT",
+			Sublabel: "Nilai, pleno & kelulusan",
+			Allowed:  hasAny("selection.score.read", "selection.interview.score", "selection.recommendation.manage", "selection.approval.decide", "selection.announcement.publish"),
+			ReadOnly: !hasAny("selection.approval.decide", "selection.announcement.publish", "selection.interview.score", "selection.recommendation.manage"),
+		},
+		{
+			Key:      "student",
+			Label:    "Penetapan NIM & PKKMB",
+			Sublabel: "Registrasi mahasiswa & gugus",
+			Allowed:  hasAny("student.nim.issue", "student.pkkmb.manage", "student.activation.manage", "student.nim.read"),
+			ReadOnly: !hasAny("student.nim.issue", "student.pkkmb.manage"),
+		},
+		{
+			Key:      "institution",
+			Label:    "Dashboard Institusi",
+			Sublabel: "Statistik per fakultas & prodi",
+			Allowed:  hasAny("dashboard.institution.read"),
+			ReadOnly: true,
+		},
+		{
+			Key:      "report",
+			Label:    "Laporan, Broadcast & Buku Besar",
+			Sublabel: "Cetak resmi & broadcast massal",
+			Allowed:  hasAny("report.export", "report.official.print", "broadcast.send", "finance.ledger.read"),
+			ReadOnly: !hasAny("broadcast.send", "report.export"),
+		},
+		{
+			Key:      "master",
+			Label:    "Master Data Prodi",
+			Sublabel: "Konfigurasi kuota & tarif",
+			Allowed:  hasAny("organization.program.manage", "finance.fee.manage", "organization.program.read"),
+			ReadOnly: !hasAny("organization.program.manage", "finance.fee.manage"),
+		},
+	}
+
+	return &dto.UserPermissionsResponse{
+		Roles:       roles,
+		Scopes:      scopes,
+		Permissions: perms,
+		Modules:     modules,
 	}, nil
 }
 

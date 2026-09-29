@@ -14,6 +14,7 @@ const (
 	RoleKeuangan       = "keuangan"
 	RoleDosen          = "dosen"
 	RoleProdi          = "prodi"
+	RoleDekan          = "dekan"
 	RolePimpinan       = "pimpinan"
 	RoleSuperadmin     = "superadmin"
 )
@@ -24,6 +25,21 @@ type Role struct {
 	Name        string    `gorm:"type:varchar(100);not null" json:"name"`
 	Description string    `gorm:"type:text" json:"description"`
 	CreatedAt   time.Time `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+}
+
+type Permission struct {
+	Code        string    `gorm:"primaryKey;type:varchar(100)" json:"code"`
+	Module      string    `gorm:"type:varchar(50);not null" json:"module"`
+	Description string    `gorm:"type:text" json:"description"`
+	CreatedAt   time.Time `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+}
+
+type RolePermission struct {
+	RoleID         uint       `gorm:"primaryKey" json:"role_id"`
+	PermissionCode string     `gorm:"primaryKey;type:varchar(100)" json:"permission_code"`
+	CreatedAt      time.Time  `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	Role           Role       `gorm:"foreignKey:RoleID" json:"role"`
+	Permission     Permission `gorm:"foreignKey:PermissionCode" json:"permission"`
 }
 
 type UserRole struct {

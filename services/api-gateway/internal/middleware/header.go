@@ -40,6 +40,7 @@ func HeaderPropagationMiddleware(sharedSecret string) gin.HandlerFunc {
 			req.Header.Set(gatewayauth.HeaderUserID, userID)
 			req.Header.Set("X-User-Email", claims.Email)
 			req.Header.Set("X-User-Roles", strings.Join(claims.Roles, ","))
+			req.Header.Set(gatewayauth.HeaderUserPermissions, strings.Join(claims.Permissions, ","))
 
 			// Scopes di-encode JSON lalu base64url
 			if len(claims.Scopes) > 0 {

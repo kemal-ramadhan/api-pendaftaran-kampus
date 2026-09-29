@@ -271,6 +271,31 @@ func (ctl *AuthController) GetMe(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Berhasil mengambil profil pengguna", user)
 }
 
+// GetMePermissions godoc
+// @Summary Daftar Permissions dan Modul Pengguna Saat Ini
+// @Description Mengambil hak akses aktif pengguna saat ini, daftar permission, dan status 8 modul admin portal.
+// @Tags Auth
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} response.SuccessResponse{data=dto.UserPermissionsResponse}
+// @Failure 401 {object} response.ErrorResponse
+// @Router /auth/me/permissions [get]
+func (ctl *AuthController) GetMePermissions(c *gin.Context) {
+	userID, ok := middleware.GetUserID(c)
+	if !ok {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Tidak terautentikasi")
+		return
+	}
+
+	res, err := ctl.authService.GetMePermissions(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil permissions pengguna")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Berhasil mengambil permissions pengguna", res)
+}
+
 // UpdateProfile godoc
 // @Summary Perbarui Profil Akun Sendiri
 // @Description Memperbarui data nama lengkap dan nomor telepon akun sendiri.

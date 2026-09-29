@@ -158,6 +158,24 @@ func (r *mockRoleRepo) RemoveUserRoleByCode(ctx context.Context, userID uuid.UUI
 	return nil
 }
 
+func (r *mockRoleRepo) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	return []string{"dashboard.overview.read"}, nil
+}
+
+func (r *mockRoleRepo) GetAllPermissions(ctx context.Context) ([]model.Permission, error) {
+	return []model.Permission{
+		{Code: "dashboard.overview.read", Module: "dashboard", Description: "Baca overview"},
+	}, nil
+}
+
+func (r *mockRoleRepo) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	return []string{"dashboard.overview.read"}, nil
+}
+
+func (r *mockRoleRepo) UpdateRolePermissions(ctx context.Context, roleCode string, permissionCodes []string) error {
+	return nil
+}
+
 
 
 type mockOTPRepo struct {
@@ -602,7 +620,7 @@ func TestController_GetMe(t *testing.T) {
 	}
 
 	// 2. Request dengan valid access token -> 200
-	tokenStr, _, _, err := tm.GenerateAccessToken(userID, "me_endpoint@example.com", "Endpoint User Me", []string{"calon_mahasiswa"}, nil, uuid.NewString())
+	tokenStr, _, _, err := tm.GenerateAccessToken(userID, "me_endpoint@example.com", "Endpoint User Me", []string{"calon_mahasiswa"}, nil, nil, uuid.NewString())
 	if err != nil {
 		t.Fatalf("GenerateAccessToken error: %v", err)
 	}
@@ -707,7 +725,7 @@ func TestController_SecurityRegressions_Celah4_5_8(t *testing.T) {
 	_ = userRepo.Create(context.Background(), userA)
 	_ = userRepo.Create(context.Background(), userB)
 
-	tokenA, _, _, _ := tm.GenerateAccessToken(userA.ID, userA.Email, userA.FullName, []string{"calon_mahasiswa"}, nil, uuid.NewString())
+	tokenA, _, _, _ := tm.GenerateAccessToken(userA.ID, userA.Email, userA.FullName, []string{"calon_mahasiswa"}, nil, nil, uuid.NewString())
 
 	// CELAH NO. 4: PUT /auth/change-role dihapus; user tidak boleh bisa ubah role sendiri
 	reqChangeRole, _ := http.NewRequest(http.MethodPut, "/auth/change-role", strings.NewReader(`{"role":"superadmin"}`))

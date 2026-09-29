@@ -25,12 +25,13 @@ type ScopeClaim struct {
 }
 
 type AccessClaims struct {
-	Typ    string       `json:"typ"`
-	Email  string       `json:"email"`
-	Name   string       `json:"name"`
-	Roles  []string     `json:"roles"`
-	Scopes []ScopeClaim `json:"scopes"`
-	Sid    string       `json:"sid"`
+	Typ         string       `json:"typ"`
+	Email       string       `json:"email"`
+	Name        string       `json:"name"`
+	Roles       []string     `json:"roles"`
+	Scopes      []ScopeClaim `json:"scopes"`
+	Permissions []string     `json:"perms"`
+	Sid         string       `json:"sid"`
 	jwt.RegisteredClaims
 }
 
@@ -54,7 +55,7 @@ type JWKSResponse struct {
 }
 
 type TokenManager interface {
-	GenerateAccessToken(userID uuid.UUID, email, name string, roles []string, scopes []ScopeClaim, sessionID string) (tokenStr string, jti string, expiresAt time.Time, err error)
+	GenerateAccessToken(userID uuid.UUID, email, name string, roles []string, scopes []ScopeClaim, permissions []string, sessionID string) (tokenStr string, jti string, expiresAt time.Time, err error)
 	GenerateRefreshToken(userID uuid.UUID, sessionID string) (tokenStr string, jti string, expiresAt time.Time, err error)
 	ValidateAccessToken(tokenStr string) (*AccessClaims, error)
 	ValidateRefreshToken(tokenStr string) (*RefreshClaims, error)
@@ -133,6 +134,7 @@ func (tm *tokenManager) GenerateAccessToken(
 	email, name string,
 	roles []string,
 	scopes []ScopeClaim,
+	permissions []string,
 	sessionID string,
 ) (string, string, time.Time, error) {
 	now := time.Now()
@@ -144,12 +146,13 @@ func (tm *tokenManager) GenerateAccessToken(
 	}
 
 	claims := AccessClaims{
-		Typ:    "access",
-		Email:  email,
-		Name:   name,
-		Roles:  roles,
-		Scopes: scopes,
-		Sid:    sessionID,
+		Typ:         "access",
+		Email:       email,
+		Name:        name,
+		Roles:       roles,
+		Scopes:      scopes,
+		Permissions: permissions,
+		Sid:         sessionID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    tm.cfg.JWTIssuer,
 			Subject:   userID.String(),

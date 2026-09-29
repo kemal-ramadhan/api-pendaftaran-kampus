@@ -29,6 +29,9 @@ type AdminService interface {
 	UpdateUser(ctx context.Context, id uuid.UUID, req dto.AdminUpdateUserRequest, actorID uuid.UUID) (*dto.UserResponseData, error)
 	UpdateUserRoles(ctx context.Context, id uuid.UUID, req dto.AdminUpdateRolesRequest, actorID uuid.UUID) (*dto.UserResponseData, error)
 	UpdateUserStatus(ctx context.Context, id uuid.UUID, req dto.AdminUpdateStatusRequest, actorID uuid.UUID) (*dto.UserResponseData, error)
+	GetPermissions(ctx context.Context) ([]dto.PermissionResponseData, error)
+	GetRolePermissions(ctx context.Context, roleCode string) (*dto.RolePermissionsResponseData, error)
+	UpdateRolePermissions(ctx context.Context, roleCode string, permissions []string, actorID uuid.UUID) (*dto.RolePermissionsResponseData, error)
 
 	// Internal Inter-Service Methods
 	InternalGetUser(ctx context.Context, id uuid.UUID) (*dto.UserResponseData, error)
@@ -165,6 +168,13 @@ func (s *adminService) CreateUser(ctx context.Context, req dto.AdminCreateUserRe
 
 		if roleRecord.Code == model.RoleProdi {
 			st, si, err := s.validateProdiScope(ctx, cleanScopeType, cleanScopeID)
+			if err != nil {
+				return nil, err
+			}
+			cleanScopeType = st
+			cleanScopeID = si
+		} else if roleRecord.Code == model.RoleDekan {
+			st, si, err := s.validateDekanScope(ctx, cleanScopeType, cleanScopeID)
 			if err != nil {
 				return nil, err
 			}
@@ -342,6 +352,13 @@ func (s *adminService) UpdateUserRoles(ctx context.Context, id uuid.UUID, req dt
 			}
 			cleanScopeType = st
 			cleanScopeID = si
+		} else if roleRecord.Code == model.RoleDekan {
+			st, si, err := s.validateDekanScope(ctx, cleanScopeType, cleanScopeID)
+			if err != nil {
+				return nil, err
+			}
+			cleanScopeType = st
+			cleanScopeID = si
 		}
 
 		newRoles = append(newRoles, model.UserRole{
@@ -475,6 +492,13 @@ func (s *adminService) InternalAddRole(ctx context.Context, id uuid.UUID, req dt
 		}
 		if !validateScopeID(cleanScopeID) {
 			return nil, fmt.Errorf("%w: scope_id prodi tidak valid", ErrValidation)
+		}
+	} else if roleRecord.Code == model.RoleDekan {
+		if cleanScopeType == "" {
+			cleanScopeType = "faculty"
+		}
+		if !validateScopeID(cleanScopeID) {
+			return nil, fmt.Errorf("%w: scope_id dekan tidak valid", ErrValidation)
 		}
 	}
 
@@ -630,4 +654,97 @@ func (s *adminService) validateProdiScope(ctx context.Context, scopeType, scopeI
 	}
 
 	return cleanScopeType, cleanScopeID, nil
+}
+
+func (s *adminService) validateDekanScope(ctx context.Context, scopeType, scopeID string) (string, string, error) {
+	cleanScopeType := strings.TrimSpace(scopeType)
+	if cleanScopeType == "" {
+		cleanScopeType = "faculty"
+	}
+	cleanScopeID := strings.ToUpper(strings.TrimSpace(scopeID))
+	if !validateScopeID(cleanScopeID) {
+		return "", "", fmt.Errorf("%w: role dekan wajib memiliki scope_id valid (2-20 karakter alfanumerik/underscore kapital)", ErrValidation)
+	}
+
+	if s.orgClient != nil {
+		var orgResp any
+		if err := s.orgClient.Get(ctx, "/internal/faculties/"+cleanScopeID, nil, &orgResp); err != nil {
+			var clientErr *internalclient.Error
+			if errors.As(err, &clientErr) && clientErr.StatusCode == 404 {
+				return "", "", fmt.Errorf("%w: fakultas dengan kode '%s' tidak ditemukan", ErrValidation, cleanScopeID)
+			}
+			s.logger.Warn("Gagal menghubungi organization service untuk validasi scope dekan", zap.Error(err), zap.String("scope_id", cleanScopeID))
+		}
+	}
+
+	return cleanScopeType, cleanScopeID, nil
+}
+
+func (s *adminService) GetPermissions(ctx context.Context) ([]dto.PermissionResponseData, error) {
+	perms, err := s.roleRepo.GetAllPermissions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]dto.PermissionResponseData, len(perms))
+	for i, p := range perms {
+		res[i] = dto.PermissionResponseData{
+			Code:        p.Code,
+			Module:      p.Module,
+			Description: p.Description,
+		}
+	}
+	return res, nil
+}
+
+func (s *adminService) GetRolePermissions(ctx context.Context, roleCode string) (*dto.RolePermissionsResponseData, error) {
+	role, err := s.roleRepo.FindByCode(ctx, roleCode)
+	if err != nil || role == nil {
+		return nil, ErrRoleNotFound
+	}
+	perms, err := s.roleRepo.GetRolePermissions(ctx, role.Code)
+	if err != nil {
+		return nil, err
+	}
+	return &dto.RolePermissionsResponseData{
+		RoleCode:    roleCode,
+		Permissions: perms,
+	}, nil
+}
+
+func (s *adminService) UpdateRolePermissions(ctx context.Context, roleCode string, permissions []string, actorID uuid.UUID) (*dto.RolePermissionsResponseData, error) {
+	role, err := s.roleRepo.FindByCode(ctx, roleCode)
+	if err != nil || role == nil {
+		return nil, ErrRoleNotFound
+	}
+
+	// PRD 1.3: tidak boleh mengurangi permission superadmin
+	if roleCode == model.RoleSuperadmin {
+		existing, _ := s.roleRepo.GetRolePermissions(ctx, role.Code)
+		existingMap := make(map[string]bool)
+		for _, p := range existing {
+			existingMap[p] = true
+		}
+		for _, p := range permissions {
+			delete(existingMap, p)
+		}
+		if len(existingMap) > 0 {
+			return nil, fmt.Errorf("%w: tidak boleh mengurangi permission superadmin", ErrValidation)
+		}
+	}
+
+	if err := s.roleRepo.UpdateRolePermissions(ctx, role.Code, permissions); err != nil {
+		return nil, err
+	}
+
+	_ = s.auditRepo.Create(ctx, &model.AuditLog{
+		UserID:    &actorID,
+		Action:    "admin.role_permissions.updated",
+		Metadata:  fmt.Sprintf(`{"role_code":"%s","permissions_count":%d}`, roleCode, len(permissions)),
+		CreatedAt: time.Now(),
+	})
+
+	return &dto.RolePermissionsResponseData{
+		RoleCode:    roleCode,
+		Permissions: permissions,
+	}, nil
 }

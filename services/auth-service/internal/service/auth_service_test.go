@@ -161,6 +161,7 @@ func newFakeRoleRepo() *fakeRoleRepo {
 			model.RoleProdi:          {ID: 6, Code: model.RoleProdi, Name: "Prodi"},
 			model.RolePimpinan:       {ID: 7, Code: model.RolePimpinan, Name: "Pimpinan"},
 			model.RoleSuperadmin:     {ID: 8, Code: model.RoleSuperadmin, Name: "Superadmin"},
+			model.RoleDekan:          {ID: 9, Code: model.RoleDekan, Name: "Dekan"},
 		},
 		userRoles: make(map[uuid.UUID][]model.UserRole),
 	}
@@ -239,6 +240,25 @@ func (r *fakeRoleRepo) RemoveUserRoleByCode(ctx context.Context, userID uuid.UUI
 		}
 	}
 	r.userRoles[userID] = filtered
+	return nil
+}
+
+func (r *fakeRoleRepo) GetUserPermissions(ctx context.Context, userID uuid.UUID) ([]string, error) {
+	return []string{"dashboard.overview.read", "admission.document.verify"}, nil
+}
+
+func (r *fakeRoleRepo) GetAllPermissions(ctx context.Context) ([]model.Permission, error) {
+	return []model.Permission{
+		{Code: "dashboard.overview.read", Module: "dashboard", Description: "Baca overview"},
+		{Code: "admission.document.verify", Module: "admission", Description: "Verifikasi berkas"},
+	}, nil
+}
+
+func (r *fakeRoleRepo) GetRolePermissions(ctx context.Context, roleCode string) ([]string, error) {
+	return []string{"dashboard.overview.read"}, nil
+}
+
+func (r *fakeRoleRepo) UpdateRolePermissions(ctx context.Context, roleCode string, permissionCodes []string) error {
 	return nil
 }
 

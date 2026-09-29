@@ -26,6 +26,7 @@ const (
 	HeaderUserEmail        = "X-User-Email"
 	HeaderUserRoles        = "X-User-Roles"
 	HeaderUserScopes       = "X-User-Scopes"
+	HeaderUserPermissions  = "X-User-Permissions"
 	DefaultMaxSkew         = 60 * time.Second
 )
 

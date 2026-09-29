@@ -13,6 +13,14 @@ import (
 //go:embed sql/000001_create_auth_tables.up.sql
 var initSchemaSQL string
 
+//go:embed sql/000002_create_rbac_permissions.up.sql
+var rbacSchemaSQL string
+
+type migrationItem struct {
+	version string
+	sql     string
+}
+
 // RunMigrations menjalankan SQL migration skema database
 func RunMigrations(ctx context.Context, db *gorm.DB, log *zap.Logger) error {
 	log.Info("Menjalankan migrasi database skema auth...")
@@ -27,48 +35,47 @@ func RunMigrations(ctx context.Context, db *gorm.DB, log *zap.Logger) error {
 		return fmt.Errorf("gagal membuat tabel tracking migrasi: %w", err)
 	}
 
-	version := "000001_create_auth_tables"
-	var count int64
-	err := db.WithContext(ctx).Table("schema_migrations").Where("version = ?", version).Count(&count).Error
-	if err != nil {
-		return fmt.Errorf("gagal memeriksa status migrasi: %w", err)
+	migrations := []migrationItem{
+		{version: "000001_create_auth_tables", sql: initSchemaSQL},
+		{version: "000002_create_rbac_permissions", sql: rbacSchemaSQL},
 	}
 
-	if count > 0 {
-		log.Info("Migrasi sudah diterapkan sebelumnya, dilewati", zap.String("version", version))
-		return nil
-	}
-
-	// Eksekusi skrip migrasi dalam transaksi
-	tx := db.WithContext(ctx).Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
+	for _, m := range migrations {
+		var count int64
+		err := db.WithContext(ctx).Table("schema_migrations").Where("version = ?", m.version).Count(&count).Error
+		if err != nil {
+			return fmt.Errorf("gagal memeriksa status migrasi %s: %w", m.version, err)
 		}
-	}()
 
-	// Eksekusi query
-	statements := strings.Split(initSchemaSQL, ";")
-	for _, stmt := range statements {
-		trimmed := strings.TrimSpace(stmt)
-		if trimmed == "" {
+		if count > 0 {
+			log.Info("Migrasi sudah diterapkan sebelumnya, dilewati", zap.String("version", m.version))
 			continue
 		}
-		if err := tx.Exec(trimmed).Error; err != nil {
-			tx.Rollback()
-			return fmt.Errorf("gagal mengeksekusi query migrasi: %w", err)
+
+		tx := db.WithContext(ctx).Begin()
+		statements := strings.Split(m.sql, ";")
+		for _, stmt := range statements {
+			trimmed := strings.TrimSpace(stmt)
+			if trimmed == "" {
+				continue
+			}
+			if err := tx.Exec(trimmed).Error; err != nil {
+				tx.Rollback()
+				return fmt.Errorf("gagal mengeksekusi query migrasi %s: %w", m.version, err)
+			}
 		}
+
+		if err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", m.version).Error; err != nil {
+			tx.Rollback()
+			return fmt.Errorf("gagal mencatat versi migrasi %s: %w", m.version, err)
+		}
+
+		if err := tx.Commit().Error; err != nil {
+			return fmt.Errorf("gagal commit transaksi migrasi %s: %w", m.version, err)
+		}
+
+		log.Info("Berhasil menerapkan migrasi database", zap.String("version", m.version))
 	}
 
-	if err := tx.Exec("INSERT INTO schema_migrations (version) VALUES (?)", version).Error; err != nil {
-		tx.Rollback()
-		return fmt.Errorf("gagal mencatat versi migrasi: %w", err)
-	}
-
-	if err := tx.Commit().Error; err != nil {
-		return fmt.Errorf("gagal commit transaksi migrasi: %w", err)
-	}
-
-	log.Info("Berhasil menerapkan migrasi database", zap.String("version", version))
 	return nil
 }
