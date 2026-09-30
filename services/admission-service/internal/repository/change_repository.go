@@ -186,8 +186,8 @@ func (r *changeRepository) InitApplicationChangesTriggersAndBackfill(db *gorm.DB
 		jsonb_build_object(
 			'period_id', a.period_id,
 			'path_id', a.admission_path_id,
-			'choice_1_id', a.choice_1_id,
-			'choice_2_id', a.choice_2_id
+			'choice_1_id', a.choice1_id,
+			'choice_2_id', a.choice2_id
 		),
 		'Pendaftaran baru dibuat',
 		0,

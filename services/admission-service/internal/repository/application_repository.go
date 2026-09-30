@@ -148,8 +148,8 @@ func (r *applicationRepository) Update(ctx context.Context, app *model.Applicati
 
 func (r *applicationRepository) UpdateChoices(ctx context.Context, id uuid.UUID, choice1ID uuid.UUID, choice2ID *uuid.UUID) error {
 	updates := map[string]interface{}{
-		"choice_1_id": choice1ID,
-		"choice_2_id": choice2ID,
+		"choice1_id": choice1ID,
+		"choice2_id": choice2ID,
 		"updated_at":  time.Now(),
 	}
 	return r.db.WithContext(ctx).Model(&model.Application{}).Where("id = ?", id).Updates(updates).Error
@@ -230,7 +230,7 @@ func (r *applicationRepository) ListApplications(ctx context.Context, filter App
 	}
 	if filter.StudyProgramID != nil {
 		// Filter untuk staf prodi: harus menjadi choice_1 atau choice_2
-		q = q.Where("(choice_1_id = ? OR choice_2_id = ?)", *filter.StudyProgramID, *filter.StudyProgramID)
+		q = q.Where("(choice1_id = ? OR choice2_id = ?)", *filter.StudyProgramID, *filter.StudyProgramID)
 	}
 	if filter.Search != "" {
 		searchPattern := "%" + filter.Search + "%"
@@ -274,7 +274,7 @@ func (r *applicationRepository) ListAllForExport(ctx context.Context, filter App
 		q = q.Where("status = ?", *filter.Status)
 	}
 	if filter.StudyProgramID != nil {
-		q = q.Where("(choice_1_id = ? OR choice_2_id = ?)", *filter.StudyProgramID, *filter.StudyProgramID)
+		q = q.Where("(choice1_id = ? OR choice2_id = ?)", *filter.StudyProgramID, *filter.StudyProgramID)
 	}
 	if filter.Search != "" {
 		searchPattern := "%" + filter.Search + "%"
@@ -346,8 +346,8 @@ func (r *applicationRepository) GetStats(ctx context.Context) (*model.AdmissionS
 	}
 	var proc []prodiCount
 	_ = r.db.WithContext(ctx).Model(&model.Application{}).
-		Select("choice_1_id, count(*) as count").
-		Group("choice_1_id").Scan(&proc).Error
+		Select("choice1_id, count(*) as count").
+		Group("choice1_id").Scan(&proc).Error
 	for _, p := range proc {
 		stats.ByStudyProgram[p.Choice1ID.String()] = p.Count
 	}
