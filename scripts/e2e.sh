@@ -59,6 +59,11 @@ NIM_URL="${GATEWAY_BASE}/api/v1/nim"
 SUPERADMIN_EMAIL="${SEED_SUPERADMIN_EMAIL:-${SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}}"
 SUPERADMIN_PASSWORD="${SEED_SUPERADMIN_PASSWORD:-${SUPERADMIN_PASSWORD:-Superadmin123!}}"
 
+# Direktori sementara E2E (kompatibel Git Bash / Windows Native curl)
+E2E_TMP_DIR="${E2E_TMP_DIR:-./.tmp_e2e}"
+mkdir -p "$E2E_TMP_DIR"
+trap 'rm -rf "$E2E_TMP_DIR"' EXIT
+
 # Formatting & Warna Output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -1041,7 +1046,7 @@ fi
 # 34. Inisiasi Scan KTP (Multipart)
 log_info "34. Calon mahasiswa mengunggah scan KTP sintetis..."
 # Buat mock file JPG
-TMP_KTP="/tmp/e2e_ktp_synthetic_$$.jpg"
+TMP_KTP="${E2E_TMP_DIR}/e2e_ktp_synthetic_$$.jpg"
 printf '\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x01\x00`\x00`\x00\x00\xFF\xDB\x00C\x00mock-synthetic-ktp-image-bytes-padding-for-e2e-testing-purposes-1234567890\xFF\xD9' > "$TMP_KTP"
 
 RESP=$(curl -s -w "\n%{http_code}" -X POST "${IDENTITY_URL}/me/ktp-scan" \
@@ -1061,7 +1066,7 @@ fi
 
 # 35. [NEGATIF] Unggah Berkas KTP dengan Tipe Tidak Diizinkan (Misal file teks)
 log_info "35. [NEGATIF] Mengunggah file berkas teks sebagai KTP..."
-TMP_BAD="/tmp/bad_ktp_$$.txt"
+TMP_BAD="${E2E_TMP_DIR}/bad_ktp_$$.txt"
 echo "Bukan gambar KTP" > "$TMP_BAD"
 
 RESP=$(curl -s -w "\n%{http_code}" -X POST "${IDENTITY_URL}/me/ktp-scan" \
@@ -1421,7 +1426,7 @@ fi
 
 # 52. Calon Mahasiswa Mengunduh Kwitansi Resmi PDF
 log_info "52. Calon mahasiswa mengunduh kwitansi resmi PDF..."
-TEMP_RECEIPT="/tmp/kwitansi_${PAYMENT_ID}.pdf"
+TEMP_RECEIPT="${E2E_TMP_DIR}/kwitansi_${PAYMENT_ID}.pdf"
 RESP_HEAD=$(curl -s -I -X GET "${RECEIPTS_URL}/me/${PAYMENT_ID}" \
   -H "Authorization: Bearer $ACCESS_TOKEN")
 
@@ -1506,7 +1511,7 @@ INV_B_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
 INV_B_ID=$(echo "$INV_B_RESP" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
 
 # Buat file dummy bukti transfer
-TEMP_PROOF="/tmp/bukti_transfer_${RAND_ID}.jpg"
+TEMP_PROOF="${E2E_TMP_DIR}/bukti_transfer_${RAND_ID}.jpg"
 echo "DUMMY_IMAGE_DATA_TRANSFER_PROOF" > "$TEMP_PROOF"
 
 # User B unggah bukti transfer manual
@@ -1553,7 +1558,7 @@ echo -e "\n${CYAN}>>> BAGIAN 9: PENGUJIAN TAHAP 5 — ADMISSION BAGIAN 2 (F2-M6)
 
 # 56. [NEGATIF] Mengunggah Berkas Palsu / Eksekusi (Magic Bytes Sniffing)
 log_info "56. [NEGATIF] Mengunggah file biner palsu berkedok PDF (deteksi magic bytes)..."
-FAKE_PDF="/tmp/fake_malware_${RAND_ID}.pdf"
+FAKE_PDF="${E2E_TMP_DIR}/fake_malware_${RAND_ID}.pdf"
 # Buat header MZ (DOS/Windows Executable) berkedok nama .pdf
 printf "MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xff\xff\x00\x00\xb8\x00\x00\x00" > "$FAKE_PDF"
 
@@ -1573,10 +1578,10 @@ fi
 
 # 57. Calon Mahasiswa Mengunggah Berkas Dokumen Persyaratan yang Valid
 log_info "57. Mengunggah seluruh berkas dokumen persyaratan valid (PDF & JPG)..."
-DUMMY_PDF="/tmp/valid_doc_${RAND_ID}.pdf"
+DUMMY_PDF="${E2E_TMP_DIR}/valid_doc_${RAND_ID}.pdf"
 printf "%%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%%%EOF" > "$DUMMY_PDF"
 
-DUMMY_JPG="/tmp/valid_foto_${RAND_ID}.jpg"
+DUMMY_JPG="${E2E_TMP_DIR}/valid_foto_${RAND_ID}.jpg"
 # Header JPEG SOI
 printf "\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x01\x00\`\x00\`\x00\x00\xff\xdb\x00C\x00\xff\xd9" > "$DUMMY_JPG"
 
@@ -1775,7 +1780,7 @@ fi
 
 # 65. Calon Mahasiswa Mengunggah Ulang Dokumen Revisi & Re-Submit
 log_info "65. Calon mahasiswa mengunggah ulang dokumen revisi dan re-submit..."
-FIXED_PDF="/tmp/fixed_ktp_${RAND_ID}.pdf"
+FIXED_PDF="${E2E_TMP_DIR}/fixed_ktp_${RAND_ID}.pdf"
 printf "%%PDF-1.4\n1 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 1 0 R >>\n%%%%EOF" > "$FIXED_PDF"
 
 RESP_REUPLOAD=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications/me/documents" \
@@ -1826,7 +1831,7 @@ fi
 
 # 67. Admin PMB Mengekspor Data Pendaftar ke Excel (.xlsx)
 log_info "67. Admin PMB mengekspor daftar pendaftar ke spreadsheet Excel (.xlsx)..."
-TEMP_EXPORT="/tmp/pendaftar_export_${RAND_ID}.xlsx"
+TEMP_EXPORT="${E2E_TMP_DIR}/pendaftar_export_${RAND_ID}.xlsx"
 RESP_EXP_HEAD=$(curl -s -I -X GET "${ADMISSION_URL}/admin/applications/export" \
   -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
 
@@ -2013,7 +2018,7 @@ else
 fi
 
 # Unduh kartu ujian PDF
-TEMP_CARD="/tmp/kartu_ujian_${PARTICIPANT_NO}.pdf"
+TEMP_CARD="${E2E_TMP_DIR}/kartu_ujian_${PARTICIPANT_NO}.pdf"
 RESP_CARD_HEAD=$(curl -s -I -X GET "${EXAM_URL}/me/card" \
   -H "Authorization: Bearer $ACCESS_TOKEN")
 
@@ -2272,7 +2277,7 @@ else
   log_fail "Header ekspor rekapitulasi bukan format spreadsheet .xlsx: $RESP_EXCEL_HEAD"
 fi
 
-TEMP_XLSX="/tmp/rekap_nilai_${PRODI_CODE}.xlsx"
+TEMP_XLSX="${E2E_TMP_DIR}/rekap_nilai_${PRODI_CODE}.xlsx"
 curl -s -o "$TEMP_XLSX" -X GET "${SCORING_URL}/program/recap/export?period_id=${PERIOD_ID}&path_id=${PATH_ID}&study_program_code=${PRODI_CODE}" \
   -H "Authorization: Bearer $PRODI_TOKEN"
 
@@ -2649,7 +2654,7 @@ else
 fi
 
 log_info "Pimpinan mengunduh berkas laporan keuangan format spreadsheet Excel .xlsx..."
-TEMP_XLSX="/tmp/laporan_keuangan_pmb.xlsx"
+TEMP_XLSX="${E2E_TMP_DIR}/laporan_keuangan_pmb.xlsx"
 RESP_EXPORT_HEAD=$(curl -s -I -X GET "${FINANCE_ADMIN_URL}/reports/export?format=xlsx" \
   -H "Authorization: Bearer $PIMPINAN_ACCESS_TOKEN")
 
@@ -2897,7 +2902,7 @@ fi
 
 # 107. Admin PMB & Pimpinan Mengunduh Rekap Mahasiswa Baru Format Excel (.xlsx)
 log_info "107. Pimpinan dan Admin PMB mengunduh rekap mahasiswa baru format Excel .xlsx..."
-TEMP_STUDENT_XLSX="/tmp/rekap_mahasiswa_baru.xlsx"
+TEMP_STUDENT_XLSX="${E2E_TMP_DIR}/rekap_mahasiswa_baru.xlsx"
 RESP_EXPORT_STUDENT_HEAD=$(curl -s -I -X GET "${STUDENT_ADMIN_URL}/students/export?format=xlsx" \
   -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN")
 

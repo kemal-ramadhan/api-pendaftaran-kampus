@@ -54,3 +54,4 @@ services/ocr-service/tests/fixtures/
 final-check-report.txt
 
 duitku-sandbox-report.txt
+.tmp_e2e/
