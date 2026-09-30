@@ -129,11 +129,13 @@ func (s *ktpScanService) InitiateKTPScan(ctx context.Context, userID uuid.UUID, 
 		if err != nil {
 			// Simpan status failed bila gagal kirim ke OCR
 			_ = s.ktpScanRepo.Create(ctx, &model.KTPScan{
-				ID:        scanID,
-				UserID:    userID,
-				ObjectKey: objectKey,
-				Status:    "failed",
-				Reason:    "OCR_SERVICE_UNAVAILABLE",
+				ID:                 scanID,
+				UserID:             userID,
+				ObjectKey:          objectKey,
+				Status:             "failed",
+				Reason:             "OCR_SERVICE_UNAVAILABLE",
+				FieldConfidences:   "{}",
+				FieldsEditedByUser: "[]",
 			})
 			return nil, fmt.Errorf("%w: %v", ErrOCRUpstreamFailed, err)
 		}
@@ -144,13 +146,15 @@ func (s *ktpScanService) InitiateKTPScan(ctx context.Context, userID uuid.UUID, 
 	}
 
 	scanRecord := &model.KTPScan{
-		ID:        scanID,
-		UserID:    userID,
-		ObjectKey: objectKey,
-		JobID:     ocrResp.JobID,
-		Status:    ocrResp.Status,
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		ID:                 scanID,
+		UserID:             userID,
+		ObjectKey:          objectKey,
+		JobID:              ocrResp.JobID,
+		Status:             ocrResp.Status,
+		FieldConfidences:   "{}",
+		FieldsEditedByUser: "[]",
+		CreatedAt:          time.Now(),
+		UpdatedAt:          time.Now(),
 	}
 
 	if err := s.ktpScanRepo.Create(ctx, scanRecord); err != nil {
