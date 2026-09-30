@@ -137,6 +137,8 @@ MHS_EMAIL="calon_mhs_${RAND_ID}@example.com"
 MHS_PASSWORD="Password123!"
 MHS_NAME="Calon Mahasiswa E2E"
 MHS_PHONE="081234567890"
+TEST_EMAIL="${TEST_EMAIL:-$MHS_EMAIL}"
+TEST_PASSWORD="${TEST_PASSWORD:-$MHS_PASSWORD}"
 
 # ==============================================================================
 # BAGIAN 1: ALUR UTAMA CALON MAHASISWA
@@ -839,6 +841,7 @@ if [ -z "$PRODI_TOKEN" ]; then
   log_fail "Gagal mendapatkan access_token prodi"
   exit 1
 fi
+PRODI_ACCESS_TOKEN="$PRODI_TOKEN"
 
 # Cek klaim token via /auth/me
 RESP=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/me" \
@@ -881,6 +884,7 @@ echo -e "\n${CYAN}>>> BAGIAN 5: TAHAP 2 - IDENTITY SERVICE & OCR KTP (F2-M2 & F2
 # Ambil user_id calon mahasiswa dari profile /auth/me
 RESP_ME=$(curl -s -X GET "${GATEWAY_URL}/me" -H "Authorization: Bearer $ACCESS_TOKEN")
 MHS_USER_ID=$(echo "$RESP_ME" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+USER_ID="$MHS_USER_ID"
 
 # 29. Cek Kelengkapan Awal Biodata (Harus complete: false)
 log_info "29. Memeriksa kelengkapan awal biodata calon mahasiswa..."
@@ -2361,10 +2365,10 @@ echo -e "\n${CYAN}>>> BAGIAN 12: PENGUJIAN TAHAP 8 — SELECTION SERVICE (F2-M9)
 
 # Persiapan Akun Pimpinan Universitas
 log_info "Persiapan akun pimpinan universitas..."
-PIMPINAN_EMAIL="pimpinan.rektorat@kampus.ac.id"
+PIMPINAN_EMAIL="pimpinan_${RAND_ID}@kampus.ac.id"
 PIMPINAN_PASS="Pimpinan123!"
 
-RESP_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/admin/users" \
+RESP_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
   -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -2724,7 +2728,7 @@ log_info "102. Menguji proteksi kelulusan seleksi: Calon mahasiswa belum lulus m
 UNPASSED_EMAIL="unpassed.student.$(date +%s)@example.com"
 UNPASSED_PASS="Password123!"
 
-RESP_REG_UNPASSED=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/admin/users" \
+RESP_REG_UNPASSED=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
   -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
@@ -2759,7 +2763,7 @@ log_info "103. Menguji proteksi pembayaran: Pendaftar lulus tapi tagihan belum l
 UNPAID_EMAIL="unpaid.student.$(date +%s)@example.com"
 UNPAID_PASS="Password123!"
 
-RESP_REG_UNPAID=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/admin/users" \
+RESP_REG_UNPAID=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
   -H "Authorization: Bearer $SUPERADMIN_ACCESS_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
