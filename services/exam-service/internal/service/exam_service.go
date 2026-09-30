@@ -196,9 +196,26 @@ func (s *examService) GetExaminerSessions(ctx context.Context, examinerUserID uu
 }
 
 type internalAppResponse struct {
-	Data struct {
+	ID                string `json:"id"`
+	UserID            string `json:"user_id"`
+	RegistrationNo    string `json:"registration_no"`
+	ApplicationNumber string `json:"application_number"`
+	Status            string `json:"status"`
+	Period            struct {
+		Name string `json:"name"`
+	} `json:"period"`
+	AdmissionPath struct {
+		Name            string `json:"name"`
+		SelectionMethod string `json:"selection_method"`
+	} `json:"admission_path"`
+	Choice1 struct {
+		Name string `json:"name"`
+		Code string `json:"code"`
+	} `json:"choice_1"`
+	Data *struct {
 		ID                string `json:"id"`
 		UserID            string `json:"user_id"`
+		RegistrationNo    string `json:"registration_no"`
 		ApplicationNumber string `json:"application_number"`
 		Status            string `json:"status"`
 		Period            struct {
@@ -215,10 +232,66 @@ type internalAppResponse struct {
 	} `json:"data"`
 }
 
+func (r *internalAppResponse) GetStatus() string {
+	if r.Data != nil && r.Data.Status != "" {
+		return r.Data.Status
+	}
+	return r.Status
+}
+
+func (r *internalAppResponse) GetUserID() string {
+	if r.Data != nil && r.Data.UserID != "" {
+		return r.Data.UserID
+	}
+	return r.UserID
+}
+
+func (r *internalAppResponse) GetAppNumber() string {
+	if r.Data != nil && r.Data.RegistrationNo != "" {
+		return r.Data.RegistrationNo
+	}
+	if r.Data != nil && r.Data.ApplicationNumber != "" {
+		return r.Data.ApplicationNumber
+	}
+	if r.RegistrationNo != "" {
+		return r.RegistrationNo
+	}
+	return r.ApplicationNumber
+}
+
+func (r *internalAppResponse) GetPeriodName() string {
+	if r.Data != nil && r.Data.Period.Name != "" {
+		return r.Data.Period.Name
+	}
+	return r.Period.Name
+}
+
+func (r *internalAppResponse) GetPathName() string {
+	if r.Data != nil && r.Data.AdmissionPath.Name != "" {
+		return r.Data.AdmissionPath.Name
+	}
+	return r.AdmissionPath.Name
+}
+
+func (r *internalAppResponse) GetChoice1Name() string {
+	if r.Data != nil && r.Data.Choice1.Name != "" {
+		return r.Data.Choice1.Name
+	}
+	return r.Choice1.Name
+}
+
 type internalPersonResponse struct {
-	Data struct {
+	FullName string `json:"full_name"`
+	Data     *struct {
 		FullName string `json:"full_name"`
 	} `json:"data"`
+}
+
+func (p *internalPersonResponse) GetFullName() string {
+	if p.Data != nil && p.Data.FullName != "" {
+		return p.Data.FullName
+	}
+	return p.FullName
 }
 
 func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, appID uuid.UUID) (*model.Participant, error) {
@@ -253,22 +326,23 @@ func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, ap
 		}
 	} else {
 		// Mock data untuk pengujian lokal unit test
-		appResp.Data.ID = appID.String()
-		appResp.Data.UserID = uuid.New().String()
-		appResp.Data.ApplicationNumber = "PMB-2026-TEST"
-		appResp.Data.Status = "verified"
-		appResp.Data.Period.Name = "Gelombang 1"
-		appResp.Data.AdmissionPath.Name = "Jalur Reguler"
-		appResp.Data.Choice1.Name = "Teknik Informatika"
+		appResp.ID = appID.String()
+		appResp.UserID = uuid.New().String()
+		appResp.RegistrationNo = "PMB-2026-TEST"
+		appResp.ApplicationNumber = "PMB-2026-TEST"
+		appResp.Status = "verified"
+		appResp.Period.Name = "Gelombang 1"
+		appResp.AdmissionPath.Name = "Jalur Reguler"
+		appResp.Choice1.Name = "Teknik Informatika"
 	}
 
 	// K11: Kelayakan ujian CBT terbuka setelah formulir lunas (form_open / submitted / verified / exam_scheduled)
-	status := appResp.Data.Status
+	status := appResp.GetStatus()
 	if status != "verified" && status != "form_open" && status != "submitted" && status != "documents_completed" && status != "exam_scheduled" {
 		return nil, ErrApplicationNotVerified
 	}
 
-	parsedUserID, err := uuid.Parse(appResp.Data.UserID)
+	parsedUserID, err := uuid.Parse(appResp.GetUserID())
 	if err != nil {
 		parsedUserID = uuid.New()
 	}
@@ -277,8 +351,8 @@ func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, ap
 	fullName := "Calon Mahasiswa"
 	if s.identityCli != nil {
 		var personResp internalPersonResponse
-		if err := s.identityCli.Get(ctx, "/internal/persons/"+parsedUserID.String(), nil, &personResp); err == nil && personResp.Data.FullName != "" {
-			fullName = personResp.Data.FullName
+		if err := s.identityCli.Get(ctx, "/internal/persons/"+parsedUserID.String(), nil, &personResp); err == nil && personResp.GetFullName() != "" {
+			fullName = personResp.GetFullName()
 		}
 	}
 
@@ -318,10 +392,10 @@ func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, ap
 	cardData := pdf.ExamCardData{
 		ParticipantNumber: participantNumber,
 		FullName:          fullName,
-		ApplicationNumber: appResp.Data.ApplicationNumber,
-		PeriodName:        appResp.Data.Period.Name,
-		PathName:          appResp.Data.AdmissionPath.Name,
-		StudyProgramName:  appResp.Data.Choice1.Name,
+		ApplicationNumber: appResp.GetAppNumber(),
+		PeriodName:        appResp.GetPeriodName(),
+		PathName:          appResp.GetPathName(),
+		StudyProgramName:  appResp.GetChoice1Name(),
 		SessionTitle:      session.Title,
 		SessionType:       string(session.Type),
 		StartAt:           session.StartAt,
@@ -371,9 +445,9 @@ func (s *examService) AssignParticipantManual(ctx context.Context, sessionID, ap
 	}
 
 	participant.FullName = fullName
-	participant.StudyProgramName = appResp.Data.Choice1.Name
-	participant.PathName = appResp.Data.AdmissionPath.Name
-	participant.PeriodName = appResp.Data.Period.Name
+	participant.StudyProgramName = appResp.GetChoice1Name()
+	participant.PathName = appResp.GetPathName()
+	participant.PeriodName = appResp.GetPeriodName()
 
 	return participant, nil
 }
