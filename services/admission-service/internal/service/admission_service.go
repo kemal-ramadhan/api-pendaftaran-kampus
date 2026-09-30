@@ -619,22 +619,34 @@ func (s *admissionService) GetApplicationDetail(
 	case "superadmin", "admin_pmb", "keuangan", "pewawancara", "penguji":
 		// Pengayaan data untuk admin: ambil identitas & invoice
 		if s.identityCli != nil {
-			var personResp struct {
-				Data interface{} `json:"data"`
-			}
-			err := s.identityCli.Get(ctx, fmt.Sprintf("/internal/persons/%s", app.UserID.String()), nil, &personResp)
-			if err == nil {
-				app.PersonData = personResp.Data
+			var personData interface{}
+			err := s.identityCli.Get(ctx, fmt.Sprintf("/internal/persons/%s", app.UserID.String()), nil, &personData)
+			if err == nil && personData != nil {
+				if m, ok := personData.(map[string]interface{}); ok {
+					if innerData, exists := m["data"]; exists && innerData != nil {
+						app.PersonData = innerData
+					} else {
+						app.PersonData = personData
+					}
+				} else {
+					app.PersonData = personData
+				}
 			}
 		}
 
 		if s.financeCli != nil {
-			var invResp struct {
-				Data interface{} `json:"data"`
-			}
-			err := s.financeCli.Get(ctx, fmt.Sprintf("/internal/invoices?application_id=%s", app.ID.String()), nil, &invResp)
-			if err == nil {
-				app.InvoiceData = invResp.Data
+			var invData interface{}
+			err := s.financeCli.Get(ctx, fmt.Sprintf("/internal/invoices?application_id=%s", app.ID.String()), nil, &invData)
+			if err == nil && invData != nil {
+				if m, ok := invData.(map[string]interface{}); ok {
+					if innerData, exists := m["data"]; exists && innerData != nil {
+						app.InvoiceData = innerData
+					} else {
+						app.InvoiceData = invData
+					}
+				} else {
+					app.InvoiceData = invData
+				}
 			}
 		}
 
@@ -883,7 +895,9 @@ func (s *admissionService) SubmitApplication(ctx context.Context, appID, userID 
 	// 1. Validasi Kelengkapan Biodata ke Identity Service
 	if s.identityCli != nil {
 		var compResp struct {
-			Data struct {
+			Complete bool     `json:"complete"`
+			Missing  []string `json:"missing"`
+			Data     *struct {
 				Complete bool     `json:"complete"`
 				Missing  []string `json:"missing"`
 			} `json:"data"`
@@ -892,8 +906,14 @@ func (s *admissionService) SubmitApplication(ctx context.Context, appID, userID 
 		if err != nil {
 			return nil, fmt.Errorf("gagal memeriksa kelengkapan biodata pendaftar: %w", err)
 		}
-		if !compResp.Data.Complete {
-			return nil, fmt.Errorf("%w: %s", ErrBiodataIncomplete, strings.Join(compResp.Data.Missing, ", "))
+		isComplete := compResp.Complete
+		missing := compResp.Missing
+		if compResp.Data != nil {
+			isComplete = compResp.Data.Complete
+			missing = compResp.Data.Missing
+		}
+		if !isComplete {
+			return nil, fmt.Errorf("%w: %s", ErrBiodataIncomplete, strings.Join(missing, ", "))
 		}
 	}
 

@@ -1667,18 +1667,21 @@ USER_C_EMAIL="pendaftar_incomplete_${RAND_ID}@example.com"
 USER_C_PASS="SecretIncomplete123!"
 curl -s -X POST "${GATEWAY_URL}/register" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"$USER_C_EMAIL\",\"password\":\"$USER_C_PASS\",\"full_name\":\"User Incomplete\",\"phone\":\"081299990099\"}" >/dev/null
+  -d "{\"email\":\"$USER_C_EMAIL\",\"password\":\"$USER_C_PASS\",\"password_confirmation\":\"$USER_C_PASS\",\"full_name\":\"User Incomplete\",\"phone\":\"081299990099\"}" >/dev/null
 
 sleep 1
 USER_C_OTP=""
 MAIL_RESP=$(curl -s "${MAILPIT_URL}/api/v1/messages" || true)
-USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4)
+USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 if [ -z "$USER_C_MSG_ID" ]; then
-  USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  USER_C_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_C_EMAIL" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 fi
 if [ -n "$USER_C_MSG_ID" ]; then
   MSG_DETAIL=$(curl -s "${MAILPIT_URL}/api/v1/message/${USER_C_MSG_ID}" || true)
-  USER_C_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1)
+  USER_C_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1 || true)
+fi
+if [ -z "$USER_C_OTP" ]; then
+  USER_C_OTP=$(echo "$MAIL_RESP" | grep -B2 -A10 "$USER_C_EMAIL" | grep -oE '\b[0-9]{6}\b' | head -n1 || true)
 fi
 
 RESP_VERIFY_C=$(curl -s -X POST "${GATEWAY_URL}/verify" \

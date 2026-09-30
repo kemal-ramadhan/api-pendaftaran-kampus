@@ -338,13 +338,24 @@ type mockInternalCli struct {
 func (c *mockInternalCli) Get(ctx context.Context, path string, query map[string]string, dest interface{}) error {
 	if strings.Contains(path, "/completeness") {
 		// Populate dest
-		target, ok := dest.(*struct {
+		if target, ok := dest.(*struct {
+			Complete bool     `json:"complete"`
+			Missing  []string `json:"missing"`
+			Data     *struct {
+				Complete bool     `json:"complete"`
+				Missing  []string `json:"missing"`
+			} `json:"data"`
+		}); ok {
+			target.Complete = c.completenessResult
+			target.Missing = c.missingFields
+			return nil
+		}
+		if target, ok := dest.(*struct {
 			Data struct {
 				Complete bool     `json:"complete"`
 				Missing  []string `json:"missing"`
 			} `json:"data"`
-		})
-		if ok {
+		}); ok {
 			target.Data.Complete = c.completenessResult
 			target.Data.Missing = c.missingFields
 			return nil
