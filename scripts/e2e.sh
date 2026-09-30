@@ -2373,6 +2373,8 @@ RESP_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users"
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"$PIMPINAN_EMAIL\",
+    \"full_name\": \"Prof. Dr. Pimpinan Universitas, M.Sc\",
+    \"phone\": \"081233445566\",
     \"password\": \"$PIMPINAN_PASS\",
     \"roles\": [
       { \"code\": \"pimpinan\", \"role\": \"pimpinan\" }
@@ -2733,6 +2735,8 @@ RESP_REG_UNPASSED=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/us
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"$UNPASSED_EMAIL\",
+    \"full_name\": \"Unpassed Student E2E\",
+    \"phone\": \"081233445577\",
     \"password\": \"$UNPASSED_PASS\",
     \"roles\": [
       { \"code\": \"calon_mahasiswa\", \"role\": \"calon_mahasiswa\" }
@@ -2768,6 +2772,8 @@ RESP_REG_UNPAID=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/user
   -H "Content-Type: application/json" \
   -d "{
     \"email\": \"$UNPAID_EMAIL\",
+    \"full_name\": \"Unpaid Student E2E\",
+    \"phone\": \"081233445588\",
     \"password\": \"$UNPAID_PASS\",
     \"roles\": [
       { \"code\": \"calon_mahasiswa\", \"role\": \"calon_mahasiswa\" }
