@@ -335,7 +335,7 @@ func (s *selectionService) PublishAnnouncement(
 			if it.Decision == model.DecisionPass {
 				appInfo, errApp := s.fetchApplication(ctx, it.ApplicationID)
 				if errApp == nil && appInfo != nil {
-					if appInfo.Status != "verified" && appInfo.DocumentStatus != "verified" && appInfo.DocumentStatus != "all_verified" {
+					if !appInfo.IsDocumentVerified() {
 						return nil, ErrUnverifiedDocumentsRemaining
 					}
 				}
@@ -375,7 +375,7 @@ func (s *selectionService) PublishAnnouncement(
 			appInfo, _ := s.fetchApplication(ctx, it.ApplicationID)
 			userID := uuid.Nil
 			if appInfo != nil {
-				userID = appInfo.UserID
+				userID = appInfo.GetUserID()
 			}
 
 			acceptedProg := ""
@@ -429,10 +429,10 @@ func (s *selectionService) GetMyResult(ctx context.Context, userID uuid.UUID) (*
 	regNo := res.ApplicationID.String()[:8]
 	fullName := "Calon Mahasiswa"
 	if appInfo != nil {
-		if appInfo.RegistrationNumber != "" {
-			regNo = appInfo.RegistrationNumber
+		if rNo := appInfo.GetRegistrationNumber(); rNo != "" {
+			regNo = rNo
 		}
-		personName, errP := s.fetchPersonName(ctx, appInfo.UserID)
+		personName, errP := s.fetchPersonName(ctx, appInfo.GetUserID())
 		if errP == nil && personName != "" {
 			fullName = personName
 		}
@@ -452,7 +452,7 @@ func (s *selectionService) GetMyResult(ctx context.Context, userID uuid.UUID) (*
 		inv, errInv := s.fetchInvoiceByApplication(ctx, res.ApplicationID)
 		if errInv == nil && inv != nil {
 			resp.InvoiceID = &inv.ID
-			resp.InvoiceNumber = inv.Number
+			resp.InvoiceNumber = inv.GetNumber()
 			resp.Amount = inv.Amount
 			resp.PaymentStatus = inv.Status
 		}
@@ -479,15 +479,97 @@ type admissionChoice struct {
 }
 
 type admissionAppResponse struct {
-	ID                 uuid.UUID         `json:"id"`
-	PeriodID           uuid.UUID         `json:"period_id"`
-	PathID             uuid.UUID         `json:"path_id"`
-	RegistrationNumber string            `json:"registration_number"`
-	UserID             uuid.UUID         `json:"user_id"`
-	FullName           string            `json:"full_name"`
-	Status             string            `json:"status"`
-	DocumentStatus     string            `json:"document_status"`
-	Choices            []admissionChoice `json:"choices"`
+	ID                 uuid.UUID             `json:"id"`
+	PeriodID           interface{}           `json:"period_id"`
+	PathID             interface{}           `json:"path_id"`
+	RegistrationNumber string                `json:"registration_number"`
+	RegistrationNo     string                `json:"registration_no"`
+	UserID             uuid.UUID             `json:"user_id"`
+	FullName           string                `json:"full_name"`
+	Status             string                `json:"status"`
+	DocumentStatus     string                `json:"document_status"`
+	VerifiedAt         *time.Time            `json:"verified_at"`
+	Choices            []admissionChoice     `json:"choices"`
+	Data               *admissionAppResponse `json:"data,omitempty"`
+}
+
+func (a *admissionAppResponse) GetStatus() string {
+	if a == nil {
+		return ""
+	}
+	if a.Data != nil && a.Data.Status != "" {
+		return a.Data.Status
+	}
+	return a.Status
+}
+
+func (a *admissionAppResponse) GetUserID() uuid.UUID {
+	if a == nil {
+		return uuid.Nil
+	}
+	if a.Data != nil && a.Data.UserID != uuid.Nil {
+		return a.Data.UserID
+	}
+	return a.UserID
+}
+
+func (a *admissionAppResponse) GetRegistrationNumber() string {
+	if a == nil {
+		return ""
+	}
+	if a.Data != nil {
+		if a.Data.RegistrationNo != "" {
+			return a.Data.RegistrationNo
+		}
+		if a.Data.RegistrationNumber != "" {
+			return a.Data.RegistrationNumber
+		}
+	}
+	if a.RegistrationNo != "" {
+		return a.RegistrationNo
+	}
+	return a.RegistrationNumber
+}
+
+func (a *admissionAppResponse) GetPathID() uuid.UUID {
+	if a == nil {
+		return uuid.Nil
+	}
+	if a.PathID != nil {
+		switch v := a.PathID.(type) {
+		case uuid.UUID:
+			return v
+		case string:
+			if u, err := uuid.Parse(v); err == nil {
+				return u
+			}
+		}
+	}
+	if a.Data != nil {
+		return a.Data.GetPathID()
+	}
+	return uuid.Nil
+}
+
+func (a *admissionAppResponse) IsDocumentVerified() bool {
+	if a == nil {
+		return false
+	}
+	st := a.GetStatus()
+	switch st {
+	case "verified", "exam_scheduled", "interview_scheduled", "direct_decision", "passed", "reregistered", "enrolled":
+		return true
+	}
+	if a.DocumentStatus == "verified" || a.DocumentStatus == "all_verified" {
+		return true
+	}
+	if a.Data != nil && (a.Data.DocumentStatus == "verified" || a.Data.DocumentStatus == "all_verified") {
+		return true
+	}
+	if a.VerifiedAt != nil || (a.Data != nil && a.Data.VerifiedAt != nil) {
+		return true
+	}
+	return false
 }
 
 type internalPersonDetailResponse struct {
@@ -501,10 +583,22 @@ type internalPersonDetailResponse struct {
 }
 
 type financeInvoiceResponse struct {
-	ID     uuid.UUID `json:"id"`
-	Number string    `json:"number"`
-	Amount int64     `json:"amount"`
-	Status string    `json:"status"`
+	ID            uuid.UUID `json:"id"`
+	Number        string    `json:"number"`
+	InvoiceNumber string    `json:"invoice_number"`
+	FeeType       string    `json:"fee_type"`
+	Amount        int64     `json:"amount"`
+	Status        string    `json:"status"`
+}
+
+func (f *financeInvoiceResponse) GetNumber() string {
+	if f == nil {
+		return ""
+	}
+	if f.InvoiceNumber != "" {
+		return f.InvoiceNumber
+	}
+	return f.Number
 }
 
 func (s *selectionService) fetchScoringSummaries(ctx context.Context, periodID uuid.UUID, programCode string) ([]scoringSummaryItem, error) {
@@ -581,11 +675,13 @@ func (s *selectionService) createReregistrationInvoice(ctx context.Context, appI
 		return nil
 	}
 	return s.financeCli.Post(ctx, "/internal/invoices", map[string]interface{}{
-		"application_id": appID,
-		"user_id":        userID,
+		"application_id": appID.String(),
+		"user_id":        userID.String(),
 		"amount":         amount,
 		"type":           "reregistration",
+		"fee_type":       "reregistration",
 		"description":    "Biaya Pendaftaran Ulang Mahasiswa Baru",
+		"due_date_days":  14,
 	}, nil)
 }
 
@@ -773,7 +869,7 @@ func (s *selectionService) GetScoreboard(
 
 		pathID := uuid.Nil
 		if appInfo != nil {
-			pathID = appInfo.PathID
+			pathID = appInfo.GetPathID()
 		}
 
 		if sum.FinalScore >= passingThreshold {
