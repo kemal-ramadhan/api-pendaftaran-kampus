@@ -1906,7 +1906,7 @@ RESP_DOSEN=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/admin/users" \
     \"phone\": \"081211112222\",
     \"password\": \"$DOSEN_PASS\",
     \"roles\": [
-      { \"role\": \"dosen\" }
+      { \"code\": \"dosen\", \"role\": \"dosen\" }
     ]
   }")
 CODE_DOSEN=$(echo "$RESP_DOSEN" | tail -n1)
@@ -2362,7 +2362,7 @@ RESP_PIMPINAN=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/adm
     \"email\": \"$PIMPINAN_EMAIL\",
     \"password\": \"$PIMPINAN_PASS\",
     \"roles\": [
-      { \"role\": \"pimpinan\" }
+      { \"code\": \"pimpinan\", \"role\": \"pimpinan\" }
     ]
   }")
 CODE_PIMPINAN=$(echo "$RESP_PIMPINAN" | tail -n1)
@@ -2722,7 +2722,7 @@ RESP_REG_UNPASSED=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth
     \"email\": \"$UNPASSED_EMAIL\",
     \"password\": \"$UNPASSED_PASS\",
     \"roles\": [
-      { \"role\": \"calon_mahasiswa\" }
+      { \"code\": \"calon_mahasiswa\", \"role\": \"calon_mahasiswa\" }
     ]
   }")
 CODE_REG_UNPASSED=$(echo "$RESP_REG_UNPASSED" | tail -n1)
@@ -2757,7 +2757,7 @@ RESP_REG_UNPAID=$(curl -s -w "\n%{http_code}" -X POST "${AUTH_DIRECT_URL}/auth/a
     \"email\": \"$UNPAID_EMAIL\",
     \"password\": \"$UNPAID_PASS\",
     \"roles\": [
-      { \"role\": \"calon_mahasiswa\" }
+      { \"code\": \"calon_mahasiswa\", \"role\": \"calon_mahasiswa\" }
     ]
   }")
 BODY_REG_UNPAID=$(echo "$RESP_REG_UNPAID" | sed '$d')

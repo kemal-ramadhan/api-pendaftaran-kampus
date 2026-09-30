@@ -98,9 +98,17 @@ type ChangePasswordRequest struct {
 // --- Admin & Internal DTOs (Milestone M2) ---
 
 type RoleAssignmentDTO struct {
-	Code      string `json:"code" binding:"required"`
+	Code      string `json:"code"`
+	Role      string `json:"role"`
 	ScopeType string `json:"scope_type"`
 	ScopeID   string `json:"scope_id"`
+}
+
+func (r RoleAssignmentDTO) GetCode() string {
+	if r.Code != "" {
+		return r.Code
+	}
+	return r.Role
 }
 
 type AdminCreateUserRequest struct {

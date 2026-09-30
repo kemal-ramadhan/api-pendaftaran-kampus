@@ -158,9 +158,10 @@ func (s *adminService) CreateUser(ctx context.Context, req dto.AdminCreateUserRe
 	var userRoles []model.UserRole
 	now := time.Now()
 	for _, rDTO := range req.Roles {
-		roleRecord, err := s.roleRepo.FindByCode(ctx, rDTO.Code)
+		code := rDTO.GetCode()
+		roleRecord, err := s.roleRepo.FindByCode(ctx, code)
 		if err != nil || roleRecord == nil {
-			return nil, fmt.Errorf("%w: role %s tidak valid", ErrRoleNotFound, rDTO.Code)
+			return nil, fmt.Errorf("%w: role %s tidak valid", ErrRoleNotFound, code)
 		}
 
 		cleanScopeType := strings.TrimSpace(rDTO.ScopeType)
@@ -312,7 +313,7 @@ func (s *adminService) UpdateUserRoles(ctx context.Context, id uuid.UUID, req dt
 	// Cek apakah role baru memuat superadmin
 	hasNewSuperadmin := false
 	for _, rDTO := range req.Roles {
-		if rDTO.Code == model.RoleSuperadmin {
+		if rDTO.GetCode() == model.RoleSuperadmin {
 			hasNewSuperadmin = true
 			break
 		}
@@ -338,9 +339,10 @@ func (s *adminService) UpdateUserRoles(ctx context.Context, id uuid.UUID, req dt
 	var newRoles []model.UserRole
 	now := time.Now()
 	for _, rDTO := range req.Roles {
-		roleRecord, err := s.roleRepo.FindByCode(ctx, rDTO.Code)
+		code := rDTO.GetCode()
+		roleRecord, err := s.roleRepo.FindByCode(ctx, code)
 		if err != nil || roleRecord == nil {
-			return nil, fmt.Errorf("%w: role %s tidak valid", ErrRoleNotFound, rDTO.Code)
+			return nil, fmt.Errorf("%w: role %s tidak valid", ErrRoleNotFound, code)
 		}
 
 		cleanScopeType := strings.TrimSpace(rDTO.ScopeType)
