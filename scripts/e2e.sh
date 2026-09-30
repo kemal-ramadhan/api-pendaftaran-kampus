@@ -1015,6 +1015,7 @@ RESP_VERIFY_B=$(curl -s -X POST "${GATEWAY_URL}/verify" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$USER_B_OTP\"}")
 USER_B_TOKEN=$(echo "$RESP_VERIFY_B" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true)
+USER_B_ID=$(echo "$RESP_VERIFY_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 
 # User B cek /me/completeness -> harus false (tidak terpengaruh User A)
 RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/me/completeness" \
@@ -1342,18 +1343,18 @@ fi
 
 # 49. [NEGATIF] Isolasi Tagihan — User Lain Ditolak Mengakses Tagihan (403/404)
 log_info "49. [NEGATIF] Menguji isolasi tagihan: User lain mencoba mengakses tagihan..."
-USER_B_EMAIL="pendaftar_b_${RAND_ID}@example.com"
-USER_B_PASS="Secret1234!"
-RESP_LOGIN_B=$(curl -s -X POST "${GATEWAY_URL}/login" \
-  -H "Content-Type: application/json" \
-  -d "{\"email\":\"$USER_B_EMAIL\",\"password\":\"$USER_B_PASS\"}")
-USER_B_TOKEN=$(echo "$RESP_LOGIN_B" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4)
-USER_B_ID=$(echo "$RESP_LOGIN_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
-
 if [ -z "$USER_B_TOKEN" ]; then
+  USER_B_EMAIL="pendaftar_b_${RAND_ID}@example.com"
+  USER_B_PASS="Secret1234!"
   curl -s -X POST "${GATEWAY_URL}/register" \
     -H "Content-Type: application/json" \
-    -d "{\"email\":\"$USER_B_EMAIL\",\"password\":\"$USER_B_PASS\",\"full_name\":\"User Pembanding\",\"phone\":\"081299990001\"}" >/dev/null
+    -d "{
+      \"email\": \"$USER_B_EMAIL\",
+      \"password\": \"$USER_B_PASS\",
+      \"password_confirmation\": \"$USER_B_PASS\",
+      \"full_name\": \"User Pembanding\",
+      \"phone\": \"081299990001\"
+    }" >/dev/null
 
   sleep 1
   USER_B_OTP=""
@@ -1366,12 +1367,15 @@ if [ -z "$USER_B_TOKEN" ]; then
     MSG_DETAIL=$(curl -s "${MAILPIT_URL}/api/v1/message/${USER_B_MSG_ID}" || true)
     USER_B_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1)
   fi
+  if [ -z "$USER_B_OTP" ]; then
+    USER_B_OTP=$(echo "$MAIL_RESP" | grep -B2 -A10 "$USER_B_EMAIL" | grep -oE '\b[0-9]{6}\b' | head -n1 || true)
+  fi
 
-  RESP_VERIFY=$(curl -s -X POST "${GATEWAY_URL}/verify" \
+  RESP_VERIFY_B=$(curl -s -X POST "${GATEWAY_URL}/verify" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$USER_B_OTP\"}")
-  USER_B_TOKEN=$(echo "$RESP_VERIFY" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
-  USER_B_ID=$(echo "$RESP_VERIFY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  USER_B_TOKEN=$(echo "$RESP_VERIFY_B" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+  USER_B_ID=$(echo "$RESP_VERIFY_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
 fi
 
 # User B mencoba mengakses tagihan milik User A
@@ -1507,15 +1511,12 @@ fi
 
 # 55. Alur Pembayaran Transfer Manual: Unggah Bukti & Verifikasi Staf Keuangan
 log_info "55. Menguji alur transfer manual dan verifikasi staf keuangan..."
-if [ -z "$USER_B_ID" ]; then
-  USER_B_ID=$(echo "$RESP_VERIFY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$USER_B_ID" ] && [ -n "$USER_B_TOKEN" ]; then
+  RESP_ME_B=$(curl -s -X GET "${GATEWAY_URL}/me" -H "Authorization: Bearer $USER_B_TOKEN")
+  USER_B_ID=$(echo "$RESP_ME_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 fi
-if [ -z "$USER_B_ID" ] || [ -z "$USER_B_TOKEN" ]; then
-  RESP_LOGIN_B=$(curl -s -X POST "${GATEWAY_URL}/login" \
-    -H "Content-Type: application/json" \
-    -d "{\"email\":\"$USER_B_EMAIL\",\"password\":\"$USER_B_PASS\"}")
-  USER_B_TOKEN=$(echo "$RESP_LOGIN_B" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4)
-  USER_B_ID=$(echo "$RESP_LOGIN_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+if [ -z "$USER_B_ID" ]; then
+  USER_B_ID=$(echo "$RESP_VERIFY_B" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 fi
 INV_B_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
   -H "X-Internal-Token: secret-internal-token" \
