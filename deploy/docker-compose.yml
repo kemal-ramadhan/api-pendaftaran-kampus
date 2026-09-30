@@ -305,6 +305,7 @@ services:
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_USE_SSL: "false"
       WEBHOOK_SECRET_MOCK: mock-secret-key-123
+      PAYMENT_WEBHOOK_SECRET: mock-secret-key-123
     depends_on:
       postgres:
         condition: service_healthy

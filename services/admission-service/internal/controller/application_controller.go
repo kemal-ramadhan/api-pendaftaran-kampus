@@ -81,12 +81,8 @@ func (ctrl *ApplicationController) CreateApplication(c *gin.Context) {
 			response.BadRequest(c, "PERIOD_CLOSED", err.Error())
 			return
 		}
-		if errors.Is(err, service.ErrDuplicateApplication) {
+		if errors.Is(err, service.ErrDuplicateApplication) || errors.Is(err, service.ErrActiveApplicationExists) {
 			response.Conflict(c, "DUPLICATE_APPLICATION", err.Error())
-			return
-		}
-		if errors.Is(err, service.ErrActiveApplicationExists) {
-			response.Conflict(c, "ACTIVE_APPLICATION_EXISTS", err.Error())
 			return
 		}
 		if errors.Is(err, service.ErrSameChoiceAlreadyFailed) {

@@ -64,7 +64,7 @@ func LoadConfig() (*Config, error) {
 		InternalToken:             getEnv("INTERNAL_TOKEN", "secret-internal-token"),
 		AdmissionServiceURL:       getEnv("ADMISSION_SERVICE_URL", "http://localhost:8084"),
 		NotificationServiceURL:    getEnv("NOTIFICATION_SERVICE_URL", "http://localhost:8083"),
-		PaymentWebhookSecret:      getEnv("PAYMENT_WEBHOOK_SECRET", "secret-payment-webhook"),
+		PaymentWebhookSecret:      getEnv("PAYMENT_WEBHOOK_SECRET", getEnv("WEBHOOK_SECRET_MOCK", "mock-secret-key-123")),
 		PaymentProvider:           getEnv("PAYMENT_PROVIDER", "mock"),
 		DuitkuEnv:                 duitkuEnv,
 		DuitkuMerchantCode:        getEnv("DUITKU_MERCHANT_CODE", ""),

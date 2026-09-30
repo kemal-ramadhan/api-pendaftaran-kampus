@@ -28,6 +28,9 @@ func (ctrl *WebhookController) HandleWebhook(c *gin.Context) {
 	if sig == "" {
 		sig = c.GetHeader("X-Callback-Signature")
 	}
+	if sig == "" {
+		sig = c.GetHeader("X-Provider-Signature")
+	}
 
 	bodyBytes, err := io.ReadAll(c.Request.Body)
 	if err != nil {

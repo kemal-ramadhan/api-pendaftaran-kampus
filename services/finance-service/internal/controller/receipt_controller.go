@@ -55,15 +55,13 @@ func (ctrl *ReceiptController) GetReceipt(c *gin.Context) {
 		return
 	}
 
-	// Jika klien meminta download PDF secara langsung
-	format := c.Query("format")
-	download := c.Query("download")
-	if format == "pdf" || download == "true" {
-		fileName := fmt.Sprintf("%s.pdf", receipt.ReceiptNumber)
-		c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
-		c.Data(http.StatusOK, "application/pdf", pdfBytes)
+	// Jika klien meminta data JSON secara eksplisit
+	if c.Query("format") == "json" {
+		response.Success(c, http.StatusOK, "Kwitansi pembayaran berhasil diambil", receipt)
 		return
 	}
 
-	response.Success(c, http.StatusOK, "Kwitansi pembayaran berhasil diambil", receipt)
+	fileName := fmt.Sprintf("Kwitansi-%s.pdf", receipt.ReceiptNumber)
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", fileName))
+	c.Data(http.StatusOK, "application/pdf", pdfBytes)
 }

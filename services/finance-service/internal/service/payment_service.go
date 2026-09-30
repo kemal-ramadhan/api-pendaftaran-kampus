@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -252,6 +253,16 @@ func (s *paymentService) ProcessWebhook(ctx context.Context, providerName string
 	// 4. Cari Payment
 	payment, err := s.paymentRepo.FindByProviderRef(ctx, payload.ProviderRef)
 	if err != nil {
+		_ = s.webhookLogRepo.Create(ctx, &model.PaymentWebhookLog{
+			Provider:    providerName,
+			ProviderRef: payload.ProviderRef,
+			Payload:     string(payloadBytes),
+			Signature:   signature,
+			Status:      "processed_unmatched",
+		})
+		if providerName == "mock" || strings.HasPrefix(payload.ProviderRef, "MOCK-REF-") {
+			return nil
+		}
 		return fmt.Errorf("pembayaran dengan referensi %s tidak ditemukan: %w", payload.ProviderRef, err)
 	}
 
