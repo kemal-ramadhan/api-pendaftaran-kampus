@@ -120,11 +120,20 @@ func (c *httpClient) doRequest(ctx context.Context, method, path string, query m
 
 	var bodyBytes []byte
 	if body != nil {
-		b, err := json.Marshal(body)
-		if err != nil {
-			return fmt.Errorf("gagal marshal request body: %w", err)
+		switch v := body.(type) {
+		case []byte:
+			bodyBytes = v
+		case string:
+			bodyBytes = []byte(v)
+		case json.RawMessage:
+			bodyBytes = v
+		default:
+			b, err := json.Marshal(body)
+			if err != nil {
+				return fmt.Errorf("gagal marshal request body: %w", err)
+			}
+			bodyBytes = b
 		}
-		bodyBytes = b
 	}
 
 	retries := 0

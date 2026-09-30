@@ -1151,7 +1151,7 @@ HTTP_CODE=$(echo "$RESP" | tail -n1)
 BODY=$(echo "$RESP" | sed '$d')
 
 assert_status "Buat pendaftaran baru" "201" "$HTTP_CODE" "$BODY"
-APPLICATION_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | cut -d'"' -f4)
+APPLICATION_ID=$(echo "$BODY" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
 REG_NO=$(echo "$BODY" | grep -o '"registration_no":"[^"]*"' | cut -d'"' -f4)
 APP_STATUS=$(echo "$BODY" | grep -o '"status":"[^"]*"' | cut -d'"' -f4)
 
