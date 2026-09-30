@@ -40,7 +40,16 @@ func (ctrl *InstallmentController) RequestInstallment(c *gin.Context) {
 		return
 	}
 
-	req, err := ctrl.installmentSvc.RequestInstallment(c.Request.Context(), invoiceID, userID, payload.RequestedTerms, payload.Reason)
+	terms := payload.RequestedTerms
+	if terms == 0 {
+		terms = payload.NumTerms
+	}
+	if terms < 2 || terms > 4 {
+		response.Error(c, http.StatusUnprocessableEntity, response.ErrCodeValidationError, "Jumlah termin harus antara 2 sampai 4", nil)
+		return
+	}
+
+	req, err := ctrl.installmentSvc.RequestInstallment(c.Request.Context(), invoiceID, userID, terms, payload.Reason)
 	if err != nil {
 		if errors.Is(err, service.ErrForbiddenAccess) {
 			response.Forbidden(c, response.ErrCodeForbidden, err.Error())
@@ -93,7 +102,12 @@ func (ctrl *InstallmentController) ReviewInstallmentRequest(c *gin.Context) {
 		return
 	}
 
-	req, err := ctrl.installmentSvc.ReviewInstallmentRequest(c.Request.Context(), reqID, reviewerID, payload.Action, payload.ReviewNote)
+	notes := payload.ReviewNote
+	if notes == "" {
+		notes = payload.Notes
+	}
+
+	req, err := ctrl.installmentSvc.ReviewInstallmentRequest(c.Request.Context(), reqID, reviewerID, payload.Action, notes)
 	if err != nil {
 		if errors.Is(err, service.ErrInstallmentAlreadyProcessed) {
 			response.Error(c, http.StatusUnprocessableEntity, response.ErrCodeInvalidState, err.Error(), nil)

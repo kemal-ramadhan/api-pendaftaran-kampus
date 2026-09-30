@@ -48,21 +48,30 @@ func (InstallmentRequest) TableName() string {
 }
 
 type Installment struct {
-	ID        uuid.UUID         `gorm:"type:uuid;primaryKey" json:"id"`
-	InvoiceID uuid.UUID         `gorm:"type:uuid;not null;index" json:"invoice_id"`
-	TermNo    int               `gorm:"not null" json:"term_no"`
-	Amount    int64             `gorm:"type:bigint;not null" json:"amount"` // Nominal Rupiah integer
-	DueDate   time.Time         `gorm:"not null;index" json:"due_date"`
-	Status    InstallmentStatus `gorm:"type:varchar(20);not null;default:'unpaid';index" json:"status"`
-	PaidAt    *time.Time        `json:"paid_at,omitempty"`
-	CreatedAt time.Time         `json:"created_at"`
-	UpdatedAt time.Time         `json:"updated_at"`
+	ID         uuid.UUID         `gorm:"type:uuid;primaryKey" json:"id"`
+	InvoiceID  uuid.UUID         `gorm:"type:uuid;not null;index" json:"invoice_id"`
+	TermNo     int               `gorm:"not null" json:"term_no"`
+	TermNumber int               `gorm:"-" json:"term_number"`
+	Amount     int64             `gorm:"type:bigint;not null" json:"amount"` // Nominal Rupiah integer
+	DueDate    time.Time         `gorm:"not null;index" json:"due_date"`
+	Status     InstallmentStatus `gorm:"type:varchar(20);not null;default:'unpaid';index" json:"status"`
+	PaidAt     *time.Time        `json:"paid_at,omitempty"`
+	CreatedAt  time.Time         `json:"created_at"`
+	UpdatedAt  time.Time         `json:"updated_at"`
 }
 
 func (i *Installment) BeforeCreate(tx *gorm.DB) error {
 	if i.ID == uuid.Nil {
 		i.ID = uuid.New()
 	}
+	if i.TermNumber == 0 {
+		i.TermNumber = i.TermNo
+	}
+	return nil
+}
+
+func (i *Installment) AfterFind(tx *gorm.DB) error {
+	i.TermNumber = i.TermNo
 	return nil
 }
 
@@ -72,7 +81,8 @@ func (Installment) TableName() string {
 
 // DTO Pengajuan Cicilan
 type CreateInstallmentRequestPayload struct {
-	RequestedTerms int    `json:"requested_terms" binding:"required,min=2,max=4"`
+	RequestedTerms int    `json:"requested_terms"`
+	NumTerms       int    `json:"num_terms"`
 	Reason         string `json:"reason" binding:"required"`
 }
 
@@ -80,13 +90,17 @@ type CreateInstallmentRequestPayload struct {
 type ReviewInstallmentRequestPayload struct {
 	Action     string `json:"action" binding:"required,oneof=approve reject"`
 	ReviewNote string `json:"review_note"`
+	Notes      string `json:"notes"`
 }
 
 // DTO Laporan Ringkasan Keuangan
 type FinancialReportSummaryResponse struct {
 	TotalInvoices          int64                    `json:"total_invoices"`
+	TotalBilled            int64                    `json:"total_billed"`
 	TotalExpectedAmount    int64                    `json:"total_expected_amount"`
 	TotalPaidAmount        int64                    `json:"total_paid_amount"`
+	TotalCollected         int64                    `json:"total_collected"`
+	TotalAmountReceived    int64                    `json:"total_amount_received"`
 	TotalOutstandingAmount int64                    `json:"total_outstanding_amount"`
 	ByFeeType              []FeeTypeSummaryItem     `json:"by_fee_type"`
 	RecentTransactions     []TransactionSummaryItem `json:"recent_transactions"`

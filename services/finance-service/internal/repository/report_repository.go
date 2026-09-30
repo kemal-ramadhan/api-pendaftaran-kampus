@@ -43,7 +43,10 @@ func (r *reportRepository) GetSummary(ctx context.Context) (*model.FinancialRepo
 
 	resp.TotalInvoices = gAgg.TotalInvoices
 	resp.TotalExpectedAmount = gAgg.TotalExpected
+	resp.TotalBilled = gAgg.TotalExpected
 	resp.TotalPaidAmount = gAgg.TotalPaid
+	resp.TotalCollected = gAgg.TotalPaid
+	resp.TotalAmountReceived = gAgg.TotalPaid
 	resp.TotalOutstandingAmount = gAgg.TotalExpected - gAgg.TotalPaid
 	if resp.TotalOutstandingAmount < 0 {
 		resp.TotalOutstandingAmount = 0

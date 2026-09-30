@@ -479,9 +479,10 @@ func (s *paymentService) finalizePaymentSuccess(ctx context.Context, payment *mo
 	}
 
 	// 6. Integrasi Antar-Service (Asinkron / Non-blocking terhadap response)
-	go func(appID *uuid.UUID, invNumber string, amount int64) {
-		// A. Update status aplikasi pendaftaran di Admission Service -> form_open
-		if appID != nil && s.admissionCli != nil {
+	feeType := inv.FeeType
+	go func(appID *uuid.UUID, invNumber string, amount int64, fType string) {
+		// A. Update status aplikasi pendaftaran di Admission Service -> form_open (hanya untuk tagihan pendaftaran)
+		if appID != nil && s.admissionCli != nil && fType == "registration" {
 			updatePayload := map[string]interface{}{
 				"status": "form_open",
 				"notes":  fmt.Sprintf("Pembayaran pendaftaran lunas via invoice %s", invNumber),
@@ -510,7 +511,7 @@ func (s *paymentService) finalizePaymentSuccess(ctx context.Context, payment *mo
 			var resp interface{}
 			_ = s.notifCli.Post(context.Background(), "/internal/notifications", notifPayload, &resp)
 		}
-	}(inv.ApplicationID, inv.InvoiceNumber, inv.Amount)
+	}(inv.ApplicationID, inv.InvoiceNumber, inv.Amount, feeType)
 
 	return receipt, nil
 }
