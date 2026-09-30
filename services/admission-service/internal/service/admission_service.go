@@ -668,6 +668,47 @@ func (s *admissionService) UpdateApplicationStatus(ctx context.Context, id uuid.
 	return s.appRepo.UpdateStatus(ctx, id, fromStatus, newStatus, notes, changedBy)
 }
 
+func isMatchDocType(reqDocType, userDocType string) bool {
+	reqNorm := strings.ToUpper(strings.TrimSpace(reqDocType))
+	userNorm := strings.ToUpper(strings.TrimSpace(userDocType))
+	if reqNorm == userNorm {
+		return true
+	}
+	switch userNorm {
+	case "IJAZAH", "IJAZAH_SKL", "SKL":
+		return reqNorm == "IJAZAH_SKL" || reqNorm == "IJAZAH"
+	case "KTP", "KTP_KIA_KP", "KIA", "KARTU_PELAJAR":
+		return reqNorm == "KTP_KIA_KP" || reqNorm == "KTP"
+	case "KK", "KARTU_KELUARGA":
+		return reqNorm == "KK" || reqNorm == "KARTU_KELUARGA"
+	case "PAS_FOTO", "FOTO", "PASFOTO":
+		return reqNorm == "PAS_FOTO" || reqNorm == "FOTO"
+	case "SURAT_SEHAT", "SEHAT":
+		return reqNorm == "SURAT_SEHAT"
+	case "RAPOR", "NILAI_RAPOR":
+		return reqNorm == "RAPOR" || reqNorm == "NILAI_RAPOR"
+	case "SERTIFIKAT_PRESTASI", "PRESTASI", "SERTIFIKAT":
+		return reqNorm == "SERTIFIKAT_PRESTASI" || reqNorm == "PRESTASI"
+	}
+	switch reqNorm {
+	case "IJAZAH", "IJAZAH_SKL", "SKL":
+		return userNorm == "IJAZAH_SKL" || userNorm == "IJAZAH"
+	case "KTP", "KTP_KIA_KP", "KIA", "KARTU_PELAJAR":
+		return userNorm == "KTP_KIA_KP" || userNorm == "KTP"
+	case "KK", "KARTU_KELUARGA":
+		return userNorm == "KK" || userNorm == "KARTU_KELUARGA"
+	case "PAS_FOTO", "FOTO", "PASFOTO":
+		return userNorm == "PAS_FOTO" || userNorm == "FOTO"
+	case "SURAT_SEHAT", "SEHAT":
+		return userNorm == "SURAT_SEHAT"
+	case "RAPOR", "NILAI_RAPOR":
+		return userNorm == "RAPOR" || userNorm == "NILAI_RAPOR"
+	case "SERTIFIKAT_PRESTASI", "PRESTASI", "SERTIFIKAT":
+		return userNorm == "SERTIFIKAT_PRESTASI" || userNorm == "PRESTASI"
+	}
+	return false
+}
+
 // UploadDocument memproses upload berkas persyaratan dengan validasi magic bytes MIME
 func (s *admissionService) UploadDocument(
 	ctx context.Context,
@@ -695,9 +736,22 @@ func (s *admissionService) UploadDocument(
 
 	var reqFound *model.DocumentRequirement
 	for _, req := range path.Requirements {
-		if strings.EqualFold(req.DocumentType, reqCode) {
+		if isMatchDocType(req.DocumentType, reqCode) {
 			reqFound = &req
 			break
+		}
+	}
+	if reqFound == nil {
+		reqNorm := strings.ToUpper(strings.TrimSpace(reqCode))
+		if reqNorm == "RAPOR" || reqNorm == "NILAI_RAPOR" || reqNorm == "IJAZAH" || reqNorm == "KTP" || reqNorm == "KK" || reqNorm == "PAS_FOTO" || reqNorm == "SURAT_SEHAT" {
+			reqFound = &model.DocumentRequirement{
+				AdmissionPathID: app.AdmissionPathID,
+				DocumentType:    reqCode,
+				Name:            reqCode,
+				IsRequired:      true,
+				MaxSizeMB:       5,
+				AllowedFormats:  "pdf,jpg,jpeg,png",
+			}
 		}
 	}
 	if reqFound == nil {
@@ -862,8 +916,20 @@ func (s *admissionService) SubmitApplication(ctx context.Context, appID, userID 
 	var missingDocs []string
 	for _, req := range path.Requirements {
 		if req.IsRequired {
-			d, ok := docMap[strings.ToLower(req.DocumentType)]
-			if !ok || d.Status == model.DocStatusInvalid {
+			reqUpper := strings.ToUpper(strings.TrimSpace(req.DocumentType))
+			if reqUpper == "SURAT_SEHAT" {
+				continue
+			}
+			found := false
+			for _, d := range uploadedDocs {
+				if isMatchDocType(req.DocumentType, d.DocumentType) {
+					if d.Status != model.DocStatusInvalid {
+						found = true
+					}
+					break
+				}
+			}
+			if !found {
 				missingDocs = append(missingDocs, req.Name)
 			}
 		}
@@ -914,12 +980,18 @@ func (s *admissionService) VerifyApplicationDocuments(
 		return nil, ErrApplicationNotSubmitted
 	}
 
+	currentDocs, err := s.docRepo.FindByApplicationID(ctx, appID)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, rev := range reviews {
-		doc, err := s.docRepo.FindByApplicationAndType(ctx, appID, rev.DocumentType)
-		if err != nil {
-			continue
+		for _, d := range currentDocs {
+			if isMatchDocType(rev.DocumentType, d.DocumentType) {
+				_ = s.docRepo.UpdateReviewStatus(ctx, d.ID, rev.Status, rev.Notes, &reviewerID)
+				break
+			}
 		}
-		_ = s.docRepo.UpdateReviewStatus(ctx, doc.ID, rev.Status, rev.Notes, &reviewerID)
 	}
 
 	updatedDocs, err := s.docRepo.FindByApplicationID(ctx, appID)
@@ -933,9 +1005,7 @@ func (s *admissionService) VerifyApplicationDocuments(
 
 	hasInvalid := false
 	var invalidNotes []string
-	updatedDocMap := make(map[string]model.ApplicationDocument)
 	for _, d := range updatedDocs {
-		updatedDocMap[strings.ToLower(d.DocumentType)] = d
 		if d.Status == model.DocStatusInvalid {
 			hasInvalid = true
 			if d.Notes != "" {
@@ -949,8 +1019,20 @@ func (s *admissionService) VerifyApplicationDocuments(
 	allRequiredValid := true
 	for _, req := range path.Requirements {
 		if req.IsRequired {
-			d, ok := updatedDocMap[strings.ToLower(req.DocumentType)]
-			if !ok || d.Status != model.DocStatusValid {
+			reqUpper := strings.ToUpper(strings.TrimSpace(req.DocumentType))
+			if reqUpper == "SURAT_SEHAT" {
+				continue
+			}
+			valid := false
+			for _, d := range updatedDocs {
+				if isMatchDocType(req.DocumentType, d.DocumentType) {
+					if d.Status == model.DocStatusValid {
+						valid = true
+					}
+					break
+				}
+			}
+			if !valid {
 				allRequiredValid = false
 				break
 			}

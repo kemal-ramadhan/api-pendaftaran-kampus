@@ -66,7 +66,7 @@ func (r *applicationDocumentRepository) Save(ctx context.Context, doc *model.App
 func (r *applicationDocumentRepository) FindByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) (*model.ApplicationDocument, error) {
 	var doc model.ApplicationDocument
 	err := r.db.WithContext(ctx).
-		Where("application_id = ? AND document_type = ?", appID, docType).
+		Where("application_id = ? AND LOWER(document_type) = LOWER(?)", appID, docType).
 		First(&doc).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -87,7 +87,7 @@ func (r *applicationDocumentRepository) FindByApplicationID(ctx context.Context,
 
 func (r *applicationDocumentRepository) DeleteByApplicationAndType(ctx context.Context, appID uuid.UUID, docType string) error {
 	res := r.db.WithContext(ctx).
-		Where("application_id = ? AND document_type = ?", appID, docType).
+		Where("application_id = ? AND LOWER(document_type) = LOWER(?)", appID, docType).
 		Delete(&model.ApplicationDocument{})
 	if res.Error != nil {
 		return res.Error
