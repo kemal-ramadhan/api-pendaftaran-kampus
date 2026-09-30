@@ -1893,6 +1893,10 @@ fi
 # ==============================================================================
 echo -e "\n${CYAN}>>> BAGIAN 10: ALUR SELEKSI UJIAN & KARTU PESERTA (EXAM SERVICE)${NC}"
 
+PERIOD_ID="${PERIOD_ID:-b0000000-0000-0000-0000-000000000001}"
+PATH_ID="${PATH_ID:-c0000000-0000-0000-0000-000000000001}"
+PRODI_CODE="${PRODI_CODE:-TI}"
+
 # 69. Superadmin Membuat Akun Dosen Penguji PMB & Login
 log_info "69. Superadmin membuat akun dosen penguji PMB..."
 DOSEN_EMAIL="dosen_${RAND_ID}@univ.ac.id"
@@ -1934,6 +1938,7 @@ RESP_SESS=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions" \
   -d "{
     \"period_id\": \"$PERIOD_ID\",
     \"path_id\": \"$PATH_ID\",
+    \"study_program_code\": \"$PRODI_CODE\",
     \"type\": \"written_test\",
     \"title\": \"Ujian Tulis Kemampuan Dasar e2e\",
     \"start_at\": \"$SESS_START\",
@@ -1964,7 +1969,11 @@ log_info "72. [NEGATIF] Menguji penolakan pendaftar belum verified dijadwalkan u
 APP_UNVERIFIED_ID=$(curl -s -X POST "${ADMISSION_URL}/applications" \
   -H "Authorization: Bearer $USER_B_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"period_id\":\"$PERIOD_ID\",\"admission_path_id\":\"$PATH_ID\",\"choice_1_code\":\"$PRODI_CODE\"}" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  -d "{
+    \"period_id\": $ACTIVE_PERIOD_ID,
+    \"admission_path_id\": $REG_PATH_ID,
+    \"choice_1_id\": \"$DUMMY_PRODI_1\"
+  }" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
 
 if [ -n "$APP_UNVERIFIED_ID" ]; then
   RESP_FAIL_VERIFY=$(curl -s -w "\n%{http_code}" -X POST "${EXAM_URL}/admin/sessions/${EXAM_SESSION_ID}/participants" \
