@@ -592,6 +592,8 @@ if [ -z "$ADMIN_TOKEN" ]; then
   log_fail "Gagal mendapatkan access_token superadmin"
   exit 1
 fi
+SUPERADMIN_TOKEN="$ADMIN_TOKEN"
+SUPERADMIN_ACCESS_TOKEN="$ADMIN_TOKEN"
 log_pass "Superadmin berhasil login"
 
 # 17. Superadmin Membuat User Keuangan
@@ -991,11 +993,23 @@ curl -s -X POST "${GATEWAY_URL}/register" \
   }" >/dev/null
 
 sleep 1
-OTP_B=$(curl -s "${MAILPIT_URL}/api/v1/messages" | grep -o 'kode OTP pendaftaran Anda: [0-9]\{6\}' | head -n1 | grep -o '[0-9]\{6\}')
+USER_B_OTP=""
+MAIL_RESP=$(curl -s "${MAILPIT_URL}/api/v1/messages" || true)
+USER_B_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_B_EMAIL" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
+if [ -z "$USER_B_MSG_ID" ]; then
+  USER_B_MSG_ID=$(echo "$MAIL_RESP" | grep -B2 -A5 "$USER_B_EMAIL" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
+fi
+if [ -n "$USER_B_MSG_ID" ]; then
+  MSG_DETAIL=$(curl -s "${MAILPIT_URL}/api/v1/message/${USER_B_MSG_ID}" || true)
+  USER_B_OTP=$(echo "$MSG_DETAIL" | grep -oE '\b[0-9]{6}\b' | head -n1 || true)
+fi
+if [ -z "$USER_B_OTP" ]; then
+  USER_B_OTP=$(echo "$MAIL_RESP" | grep -B2 -A10 "$USER_B_EMAIL" | grep -oE '\b[0-9]{6}\b' | head -n1 || true)
+fi
 RESP_VERIFY_B=$(curl -s -X POST "${GATEWAY_URL}/verify" \
   -H "Content-Type: application/json" \
-  -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$OTP_B\"}")
-USER_B_TOKEN=$(echo "$RESP_VERIFY_B" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+  -d "{\"email\":\"$USER_B_EMAIL\",\"otp\":\"$USER_B_OTP\"}")
+USER_B_TOKEN=$(echo "$RESP_VERIFY_B" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4 || true)
 
 # User B cek /me/completeness -> harus false (tidak terpengaruh User A)
 RESP=$(curl -s -w "\n%{http_code}" -X GET "${IDENTITY_URL}/me/completeness" \
