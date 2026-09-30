@@ -76,7 +76,10 @@ func (ctrl *PaymentController) PayWithManualTransfer(c *gin.Context) {
 		return
 	}
 
-	fileHeader, err := c.FormFile("file")
+	fileHeader, err := c.FormFile("proof")
+	if err != nil {
+		fileHeader, err = c.FormFile("file")
+	}
 	if err != nil {
 		response.BadRequest(c, "FILE_REQUIRED", "Berkas bukti transfer wajib diunggah")
 		return
@@ -113,7 +116,7 @@ func (ctrl *PaymentController) PayWithManualTransfer(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusAccepted, "Bukti transfer berhasil diunggah dan menunggu verifikasi staf keuangan", payment)
+	response.Success(c, http.StatusCreated, "Bukti transfer berhasil diunggah dan menunggu verifikasi staf keuangan", payment)
 }
 
 func (ctrl *PaymentController) GetPaymentDetail(c *gin.Context) {
