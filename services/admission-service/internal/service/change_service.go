@@ -25,11 +25,12 @@ var (
 )
 
 type PathChangeInput struct {
-	PeriodID      *uint      `json:"period_id,omitempty"`
-	PathID        uint       `json:"path_id" binding:"required"`
-	FirstChoiceID uuid.UUID  `json:"first_choice_program" binding:"required"`
+	PeriodID       *uint      `json:"period_id,omitempty"`
+	PathID         uint       `json:"path_id"`
+	TargetPathID   uint       `json:"target_path_id"`
+	FirstChoiceID  uuid.UUID  `json:"first_choice_program"`
 	SecondChoiceID *uuid.UUID `json:"second_choice_program,omitempty"`
-	Reason        string     `json:"reason,omitempty"`
+	Reason         string     `json:"reason,omitempty"`
 }
 
 type AdminMoveApplicationInput struct {
@@ -243,6 +244,16 @@ func (s *changeService) RequestOrApplyPathChange(ctx context.Context, userID uui
 	app, err := s.appRepo.FindActiveByUserID(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+
+	if input.PathID == 0 && input.TargetPathID > 0 {
+		input.PathID = input.TargetPathID
+	}
+	if input.FirstChoiceID == uuid.Nil {
+		input.FirstChoiceID = app.Choice1ID
+	}
+	if input.SecondChoiceID == nil {
+		input.SecondChoiceID = app.Choice2ID
 	}
 
 	targetPath, err := s.pathRepo.FindByID(ctx, input.PathID)
