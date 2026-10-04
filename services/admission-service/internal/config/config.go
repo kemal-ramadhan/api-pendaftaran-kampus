@@ -63,7 +63,7 @@ func LoadConfig() (*Config, error) {
 		MinIOSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),
 		MinIOUseSSL:            getEnv("MINIO_USE_SSL", "false") == "true",
 		DocumentBucket:         getEnv("DOCUMENT_BUCKET", "pmb-admission-documents"),
-		OutboxIntervalSeconds:  getEnvAsInt("OUTBOX_INTERVAL_SECONDS", 5),
+		OutboxIntervalSeconds:  getEnvAsInt("OUTBOX_INTERVAL_SECONDS", 1),
 		OutboxBatchSize:        getEnvAsInt("OUTBOX_BATCH_SIZE", 20),
 	}
 

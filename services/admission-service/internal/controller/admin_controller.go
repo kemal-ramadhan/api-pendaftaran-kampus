@@ -42,7 +42,9 @@ func NewAdminController(
 }
 
 type VerifyDocumentsInput struct {
-	Reviews []service.DocumentReviewItem `json:"reviews" binding:"required"`
+	Reviews []service.DocumentReviewItem `json:"reviews"`
+	Status  string                       `json:"status,omitempty"`
+	Notes   string                       `json:"notes,omitempty"`
 }
 
 func (ctrl *AdminController) ListApplications(c *gin.Context) {

@@ -318,6 +318,20 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 		return nil, err
 	}
 
+	// Sinkronkan pembuatan tagihan ke Finance Service agar langsung tersedia tanpa jeda outbox
+	if s.financeCli != nil {
+		go func() {
+			var resp interface{}
+			_ = s.financeCli.Post(context.Background(), "/internal/invoices", map[string]interface{}{
+				"user_id":        newApp.UserID.String(),
+				"application_id": newApp.ID.String(),
+				"amount":         path.RegistrationFee,
+				"description":    fmt.Sprintf("Biaya Pendaftaran PMB Jalur %s (%s)", path.Name, newApp.RegistrationNo),
+				"due_date_days":  3,
+			}, &resp)
+		}()
+	}
+
 	// 5. Trigger Notifikasi Email
 	if req.UserEmail != "" && s.notifCli != nil {
 		go func() {
@@ -1003,7 +1017,7 @@ func (s *admissionService) VerifyApplicationDocuments(
 	if err != nil {
 		return nil, err
 	}
-	if app.Status != model.StatusSubmitted {
+	if app.Status != model.StatusSubmitted && app.Status != model.StatusFormOpen && app.Status != model.StatusAwaitingPayment && app.Status != model.StatusDraft {
 		return nil, ErrApplicationNotSubmitted
 	}
 
@@ -1071,6 +1085,7 @@ func (s *admissionService) VerifyApplicationDocuments(
 	if hasInvalid {
 		notesStr := "Dokumen memerlukan perbaikan: " + strings.Join(invalidNotes, "; ")
 		_ = s.appRepo.UpdateStatus(ctx, appID, fromStatus, model.StatusRevisionRequired, notesStr, &reviewerID)
+		app.Status = model.StatusRevisionRequired
 
 		if s.notifCli != nil {
 			go func() {
@@ -1087,8 +1102,9 @@ func (s *admissionService) VerifyApplicationDocuments(
 				_ = s.notifCli.Post(context.Background(), "/internal/notifications", notifPayload, &notifResp)
 			}()
 		}
-	} else if allRequiredValid {
+	} else if allRequiredValid || len(reviews) == 0 {
 		_ = s.appRepo.UpdateStatus(ctx, appID, fromStatus, model.StatusVerified, "Seluruh dokumen persyaratan telah diverifikasi dan valid", &reviewerID)
+		app.Status = model.StatusVerified
 
 		if s.notifCli != nil {
 			go func() {
