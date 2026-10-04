@@ -258,20 +258,28 @@ services:
       DB_NAME: pmb_admission
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
+      AUTH_SERVICE_URL: http://auth-service:8080
+      ORGANIZATION_SERVICE_URL: http://organization-service:8081
+      IDENTITY_SERVICE_URL: http://identity-service:8082
       NOTIFICATION_SERVICE_URL: http://notification-service:8083
       FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
-      IDENTITY_SERVICE_URL: http://identity-service:8082
+      EXAM_SERVICE_URL: http://exam-service:8087
+      SELECTION_SERVICE_URL: http://selection-service:8090
+      STUDENT_SERVICE_URL: http://student-service:8091
+      NIM_SERVICE_URL: http://nim-service:8092
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_USE_SSL: "false"
       DOCUMENT_BUCKET: pmb-admission-documents
-      OUTBOX_INTERVAL_SECONDS: 5
+      OUTBOX_INTERVAL_SECONDS: 1
       OUTBOX_BATCH_SIZE: 20
     depends_on:
       postgres:
         condition: service_healthy
       notification-service:
+        condition: service_healthy
+      auth-service:
         condition: service_healthy
       identity-service:
         condition: service_healthy

@@ -234,6 +234,7 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 	}
 
 	// Cek Riwayat Pendaftaran Sebelumnya (CR-002 D.5 point 6 & 8)
+	var latestPreviousID *uuid.UUID
 	history, err := s.appRepo.FindByUserID(ctx, req.UserID)
 	if err == nil {
 		for _, prevApp := range history {
@@ -244,6 +245,10 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 			// Jika gagal di gelombang yang sama, tidak boleh pilih kombinasi jalur + prodi 1 yang sama
 			if prevApp.Status == model.StatusFailed && prevApp.PeriodID == req.PeriodID && prevApp.AdmissionPathID == req.AdmissionPathID && prevApp.Choice1ID == req.Choice1ID {
 				return nil, ErrSameChoiceAlreadyFailed
+			}
+			if prevApp.Status == model.StatusWithdrawn {
+				pID := prevApp.ID
+				latestPreviousID = &pID
 			}
 		}
 	}
@@ -265,14 +270,15 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 		}
 
 		app := &model.Application{
-			ID:              uuid.New(),
-			RegistrationNo:  regNo,
-			UserID:          req.UserID,
-			PeriodID:        req.PeriodID,
-			AdmissionPathID: req.AdmissionPathID,
-			Choice1ID:       req.Choice1ID,
-			Choice2ID:       req.Choice2ID,
-			Status:          initialStatus,
+			ID:                    uuid.New(),
+			RegistrationNo:        regNo,
+			UserID:                req.UserID,
+			PeriodID:              req.PeriodID,
+			AdmissionPathID:       req.AdmissionPathID,
+			Choice1ID:             req.Choice1ID,
+			Choice2ID:             req.Choice2ID,
+			PreviousApplicationID: latestPreviousID,
+			Status:                initialStatus,
 		}
 
 		if err := s.appRepo.CreateInTx(tx, app); err != nil {
