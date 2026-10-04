@@ -114,11 +114,7 @@ func (ctrl *ChangeController) RequestOrApplyPathChange(c *gin.Context) {
 		return
 	}
 
-	statusCode := http.StatusOK
-	if !result.AppliedDirectly {
-		statusCode = http.StatusCreated
-	}
-	response.Success(c, statusCode, result.Message, result)
+	response.Success(c, http.StatusOK, result.Message, result)
 }
 
 // CancelPendingPathChange menangani DELETE /applications/me/path-change/pending

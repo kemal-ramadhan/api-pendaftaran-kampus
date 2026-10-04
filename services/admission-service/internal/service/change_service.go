@@ -316,11 +316,16 @@ func (s *changeService) RequestOrApplyPathChange(ctx context.Context, userID uui
 			return nil, err
 		}
 
+		changeType := model.ChangeTypeChoicesUpdated
+		if currentPath.ID != targetPath.ID {
+			changeType = model.ChangeType("path_change")
+		}
+
 		// Simpan riwayat immutable
 		change := &model.ApplicationChange{
 			ApplicationID: app.ID,
 			UserID:        userID,
-			ChangeType:    model.ChangeTypeChoicesUpdated,
+			ChangeType:    changeType,
 			Reason:        input.Reason,
 			FeeDifference: targetFee - int64(currentPath.RegistrationFee),
 			ActorRole:     "calon_mahasiswa",
@@ -734,6 +739,16 @@ func (s *changeService) AdminMoveApplication(ctx context.Context, appID, actorID
 		return err
 	}
 
+	// Update pending request bila ada
+	if pendingReq, err := s.changeRepo.GetPendingPathChangeRequest(ctx, app.ID); err == nil && pendingReq != nil {
+		now := time.Now()
+		pendingReq.Status = model.PathChangeApproved
+		pendingReq.ReviewedBy = &actorID
+		pendingReq.ReviewNote = input.Reason
+		pendingReq.ReviewedAt = &now
+		_ = s.changeRepo.UpdatePathChangeRequest(ctx, nil, pendingReq)
+	}
+
 	// Catat riwayat: admin_moved
 	change := &model.ApplicationChange{
 		ApplicationID: app.ID,
@@ -901,8 +916,8 @@ func enrichChangeMetadata(c *model.ApplicationChange) {
 	case model.ChangeTypeCreated:
 		c.TitleLabel = "Pendaftaran Baru Dibuat"
 		c.Description = "Formulir pendaftaran mahasiswa baru berhasil dibuat"
-	case model.ChangeTypeChoicesUpdated:
-		c.TitleLabel = "Pilihan Jalur / Program Studi Diperbarui"
+	case model.ChangeTypeChoicesUpdated, model.ChangeType("path_change"):
+		c.TitleLabel = "Pindah Jalur / Pilihan Program Studi Diperbarui"
 		c.Description = "Pilihan jalur pendaftaran dan program studi langsung diperbarui"
 	case model.ChangeTypePathChangeRequested:
 		c.TitleLabel = "Permohonan Pindah Jalur Diajukan"
