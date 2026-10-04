@@ -142,4 +142,40 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Kuitansi Resmi (12): Endpoint `GET /finance/me/invoices/:id/receipt-view`, kuitansi lunas, teks status penguncian pilihan jalur.
 - **Status**: **done** (Tahap 14 / CR-010).
 
+### CR-011 — Konsolidasi 3 Service (Modular Monolith) (4 Oktober 2026)
+- **Arahan Lead**: Konsolidasi 13 service menjadi 3 service aplikasi (`gateway`, `pmb-service`, `ocr-service`) dan 2 database (`pmb_auth`, `pmb_app`) tanpa mengubah kontrak API dan perilaku endpoint publik.
+- **Ruang Lingkup**:
+  - `gateway`: penggabungan api-gateway dan auth-service dengan database `pmb_auth`.
+  - `pmb-service`: modular monolith yang mencakup modul `admission`, `finance`, `identity`, `organization`, `exam`, `scoring`, `selection`, `student`, `nim`, `notification`, dan `referral`. Schema terpisah per modul di DB `pmb_app`, integrasi antar modul via facade Go (in-process outbox).
+  - `ocr-service`: service terpisah (Python), opsional (`OCR_ENABLED=false` mengembalikan `503 OCR_DISABLED`).
+- **Status**: **open** (Fase K / M0–M5).
+
+### CR-012 — Auth Dua Versi & Persiapan SSO (4 Oktober 2026)
+- **Arahan Lead**: Auth 2 versi: Versi A (Auth Kampus / SSO Core) dan Versi B (Auth PMB), skema `users` (UserTabel) – `service_accounts` (ServiceAccount) – `user_accounts` (UserAccount) + `user_account_roles`.
+- **Ruang Lingkup**:
+  - Versi A: SSO Core mandiri (`cmd/sso`), OpenID Connect Authorization Code + PKCE, JWKS & rotasi kunci, discovery `.well-known/openid-configuration`, `/oauth2/*`, `/sso/login` sementara.
+  - Versi B: Auth PMB (`/api/v1/auth/*`) tetap berjalan di atas Versi A.
+  - Seeder service account (`pmb-pendaftaran`, `pmb-admin`, `pmb-mitra`, `keuangan`), migrasi data `user_roles` ke `user_accounts` + `user_account_roles`.
+- **Status**: **open** (Fase K / M6–M8).
+
+### CR-013 — Kesiapan Rilis Aplikasi Pendaftaran PMB (4 Oktober 2026)
+- **Arahan Lead**: Aplikasi pendaftaran camaba bebas bug dan siap didemokan Selasa 6 Okt malam, pembayaran sungguhan Duitku siap, jalur gratis tanpa pembayaran (Rp 0), panduan alur, data demo, dan audit stabilitas.
+- **Ruang Lingkup**:
+  - Audit mandiri dan perbaikan bug alur camaba (01–08).
+  - Integrasi Duitku siap pakai (`DUITKU_ENV=sandbox|production`, `GET /finance/payment-config`, pengaman konfigurasi start, rekonsiliasi, callback idempoten).
+  - Jalur gratis (`registration_fee = 0`): tagihan Rp 0 langsung lunas metode `free`, bypass pembayaran, `409 INVOICE_FREE` jika dibayar, pembatalan dan pindah jalur.
+  - `scripts/smoke-camaba.sh`, `deploy/docker-compose.prod.yml`, `docs/BUGS.md`, `docs/DUITKU-PRODUKSI.md`, `docs/DEPLOY.md`, `docs/RELEASE-CHECKLIST.md`, `docs/PANDUAN-ALUR.md`.
+- **Status**: **open** (Fase R / R0–R3).
+
+### CR-014 — Kode Referal Guru BK, Pembayaran Kolektif & Komisi (4 Oktober 2026)
+- **Arahan Lead**: Fitur kode referal guru BK untuk launching 22 Okt dengan 150 guru BK. Siswa bayar ke guru BK di luar sistem, verifikasi guru BK melewati pembayaran di sistem, guru BK menyetor ke kampus, komisi (persen/nominal).
+- **Ruang Lingkup**:
+  - Modul `referral` di `pmb-service`, role `guru_bk` di service account `pmb-mitra`.
+  - Pemasangan kode oleh camaba dengan consent, verifikasi guru BK (`referral_collective`), penolakan, kunci kode setelah bayar.
+  - Pengaturan komisi per kode (persen / nominal) disalin snapshot saat verifikasi; jalur gratis tanpa komisi; mode penyelesaian komisi (`terpisah` atau `potong_setoran`).
+  - Pengajuan setoran guru BK dengan bukti transfer, verifikasi setoran oleh keuangan + pencatatan buku besar.
+  - Portal & kartu ringkasan guru BK mirip sistem BTH, form pembuatan akun guru BK oleh admin + impor CSV multi-baris.
+- **Status**: **open** (Fase F / F1–F5).
+
+
 

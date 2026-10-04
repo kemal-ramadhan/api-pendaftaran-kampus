@@ -1,9 +1,19 @@
-<#
+﻿<#
   final-check.ps1 - Pengecekan akhir backend PMB (tanpa cek manual)
-  Jalankan dari root repo:
-      powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1
+  Jalankan dari root repo, pilih tahap:
+      powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1 -Tahap rilis        (fase R: CR-013)
+      powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1 -Tahap konsolidasi  (fase K: + CR-011, CR-012, 3 service)
+      powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1 -Tahap penuh        (fase F: + CR-014 referal)
+  Semua tahap dijalankan di branch main.
   Hasil: ringkasan di layar + file final-check-report.txt (kirim file ini ke Claude).
 #>
+param([string]$Tahap = "")
+
+if (@("rilis","konsolidasi","penuh") -notcontains $Tahap) {
+    Write-Host "Parameter -Tahap wajib diisi: rilis | konsolidasi | penuh" -ForegroundColor Yellow
+    Write-Host "Contoh: powershell -ExecutionPolicy Bypass -File scripts\final-check.ps1 -Tahap rilis"
+    exit 2
+}
 
 $ErrorActionPreference = "Continue"
 $Root    = (Get-Location).Path
@@ -33,15 +43,19 @@ Add-Result "Git Bash tersedia" $gitBashOk $GitBash
 $goLocal = [bool](Get-Command go -ErrorAction SilentlyContinue)
 
 # ---------------------------------------------------------------- 1. Git sinkron
-Section "1. Sinkronisasi Git"
+Section "1. Sinkronisasi Git (tahap: $Tahap)"
+$Branch = (git rev-parse --abbrev-ref HEAD).Trim()
+$branchOk = ($Branch -eq "main")
+Add-Result "Branch sesuai tahap" $branchOk $(if ($branchOk) { "branch $Branch" } else { "Tahap $Tahap harus di branch main (sekarang $Branch). Jalankan: git checkout main" })
 git fetch origin *> $null
-git pull --rebase origin main 2>&1 | ForEach-Object { Log $_ }
+git pull --rebase origin $Branch 2>&1 | ForEach-Object { Log $_ }
 $dirty = git status --porcelain
 Add-Result "Working tree bersih" ([string]::IsNullOrWhiteSpace(($dirty -join ""))) $(if ($dirty) { "Ada perubahan belum di-commit: $($dirty.Count) file" } else { "bersih" })
 $local  = (git rev-parse HEAD).Trim()
-$remote = (git rev-parse origin/main).Trim()
-Add-Result "Lokal = GitHub (origin/main)" ($local -eq $remote) ("HEAD {0} / origin {1}" -f $local.Substring(0,7), $remote.Substring(0,7))
-Log ("Commit terakhir:`n" + ((git log origin/main --oneline -10) -join "`n"))
+$remote = (git rev-parse "origin/$Branch" 2>$null)
+if ($remote) { $remote = $remote.Trim() } else { $remote = "0000000-belum-di-push" }
+Add-Result "Lokal = GitHub (origin/$Branch)" ($local -eq $remote) ("HEAD {0} / origin {1}" -f $local.Substring(0,7), $remote.Substring(0,7))
+Log ("Commit terakhir:`n" + ((git log --oneline -10) -join "`n"))
 
 # ---------------------------------------------------------------- 2. Secret
 Section "2. Pemeriksaan secret di repo"
@@ -134,16 +148,36 @@ if ($gitBashOk -and (-not $notHealthy)) {
 # ---------------------------------------------------------------- 7. Kelengkapan dokumen
 Section "7. Kelengkapan dokumentasi"
 $docs = @("docs/contracts","docs/API.md","docs/DECISIONS.md","docs/CHANGE_REQUESTS.md","docs/AUDIT-REPORT.md","docs/FE-BE-GAP.md","docs/PMB.postman_collection.json","docs/ocr-benchmark.md","docs/DUITKU-SANDBOX.md","scripts/duitku-sandbox-check.ps1","docs/RBAC.md")
+$docs += @("docs/BUGS.md","docs/DUITKU-PRODUKSI.md","docs/DEPLOY.md","docs/RELEASE-CHECKLIST.md","docs/PANDUAN-ALUR.md","scripts/smoke-camaba.sh","deploy/docker-compose.prod.yml")
+if ($Tahap -ne "rilis") { $docs += @("docs/ARCHITECTURE.md","docs/CONSOLIDATION-REPORT.md","docs/SSO.md") }
+if ($Tahap -eq "penuh") { $docs += "docs/REFERRAL.md" }
 foreach ($d in $docs) { Add-Result "Dokumen $d" (Test-Path $d) "" }
-$svcs = Get-ChildItem services -Directory | Where-Object { $_.Name -ne "api-gateway" } | ForEach-Object { $_.Name -replace "-service$","" }
+$envText = if (Test-Path ".env.example") { Get-Content ".env.example" -Raw } else { "" }
+$envOk = ($envText -match "DUITKU_ENV") -and ($envText -match "APP_ENV")
+Add-Result ".env.example memuat DUITKU_ENV & APP_ENV" $envOk ""
+$bugText = if (Test-Path "docs/BUGS.md") { Get-Content "docs/BUGS.md" } else { @() }
+$openBugs = @($bugText | Where-Object { ($_ -match "\|\s*P[01]\s*\|") -and ($_ -match "\|\s*Open\s*\|") })
+Add-Result "BUGS.md tanpa P0/P1 Open" ($openBugs.Count -eq 0) $(if ($openBugs.Count -eq 0) { "aman" } else { "$($openBugs.Count) bug P0/P1 masih Open" })
+$svcDirs = Get-ChildItem services -Directory | Where-Object { -not $_.Name.StartsWith("_") } | ForEach-Object { $_.Name } | Sort-Object
+if ($Tahap -ne "rilis") {
+    $expected = @("gateway","ocr-service","pmb-service")
+    $svcOk = (($svcDirs -join ",") -eq ($expected -join ","))
+    Add-Result "Jumlah service = 3 (gateway, pmb-service, ocr-service)" $svcOk ("ditemukan: " + ($svcDirs -join ", "))
+} else {
+    Log ("Service saat ini (" + $svcDirs.Count + "): " + ($svcDirs -join ", "))
+}
+$svcs = $svcDirs | ForEach-Object { $_ -replace "-service$","" }
 foreach ($s in $svcs) {
     $cd = Test-Path "docs/class-diagram-$s.md"; $erd = (Test-Path "docs/erd-$s.md") -or ($s -eq "ocr")
     Add-Result "Class diagram & ERD: $s" ($cd -and $erd) $(if ($cd -and $erd) { "ada" } else { "kurang: " + $(if (-not $cd) { "class-diagram " }) + $(if (-not $erd) { "erd" }) })
 }
 $crText = if (Test-Path "docs/CHANGE_REQUESTS.md") { Get-Content "docs/CHANGE_REQUESTS.md" -Raw } else { "" }
-$required = @("CR-001","CR-002","CR-003","CR-004","CR-005","CR-006","CR-007","CR-008","CR-009","CR-010")
+$required = @("CR-001","CR-002","CR-003","CR-004","CR-005","CR-006","CR-007","CR-008","CR-009","CR-010","CR-013")
+$skip = @("CR-011","CR-012","CR-014")
+if ($Tahap -eq "konsolidasi") { $required += @("CR-011","CR-012"); $skip = @("CR-014") }
+if ($Tahap -eq "penuh")   { $required += @("CR-011","CR-012","CR-014"); $skip = @() }
 $found = [regex]::Matches($crText, "CR-\d{3}") | ForEach-Object { $_.Value }
-$allCr = ($required + $found) | Sort-Object -Unique
+$allCr = ($required + $found) | Sort-Object -Unique | Where-Object { $skip -notcontains $_ }
 foreach ($cr in $allCr) {
     $done = $crText -match "$cr[^\n]*(done|selesai)"
     Add-Result "Status $cr = done" $done $(if ($crText -match $cr) { "" } else { "belum dicatat di CHANGE_REQUESTS.md" })
@@ -151,8 +185,14 @@ foreach ($cr in $allCr) {
 $gapText = if (Test-Path "docs/FE-BE-GAP.md") { Get-Content "docs/FE-BE-GAP.md" -Raw } else { "" }
 $openRows = ([regex]::Matches($gapText, "\|\s*Open\s*\|")).Count
 Add-Result "FE-BE-GAP tanpa baris Open" ($openRows -eq 0) $(if ($openRows -eq 0) { "semua baris selesai/menunggu desain" } else { "$openRows baris masih Open" })
-$tagOk = [bool](git tag --list "v0.2.0-fase2")
-Add-Result "Tag v0.2.0-fase2" $tagOk $(if ($tagOk) { "ada" } else { "belum dibuat (dibuat agent bila DoD terpenuhi)" })
+$tags = @("v0.2.0-fase2","v0.5.1-rilis")
+if ($Tahap -ne "rilis") { $tags += @("v0.6.0-3-services","v0.7.0-sso-ready") }
+if ($Tahap -eq "penuh") { $tags += "v0.8.0-referal" }
+git fetch --tags origin *> $null
+foreach ($t in $tags) {
+    $tagOk = [bool](git tag --list $t)
+    Add-Result "Tag $t" $tagOk $(if ($tagOk) { "ada" } else { "belum dibuat (dibuat agent bila DoD terpenuhi)" })
+}
 
 # ---------------------------------------------------------------- Ringkasan
 $failed = $Results | Where-Object { $_.Status -eq "GAGAL" }
@@ -164,6 +204,8 @@ Write-Host $verdict -ForegroundColor $(if ($failed) { "Red" } else { "Green" })
 $header = @(
   "PMB FINAL CHECK REPORT",
   "Tanggal : $(Get-Date -Format 'yyyy-MM-dd HH:mm')",
+  "Tahap   : $Tahap",
+  "Branch  : $Branch",
   "Commit  : $local",
   "Hasil   : $verdict",
   "",

@@ -494,6 +494,46 @@ Dokumen ini mencatat seluruh keputusan arsitektur dan teknis yang diambil selama
   - **K17**: Memberikan kepastian nominal pembayaran yang bersih di sisi calon mahasiswa (*zero fee deduction* di UI).
   - **K18**: Mengisolasi kompleksitas API eksternal SIAKAD pada fase ini, memprioritaskan format ekspor standar xlsx/csv.
 
+---
+
+## 32. Keputusan Rilis PMB, Referal & Konsolidasi Arsitektur (CR-011..CR-014)
+- **Status**: Dikonfirmasi lead (3–4 Oktober 2026, sumber: `PRD-TAMBAHAN-CR011.md` Bagian 8)
+- **Rangkuman Keputusan**:
+
+| Kode | Keputusan |
+|---|---|
+| **R1** | Urutan: kesiapan rilis aplikasi pendaftaran (R) → pemangkasan 3 service & auth dua versi/SSO (K) → referal & komisi guru BK (F), semua di `main`; demo Selasa dari tag `v0.5.1-rilis` |
+| **R2** | Demo memakai Duitku sungguhan sesuai `DUITKU_ENV` di `.env` (sandbox atau produksi); kredensial disiapkan tim, tidak pernah masuk repo/log |
+| **R3** | Rilis hanya bila tidak ada bug P0/P1 Open di `docs/BUGS.md` |
+| **R4** | Freeze 19–21 Okt: hanya perbaikan P0/P1 |
+| **R5** | Jalur dengan biaya Rp 0 tidak melalui pembayaran; tagihan Rp 0 langsung lunas (metode `free`) agar alur berikutnya tetap konsisten |
+| **F1** | Siswa membayar ke guru BK di luar sistem; verifikasi guru BK melunasi tagihan formulir (`referral_collective`); guru BK menyetor ke kampus dan keuangan memverifikasi |
+| **F2** | Komisi per kode: persen per transaksi atau nominal per mahasiswa terverifikasi, disnapshot per transaksi; jalur gratis & jalur yang dinonaktifkan tidak berkomisi |
+| **F3** | Penyelesaian komisi (`terpisah` dibayar keuangan atau `potong_setoran`) diatur admin: pengaturan umum + override per kode |
+| **F4** | Akun guru BK hanya dibuat admin kampus (form atau impor CSV) dengan email aktivasi |
+| **F5** | NIK disamarkan untuk guru BK; dokumen & biodata lengkap tidak dapat diakses guru BK; siswa memberi persetujuan saat memasang kode |
+| **F6** | Kartu ringkasan mengikuti 33.5 ("Antrian Verifikasi Pembayaran" = pembayaran siswa yang menunggu verifikasi guru BK) |
+| **F7** | Referal dibangun langsung sebagai modul `referral` di `pmb-service`; role `guru_bk` milik service account `pmb-mitra` |
+| **C1** | 3 service: `gateway` (gateway + auth), `pmb-service` (11 modul bisnis termasuk `referral`), `ocr-service` |
+| **C2** | `pmb-service` modular monolith: schema per modul, facade antar modul, tanpa query/transaksi lintas schema |
+| **C3** | Auth digabung ke gateway agar identitas & pintu masuk dapat dipakai bersama produk kampus berikutnya |
+| **C4** | OCR opsional, dimatikan di luar periode pendaftaran |
+| **C5** | Tidak ada migrasi data antar database karena belum produksi (migrasi data auth di dalam `pmb_auth` tetap dilakukan) |
+| **C6** | API publik, kontrak JSON, dan perilaku tidak berubah; frontend tidak perlu diubah |
+| **S1** | Auth versi A (Kampus/SSO, umum) dan versi B (PMB, khusus pendaftaran) dalam satu codebase; B bergantung pada A |
+| **S2** | Skema akun mengikuti lead: `users` (UserTabel), `service_accounts` (ServiceAccount), `user_accounts` (UserAccount); role melekat pada akses user ke layanan |
+| **S3** | SSO memakai OpenID Connect (Authorization Code + PKCE); service account sekaligus klien SSO |
+| **S4** | SSO disiapkan & diuji sekarang, dimatikan di produksi; dijalankan sebagai service mandiri saat produk kedua dibuat (kandidat: Pelita Sekolah) |
+| **S5** | Calon mahasiswa yang menjadi mahasiswa memakai akun yang sama; guru BK memakai akun yang sama untuk portal guru BK dan kelak Pelita Sekolah |
+| **S6** | Halaman login SSO sementara dibuat sederhana di server sampai ada desain |
+
+- **Rasional & Implikasi Arsitektural**:
+  - **R1–R5**: Menjamin stabilitas pendaftaran calon mahasiswa saat launching dan demo ke stakeholder tanpa risiko regresi dari perombakan arsitektur besar. Jalur gratis tetap memiliki catatan tagihan Rp 0 (metode `free`) agar integritas data audit dan outbox event pelunasan tetap konsisten.
+  - **F1–F7**: Memfasilitasi kemitraan 150 guru BK dengan fleksibilitas komisi (persen maupun nominal), akurasi snapshot pada saat transaksi diverifikasi, serta penegakan privasi data camaba (NIK masking dan pembatasan data sensitif).
+  - **C1–C6**: Mengurangi beban server drastis (dari ~17 container menjadi 3 container aplikasi), menyederhanakan jaringan dan menghilangkan overhead HTTP internal antar-service dengan pemanggilan in-process facade Go yang tetap menjamin isolasi schema database.
+  - **S1–S6**: Mempersiapkan identitas kampus terpadu (Single Sign-On) berbasis OpenID Connect standar untuk integrasi produk-produk masa depan seperti Pelita Sekolah, tanpa mengorbankan backward compatibility endpoint auth PMB yang sudah ada.
+
+
 
 
 
