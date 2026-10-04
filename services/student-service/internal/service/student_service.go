@@ -302,28 +302,26 @@ func (s *studentService) CompleteReregistration(ctx context.Context, userID uuid
 		return nil, err
 	}
 
-	if isAuto {
-		// Siapkan payload outbox event untuk NIM Service di Tahap 11 jika mode auto
-		outboxPayload := model.NIMIssuancePayload{
-			ApplicationID:    reg.ApplicationID,
-			UserID:           reg.UserID,
-			StudyProgramCode: reg.AcceptedProgram,
-			EntryYear:        now.Year(),
-			EntryPath:        "Reguler",
-		}
-		payloadBytes, _ := json.Marshal(outboxPayload)
+	// Siapkan payload outbox event untuk NIM Service
+	outboxPayload := model.NIMIssuancePayload{
+		ApplicationID:    reg.ApplicationID,
+		UserID:           reg.UserID,
+		StudyProgramCode: reg.AcceptedProgram,
+		EntryYear:        now.Year(),
+		EntryPath:        "Reguler",
+	}
+	payloadBytes, _ := json.Marshal(outboxPayload)
 
-		event := &model.OutboxEvent{
-			ID:        uuid.New(),
-			EventType: "nim_issuance_requested",
-			Payload:   string(payloadBytes),
-			Status:    "pending",
-			CreatedAt: now,
-		}
-		if err := s.repo.CreateOutboxEventInTx(tx, event); err != nil {
-			tx.Rollback()
-			return nil, err
-		}
+	event := &model.OutboxEvent{
+		ID:        uuid.New(),
+		EventType: "nim_issuance_requested",
+		Payload:   string(payloadBytes),
+		Status:    "pending",
+		CreatedAt: now,
+	}
+	if err := s.repo.CreateOutboxEventInTx(tx, event); err != nil {
+		tx.Rollback()
+		return nil, err
 	}
 
 	if err := tx.Commit().Error; err != nil {
