@@ -2569,14 +2569,14 @@ else
   log_fail "Pengajuan cicilan biaya pendaftaran tidak ditolak sesuai ketentuan (HTTP $CODE_NEG_INST): $BODY_NEG_INST"
 fi
 
-# Pastikan ID tagihan daftar ulang tersedia
-if [ -z "$REREG_INVOICE_ID" ]; then
+# Pastikan ID tagihan daftar ulang tersedia dan BUKAN tagihan formulir pendaftaran
+if [ -z "$REREG_INVOICE_ID" ] || [ "$REREG_INVOICE_ID" = "$INVOICE_ID" ]; then
   log_info "Mencari tagihan daftar ulang via GET ${INVOICES_URL}/me..."
   MY_INVS=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $ACCESS_TOKEN")
-  REREG_INVOICE_ID=$(echo "$MY_INVS" | grep -B 2 -A 5 '"fee_type":"reregistration"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
+  REREG_INVOICE_ID=$(echo "$MY_INVS" | sed 's/{"id"/\n{"id"/g' | grep '"fee_type":"reregistration"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 fi
 
-if [ -z "$REREG_INVOICE_ID" ]; then
+if [ -z "$REREG_INVOICE_ID" ] || [ "$REREG_INVOICE_ID" = "$INVOICE_ID" ]; then
   # Fallback buat invoice daftar ulang via internal API jika belum ada
   log_info "Membuat invoice daftar ulang via internal API untuk pengujian..."
   REREG_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
@@ -2588,7 +2588,7 @@ if [ -z "$REREG_INVOICE_ID" ]; then
       \"fee_type\": \"reregistration\",
       \"amount\": 3333334,
       \"description\": \"Biaya Daftar Ulang Mahasiswa Baru S1 Teknik Informatika\",
-      \"due_days\": 14
+      \"due_date_days\": 14
     }")
   REREG_INVOICE_ID=$(echo "$REREG_RESP" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
 fi

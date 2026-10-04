@@ -696,6 +696,11 @@ func (s *selectionService) fetchInvoiceByApplication(ctx context.Context, appID 
 	if err != nil || len(invoices) == 0 {
 		return nil, err
 	}
+	for i := range invoices {
+		if invoices[i].FeeType == "reregistration" {
+			return &invoices[i], nil
+		}
+	}
 	return &invoices[0], nil
 }
 
