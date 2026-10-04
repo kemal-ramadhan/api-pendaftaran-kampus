@@ -3218,10 +3218,22 @@ e2e_register_and_login() {
     -d "{\"email\":\"$u_email\",\"password\":\"$u_pass\",\"password_confirmation\":\"$u_pass\",\"full_name\":\"$u_name\",\"phone\":\"$u_phone\"}" >/dev/null
 
   local u_otp=""
-  for i in {1..10}; do
+  for i in {1..12}; do
     local search_resp=$(curl -s "${MAILPIT_URL}/api/v1/search?query=${u_email}" || true)
-    if [ -n "$search_resp" ]; then
-      local extracted=$(echo "$search_resp" | grep -oE '[0-9]{6}' | head -n1)
+    local msg_id=$(echo "$search_resp" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
+    if [ -z "$msg_id" ]; then
+      msg_id=$(echo "$search_resp" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
+    fi
+    if [ -n "$msg_id" ]; then
+      local msg_detail=$(curl -s "${MAILPIT_URL}/api/v1/message/${msg_id}" || true)
+      local snippet=$(echo "$msg_detail" | grep -o '"Snippet":"[^"]*"' | head -n1)
+      local extracted=$(echo "$snippet" | grep -oE '\b[0-9]{6}\b' | head -n1)
+      if [ -z "$extracted" ]; then
+        extracted=$(echo "$msg_detail" | grep -oE 'font-size: 24px[^>]*>[^0-9]*[0-9]{6}' | grep -oE '[0-9]{6}' | head -n1)
+      fi
+      if [ -z "$extracted" ]; then
+        extracted=$(echo "$msg_detail" | grep -oE '\b[0-9]{6}\b' | head -n1)
+      fi
       if [ -n "$extracted" ]; then
         u_otp="$extracted"
         break
@@ -3233,12 +3245,12 @@ e2e_register_and_login() {
   local verify_resp=$(curl -s -X POST "${GATEWAY_URL}/verify" \
     -H "Content-Type: application/json" \
     -d "{\"email\":\"$u_email\",\"otp\":\"$u_otp\"}")
-  local tok=$(echo "$verify_resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+  local tok=$(echo "$verify_resp" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
   if [ -z "$tok" ]; then
     local login_resp=$(curl -s -X POST "${GATEWAY_URL}/login" \
       -H "Content-Type: application/json" \
       -d "{\"email\":\"$u_email\",\"password\":\"$u_pass\"}")
-    tok=$(echo "$login_resp" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+    tok=$(echo "$login_resp" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
   fi
   echo "$tok"
 }

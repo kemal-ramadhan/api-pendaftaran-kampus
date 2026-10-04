@@ -68,7 +68,7 @@ func (r *applicationRepository) FindByUserIDAndPeriod(ctx context.Context, userI
 	err := r.db.WithContext(ctx).
 		Preload("Period").
 		Preload("AdmissionPath").
-		Where("user_id = ? AND period_id = ? AND status NOT IN (?, ?, ?)", userID, periodID, model.StatusCancelled, model.StatusFailed, model.StatusExpired).
+		Where("user_id = ? AND period_id = ? AND status NOT IN (?, ?, ?, ?)", userID, periodID, model.StatusCancelled, model.StatusFailed, model.StatusExpired, model.StatusWithdrawn).
 		First(&app).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -86,7 +86,7 @@ func (r *applicationRepository) FindActiveByUserID(ctx context.Context, userID u
 		Preload("AdmissionPath").
 		Preload("Documents").
 		Preload("StatusLogs").
-		Where("user_id = ? AND status NOT IN (?, ?, ?)", userID, model.StatusCancelled, model.StatusFailed, model.StatusExpired).
+		Where("user_id = ? AND status NOT IN (?, ?, ?, ?)", userID, model.StatusCancelled, model.StatusFailed, model.StatusExpired, model.StatusWithdrawn).
 		First(&app).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
