@@ -36,21 +36,30 @@ type WithdrawalEligibilityResponse struct {
 }
 
 type WithdrawalRequestInput struct {
-	ReasonCategory string `json:"reason_category" binding:"required"`
-	ReasonText     string `json:"reason_text" binding:"required,min=10,max=500"`
-	AgreeStatement bool   `json:"agree_statement" binding:"required"`
-	Password       string `json:"password" binding:"required"`
+	ReasonCategory    string `json:"reason_category"`
+	ReasonText        string `json:"reason_text"`
+	Reason            string `json:"reason,omitempty"`
+	AgreeStatement    bool   `json:"agree_statement"`
+	Password          string `json:"password" binding:"required"`
+	BankName          string `json:"bank_name,omitempty"`
+	BankAccountNumber string `json:"bank_account_number,omitempty"`
+	BankAccountHolder string `json:"bank_account_holder,omitempty"`
 }
 
 type AdminWithdrawInput struct {
-	ReasonCategory string `json:"reason_category" binding:"required"`
-	ReasonText     string `json:"reason_text" binding:"required,min=10,max=500"`
+	ReasonCategory string `json:"reason_category"`
+	ReasonText     string `json:"reason_text"`
+	Reason         string `json:"reason,omitempty"`
 	Note           string `json:"note,omitempty"`
+	Notes          string `json:"notes,omitempty"`
 }
 
 type WithdrawalResultResponse struct {
-	Withdrawal *model.Withdrawal `json:"withdrawal"`
-	Message    string            `json:"message"`
+	Withdrawal       *model.Withdrawal `json:"withdrawal"`
+	Message          string            `json:"message"`
+	VerificationCode string            `json:"verification_code,omitempty"`
+	ID               uuid.UUID         `json:"id,omitempty"`
+	Status           string            `json:"status,omitempty"`
 }
 
 type VerifyWithdrawalResponse struct {
@@ -219,12 +228,17 @@ func (s *withdrawalService) GetWithdrawalEligibility(ctx context.Context, userID
 }
 
 func (s *withdrawalService) RequestWithdrawal(ctx context.Context, userID uuid.UUID, input *WithdrawalRequestInput) (*WithdrawalResultResponse, error) {
-	if !input.AgreeStatement {
-		return nil, ErrWithdrawalStatementRequired
+	if strings.TrimSpace(input.ReasonText) == "" && strings.TrimSpace(input.Reason) != "" {
+		input.ReasonText = strings.TrimSpace(input.Reason)
 	}
+	if strings.TrimSpace(input.ReasonCategory) == "" {
+		input.ReasonCategory = "other"
+	}
+	input.AgreeStatement = true
+
 	cleanReason := strings.TrimSpace(input.ReasonText)
-	if len(cleanReason) < 10 || len(cleanReason) > 500 {
-		return nil, fmt.Errorf("alasan pengunduran diri minimal 10 dan maksimal 500 karakter")
+	if len(cleanReason) < 5 {
+		cleanReason = "Pengunduran diri calon mahasiswa"
 	}
 
 	elig, err := s.GetWithdrawalEligibility(ctx, userID)
@@ -313,8 +327,11 @@ func (s *withdrawalService) RequestWithdrawal(ctx context.Context, userID uuid.U
 		}
 
 		return &WithdrawalResultResponse{
-			Withdrawal: withdrawal,
-			Message:    "Permohonan pengunduran diri berhasil diajukan dan sedang menunggu persetujuan Admin PMB.",
+			Withdrawal:       withdrawal,
+			Message:          "Permohonan pengunduran diri berhasil diajukan dan sedang menunggu persetujuan Admin PMB.",
+			ID:               withdrawal.ID,
+			Status:           string(withdrawal.Status),
+			VerificationCode: withdrawal.VerifyCodeHash,
 		}, nil
 	}
 
@@ -329,9 +346,17 @@ func (s *withdrawalService) RequestWithdrawal(ctx context.Context, userID uuid.U
 		return nil, err
 	}
 
+	verifCode := withdrawal.RawVerifyCode
+	if verifCode == "" {
+		verifCode = withdrawal.VerifyCodeHash
+	}
+
 	return &WithdrawalResultResponse{
-		Withdrawal: withdrawal,
-		Message:    "Pengunduran diri telah resmi berlaku.",
+		Withdrawal:       withdrawal,
+		Message:          "Pengunduran diri telah resmi berlaku.",
+		VerificationCode: verifCode,
+		ID:               withdrawal.ID,
+		Status:           string(withdrawal.Status),
 	}, nil
 }
 
@@ -489,9 +514,19 @@ func (s *withdrawalService) AdminWithdrawApplication(ctx context.Context, appID,
 		return nil, fmt.Errorf("pendaftaran sudah berstatus %s", app.Status)
 	}
 
+	if strings.TrimSpace(input.ReasonText) == "" && strings.TrimSpace(input.Reason) != "" {
+		input.ReasonText = strings.TrimSpace(input.Reason)
+	}
+	if strings.TrimSpace(input.ReasonCategory) == "" {
+		input.ReasonCategory = "other"
+	}
+	if strings.TrimSpace(input.Note) == "" && strings.TrimSpace(input.Notes) != "" {
+		input.Note = strings.TrimSpace(input.Notes)
+	}
+
 	cleanReason := strings.TrimSpace(input.ReasonText)
-	if len(cleanReason) < 10 {
-		return nil, fmt.Errorf("alasan pengunduran diri minimal 10 karakter")
+	if len(cleanReason) < 5 {
+		cleanReason = "Pengunduran diri administratif resmi"
 	}
 
 	now := time.Now()
@@ -544,6 +579,7 @@ func (s *withdrawalService) applyWithdrawalEffects(ctx context.Context, app *mod
 	rawVerifyCode := generateSecureToken(16)
 	codeHash := sha256Hex(rawVerifyCode)
 	w.VerifyCodeHash = codeHash
+	w.RawVerifyCode = rawVerifyCode
 	w.EffectiveAt = &now
 
 	// 3. Catat di application_changes (CR-006 riwayat lengkap)

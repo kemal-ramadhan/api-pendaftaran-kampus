@@ -59,6 +59,7 @@ type Withdrawal struct {
 	LetterNumber        string           `gorm:"type:varchar(100)" json:"letter_number,omitempty"`
 	LetterObjectKey     string           `gorm:"type:varchar(255)" json:"letter_object_key,omitempty"`
 	VerifyCodeHash      string           `gorm:"type:varchar(64);index" json:"verify_code_hash,omitempty"`
+	RawVerifyCode       string           `gorm:"-" json:"verification_code,omitempty"`
 	CreatedAt           time.Time        `json:"created_at"`
 	UpdatedAt           time.Time        `json:"updated_at"`
 }

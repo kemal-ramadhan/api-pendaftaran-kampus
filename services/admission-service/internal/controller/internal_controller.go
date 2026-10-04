@@ -56,6 +56,30 @@ func (ctrl *InternalController) UpdateStatus(c *gin.Context) {
 	})
 }
 
+func (ctrl *InternalController) PassApplication(c *gin.Context) {
+	idStr := c.Param("id")
+	appID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID pendaftaran tidak valid")
+		return
+	}
+
+	err = ctrl.svc.UpdateApplicationStatus(c.Request.Context(), appID, model.StatusPassed, "Lulus seleksi pendaftaran", nil)
+	if err != nil {
+		if errors.Is(err, repository.ErrApplicationNotFound) {
+			response.NotFound(c, "Data pendaftaran tidak ditemukan")
+			return
+		}
+		response.InternalServerError(c, "Gagal meluluskan status pendaftaran: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Status pendaftaran berhasil diubah menjadi lulus (passed)", gin.H{
+		"application_id": appID,
+		"status":         model.StatusPassed,
+	})
+}
+
 func (ctrl *InternalController) GetApplication(c *gin.Context) {
 	idStr := c.Param("id")
 	appID, err := uuid.Parse(idStr)

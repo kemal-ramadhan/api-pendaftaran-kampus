@@ -64,8 +64,8 @@ func (ctrl *WithdrawalController) RequestWithdrawal(c *gin.Context) {
 
 	res, err := ctrl.svc.RequestWithdrawal(c.Request.Context(), userID, &input)
 	if err != nil {
-		if errors.Is(err, service.ErrWithdrawalNotAllowed) {
-			response.BadRequest(c, "WITHDRAWAL_NOT_ALLOWED", err.Error())
+		if errors.Is(err, service.ErrWithdrawalNotAllowed) || strings.Contains(err.Error(), "WITHDRAWAL_NOT_ALLOWED") || strings.Contains(err.Error(), "tidak tersedia") || strings.Contains(err.Error(), "tidak berhak") {
+			response.Conflict(c, "WITHDRAWAL_NOT_ALLOWED", err.Error())
 			return
 		}
 		if errors.Is(err, service.ErrWithdrawalPending) {
@@ -84,7 +84,7 @@ func (ctrl *WithdrawalController) RequestWithdrawal(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusCreated, res.Message, res)
+	response.Success(c, http.StatusOK, res.Message, res)
 }
 
 // GetMyWithdrawal menangani GET /applications/me/withdrawal
@@ -200,11 +200,16 @@ func (ctrl *WithdrawalController) AdminApproveWithdrawal(c *gin.Context) {
 	}
 
 	var req struct {
-		Note string `json:"note"`
+		Note  string `json:"note"`
+		Notes string `json:"notes"`
 	}
 	_ = c.ShouldBindJSON(&req)
+	note := req.Note
+	if note == "" && req.Notes != "" {
+		note = req.Notes
+	}
 
-	if err := ctrl.svc.AdminApproveWithdrawal(c.Request.Context(), wID, reviewerID, req.Note); err != nil {
+	if err := ctrl.svc.AdminApproveWithdrawal(c.Request.Context(), wID, reviewerID, note); err != nil {
 		response.BadRequest(c, "BAD_REQUEST", err.Error())
 		return
 	}
@@ -228,14 +233,20 @@ func (ctrl *WithdrawalController) AdminRejectWithdrawal(c *gin.Context) {
 	}
 
 	var req struct {
-		Note string `json:"note" binding:"required"`
+		Note  string `json:"note"`
+		Notes string `json:"notes"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil || strings.TrimSpace(req.Note) == "" {
+	_ = c.ShouldBindJSON(&req)
+	note := req.Note
+	if note == "" && req.Notes != "" {
+		note = req.Notes
+	}
+	if strings.TrimSpace(note) == "" {
 		response.BadRequest(c, response.ErrCodeValidationError, "Catatan penolakan (note) wajib diisi")
 		return
 	}
 
-	if err := ctrl.svc.AdminRejectWithdrawal(c.Request.Context(), wID, reviewerID, req.Note); err != nil {
+	if err := ctrl.svc.AdminRejectWithdrawal(c.Request.Context(), wID, reviewerID, note); err != nil {
 		response.BadRequest(c, "BAD_REQUEST", err.Error())
 		return
 	}
@@ -265,7 +276,9 @@ func (ctrl *WithdrawalController) AdminWithdrawApplication(c *gin.Context) {
 	if strings.Contains(contentType, "multipart/form-data") {
 		input.ReasonCategory = c.PostForm("reason_category")
 		input.ReasonText = c.PostForm("reason_text")
+		input.Reason = c.PostForm("reason")
 		input.Note = c.PostForm("note")
+		input.Notes = c.PostForm("notes")
 
 		fileHeader, err := c.FormFile("attachment")
 		if err == nil && fileHeader != nil {
