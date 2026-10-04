@@ -3436,18 +3436,18 @@ RESP_APP_CR7_1=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applicati
     \"choice_1_id\": \"$DUMMY_PRODI_1\",
     \"choice_2_id\": \"$DUMMY_PRODI_2\"
   }")
-APP_CR7_1_ID=$(echo "$RESP_APP_CR7_1" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+APP_CR7_1_ID=$(echo "$RESP_APP_CR7_1" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 # Bayar tagihan
 sleep 1
 RESP_INV_CR7=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_CR7_1")
-INV_CR7_ID=$(echo "$RESP_INV_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+INV_CR7_ID=$(echo "$RESP_INV_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 if [ -n "$INV_CR7_ID" ]; then
   RESP_PAY_CR7=$(curl -s -X POST "${INVOICES_URL}/me/${INV_CR7_ID}/pay" \
     -H "Authorization: Bearer $TOKEN_CR7_1" \
     -H "Content-Type: application/json" \
     -d '{"method":"virtual_account"}')
-  PAY_CR7_ID=$(echo "$RESP_PAY_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  PAY_CR7_ID=$(echo "$RESP_PAY_CR7" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
   if [ -n "$PAY_CR7_ID" ]; then
     curl -s -X POST "${DEV_PAYMENTS_URL}/${PAY_CR7_ID}/simulate-paid" >/dev/null
   fi
@@ -3483,7 +3483,7 @@ CODE_SUB_WITH=$(echo "$RESP_SUB_WITH" | tail -n1)
 BODY_SUB_WITH=$(echo "$RESP_SUB_WITH" | sed '$d')
 assert_status "Pengajuan pengunduran diri status verified (langsung withdrawn)" "200" "$CODE_SUB_WITH" "$BODY_SUB_WITH"
 
-VERIF_CODE=$(echo "$BODY_SUB_WITH" | grep -o '"verification_code":"[^"]*"' | cut -d'"' -f4)
+VERIF_CODE=$(echo "$BODY_SUB_WITH" | grep -o '"verification_code":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 # Calon mahasiswa mengunduh surat resmi PDF
 RESP_HEAD_PDF=$(curl -s -I -X GET "${ADMISSION_URL}/applications/me/withdrawal/letter" \
@@ -3522,7 +3522,7 @@ RESP_APP_CR7_2=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applicati
     \"choice_1_id\": \"$DUMMY_PRODI_1\",
     \"choice_2_id\": \"$DUMMY_PRODI_2\"
   }")
-APP_CR7_2_ID=$(echo "$RESP_APP_CR7_2" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+APP_CR7_2_ID=$(echo "$RESP_APP_CR7_2" | sed '$d' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 # Set status menjadi passed melalui internal / admin selection
 curl -s -X POST "${ADMISSION_DIRECT_URL}/internal/applications/${APP_CR7_2_ID}/passed" \
@@ -3545,7 +3545,7 @@ CODE_WITH_PASSED=$(echo "$RESP_WITH_PASSED" | tail -n1)
 BODY_WITH_PASSED=$(echo "$RESP_WITH_PASSED" | sed '$d')
 assert_status "Pengajuan pengunduran diri status passed (berstatus pending)" "200" "$CODE_WITH_PASSED" "$BODY_WITH_PASSED"
 
-WITHDRAWAL_CR7_2_ID=$(echo "$BODY_WITH_PASSED" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+WITHDRAWAL_CR7_2_ID=$(echo "$BODY_WITH_PASSED" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 # Admin PMB melihat daftar permohonan pengunduran diri
 RESP_LIST_WITH=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/withdrawals?status=pending" \
@@ -3599,7 +3599,7 @@ fi
 RESP_REAUTH=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/login" \
   -H "Content-Type: application/json" \
   -d "{ \"email\": \"$TEST_EMAIL\", \"password\": \"$TEST_PASSWORD\" }")
-NEW_TOKEN_AFTER_VOID=$(echo "$RESP_REAUTH" | sed '$d' | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+NEW_TOKEN_AFTER_VOID=$(echo "$RESP_REAUTH" | sed '$d' | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 if [ -n "$NEW_TOKEN_AFTER_VOID" ]; then
   RESP_CHECK_ROLES_VOID=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/me" \
@@ -3662,7 +3662,7 @@ RESP_APP_CR7_4=$(curl -s -X POST "${ADMISSION_URL}/applications" \
     \"choice_1_id\": \"$DUMMY_PRODI_1\",
     \"choice_2_id\": \"$DUMMY_PRODI_2\"
   }")
-APP_CR7_4_ID=$(echo "$RESP_APP_CR7_4" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+APP_CR7_4_ID=$(echo "$RESP_APP_CR7_4" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 curl -s -X POST "${ADMISSION_DIRECT_URL}/internal/applications/${APP_CR7_4_ID}/status" \
   -H "X-Internal-Token: secret-internal-token" \
   -H "Content-Type: application/json" \
@@ -3767,7 +3767,7 @@ curl -s -X POST "${GATEWAY_URL}/admin/users" \
 RESP_LOGIN_DEKAN=$(curl -s -X POST "${GATEWAY_URL}/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$DEKAN_EMAIL\",\"password\":\"$DEKAN_PASS\"}")
-DEKAN_TOKEN=$(echo "$RESP_LOGIN_DEKAN" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+DEKAN_TOKEN=$(echo "$RESP_LOGIN_DEKAN" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 PRODI_EMAIL="prodi_ti_${RAND_ID}@univ.ac.id"
 PRODI_PASS="ProdiPass123!"
@@ -3791,7 +3791,7 @@ curl -s -X POST "${GATEWAY_URL}/admin/users" \
 RESP_LOGIN_PRODI=$(curl -s -X POST "${GATEWAY_URL}/login" \
   -H "Content-Type: application/json" \
   -d "{\"email\":\"$PRODI_EMAIL\",\"password\":\"$PRODI_PASS\"}")
-PRODI_TOKEN=$(echo "$RESP_LOGIN_PRODI" | grep -o '"access_token":"[^"]*"' | cut -d'"' -f4)
+PRODI_TOKEN=$(echo "$RESP_LOGIN_PRODI" | grep -o '"access_token":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 RESP_PRODI_OVERVIEW=$(curl -s -w "\n%{http_code}" -X GET "${ADMISSION_URL}/admin/overview" \
   -H "Authorization: Bearer $PRODI_TOKEN")
@@ -3836,11 +3836,11 @@ RESP_APP_V2=$(curl -s -w "\n%{http_code}" -X POST "${ADMISSION_URL}/applications
 CODE_APP_V2=$(echo "$RESP_APP_V2" | tail -n1)
 BODY_APP_V2=$(echo "$RESP_APP_V2" | sed '$d')
 assert_status "Camaba v2 membuat permohonan pendaftaran" "201" "$CODE_APP_V2" "$BODY_APP_V2"
-APP_V2_ID=$(echo "$BODY_APP_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+APP_V2_ID=$(echo "$BODY_APP_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 sleep 1
 RESP_INV_V2=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_V2")
-INV_V2_ID=$(echo "$RESP_INV_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+INV_V2_ID=$(echo "$RESP_INV_V2" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 if [ -n "$INV_V2_ID" ]; then
   curl -s -X POST "${DEV_PAYMENTS_URL}/pay-mock" \
@@ -3903,7 +3903,7 @@ RESP_APP_MAN=$(curl -s -X POST "${ADMISSION_URL}/applications" \
   }")
 sleep 1
 RESP_INV_MAN=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $TOKEN_MAN")
-INV_MAN_ID=$(echo "$RESP_INV_MAN" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+INV_MAN_ID=$(echo "$RESP_INV_MAN" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 
 UNIQUE_REF="REF-MUTASI-${RAND_ID}"
 RESP_MAN_CONFIRM=$(curl -s -w "\n%{http_code}" -X POST "${FINANCE_ADMIN_URL}/invoices/${INV_MAN_ID}/manual-confirm" \
@@ -4099,9 +4099,9 @@ fi
 # 139. [5.2.11] Master Data: Tutup pendaftaran prodi -> hilang dari options, pendaftaran ditolak PROGRAM_CLOSED
 log_info "139. [CR-009/5.2.11] Menguji master data: tutup prodi -> hilang dari options & tolak PROGRAM_CLOSED..."
 RESP_OPTS_BEFORE=$(curl -s -X GET "${ADMISSION_URL}/options")
-PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -B1 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -B1 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 if [ -z "$PRODI_TI_UUID" ]; then
-  PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -A5 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4)
+  PRODI_TI_UUID=$(echo "$RESP_OPTS_BEFORE" | grep -A5 '"code":"TI"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
 fi
 if [ -z "$PRODI_TI_UUID" ]; then
   PRODI_TI_UUID="52d7e5d8-c715-3bd4-9a4f-dfa2cf9ee5d8"
