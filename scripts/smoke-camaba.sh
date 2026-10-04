@@ -157,9 +157,13 @@ pass "Pendaftaran berbayar dibuat: ID ${APP1_ID}, status: ${APP1_STATUS}"
 
 # 6. Bayar Tagihan Pendaftaran Reguler
 log "6. Membayar tagihan formulir reguler..."
-sleep 1
-INV_RESP=$(curl -s -H "${AUTH_HEADER}" "${INVOICES_URL}/me")
-INV_ID=$(echo "${INV_RESP}" | grep -o '"id":"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+INV_ID=""
+for i in {1..8}; do
+    sleep 1
+    INV_RESP=$(curl -s -H "${AUTH_HEADER}" "${INVOICES_URL}/me")
+    INV_ID=$(echo "${INV_RESP}" | grep -o '"id":"[^"]*"' | head -n 1 | cut -d'"' -f4 || true)
+    if [ -n "${INV_ID}" ]; then break; fi
+done
 if [ -z "${INV_ID}" ]; then
     fail "Invoice untuk pendaftaran ${APP1_ID} tidak ditemukan: ${INV_RESP}"
 fi

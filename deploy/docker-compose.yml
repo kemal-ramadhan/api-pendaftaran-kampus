@@ -14,9 +14,10 @@ services:
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-pmb_user} -d ${DB_NAME:-pmb_auth}"]
-      interval: 5s
+      interval: 3s
       timeout: 5s
-      retries: 5
+      retries: 20
+      start_period: 30s
     networks:
       - pmb-network
 

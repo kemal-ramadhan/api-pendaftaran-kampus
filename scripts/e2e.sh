@@ -2573,14 +2573,14 @@ fi
 if [ -z "$REREG_INVOICE_ID" ]; then
   log_info "Mencari tagihan daftar ulang via GET ${INVOICES_URL}/me..."
   MY_INVS=$(curl -s -X GET "${INVOICES_URL}/me" -H "Authorization: Bearer $ACCESS_TOKEN")
-  REREG_INVOICE_ID=$(echo "$MY_INVS" | grep -o '"id":"[^"]*"' | tail -n1 | cut -d'"' -f4)
+  REREG_INVOICE_ID=$(echo "$MY_INVS" | grep -B 2 -A 5 '"fee_type":"reregistration"' | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 || true)
 fi
 
 if [ -z "$REREG_INVOICE_ID" ]; then
   # Fallback buat invoice daftar ulang via internal API jika belum ada
   log_info "Membuat invoice daftar ulang via internal API untuk pengujian..."
   REREG_RESP=$(curl -s -X POST "${FINANCE_DIRECT_URL}/internal/invoices" \
-    -H "X-Internal-Token: internal-secret-token" \
+    -H "X-Internal-Token: ${INTERNAL_TOKEN:-secret-internal-token}" \
     -H "Content-Type: application/json" \
     -d "{
       \"user_id\": \"$USER_ID\",
