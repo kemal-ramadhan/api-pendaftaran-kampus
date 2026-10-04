@@ -689,19 +689,27 @@ func (s *selectionService) fetchInvoiceByApplication(ctx context.Context, appID 
 	if s.financeCli == nil {
 		return nil, nil
 	}
-	var invoices []financeInvoiceResponse
+	var single financeInvoiceResponse
 	err := s.financeCli.Get(ctx, "/internal/invoices", map[string]string{
 		"application_id": appID.String(),
+		"fee_type":       "reregistration",
+	}, &single)
+	if err == nil && single.ID != uuid.Nil {
+		return &single, nil
+	}
+	var invoices []financeInvoiceResponse
+	errList := s.financeCli.Get(ctx, "/internal/invoices", map[string]string{
+		"application_id": appID.String(),
 	}, &invoices)
-	if err != nil || len(invoices) == 0 {
-		return nil, err
-	}
-	for i := range invoices {
-		if invoices[i].FeeType == "reregistration" {
-			return &invoices[i], nil
+	if errList == nil && len(invoices) > 0 {
+		for i := range invoices {
+			if invoices[i].FeeType == "reregistration" {
+				return &invoices[i], nil
+			}
 		}
+		return &invoices[0], nil
 	}
-	return &invoices[0], nil
+	return nil, err
 }
 
 func (s *selectionService) sendAnnouncementNotification(ctx context.Context, userID uuid.UUID, decision, programCode string) error {

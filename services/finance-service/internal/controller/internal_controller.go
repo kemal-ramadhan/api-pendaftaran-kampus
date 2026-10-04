@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/service"
 )
 
@@ -82,6 +83,7 @@ func (ctrl *InternalController) CreateInvoice(c *gin.Context) {
 
 func (ctrl *InternalController) GetInvoices(c *gin.Context) {
 	appIDStr := c.Query("application_id")
+	feeType := c.Query("fee_type")
 	if appIDStr == "" {
 		response.BadRequest(c, "MISSING_PARAM", "Parameter application_id wajib diisi")
 		return
@@ -93,7 +95,12 @@ func (ctrl *InternalController) GetInvoices(c *gin.Context) {
 		return
 	}
 
-	inv, err := ctrl.svc.GetInvoiceByApplicationID(c.Request.Context(), appID)
+	var inv *model.Invoice
+	if feeType != "" {
+		inv, err = ctrl.svc.GetInvoiceByApplicationIDAndFeeType(c.Request.Context(), appID, feeType)
+	} else {
+		inv, err = ctrl.svc.GetInvoiceByApplicationID(c.Request.Context(), appID)
+	}
 	if err != nil {
 		response.NotFound(c, "Invoice untuk pendaftaran tersebut tidak ditemukan")
 		return

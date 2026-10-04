@@ -78,6 +78,7 @@ type InvoiceService interface {
 	GetInvoiceDetail(ctx context.Context, id uuid.UUID, requesterID uuid.UUID, role string) (*model.Invoice, error)
 	GetInvoiceDetailDTO(ctx context.Context, id uuid.UUID, requesterID uuid.UUID, role string) (*InvoiceDetailResponse, error)
 	GetInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Invoice, error)
+	GetInvoiceByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error)
 	CancelInvoice(ctx context.Context, invoiceID uuid.UUID) error
 	CancelInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) error
 	RepriceInvoice(ctx context.Context, invoiceID uuid.UUID, newAmount int64) error
@@ -110,9 +111,9 @@ func (s *invoiceService) CreateInvoice(ctx context.Context, req *CreateInvoiceRe
 		return nil, fmt.Errorf("nominal tagihan harus lebih besar dari 0")
 	}
 
-	// Cek apakah invoice untuk pendaftaran ini sudah ada
+	// Cek apakah invoice untuk pendaftaran ini dengan jenis biaya yang sama sudah ada
 	if req.ApplicationID != nil {
-		existing, err := s.invoiceRepo.FindByApplicationID(ctx, *req.ApplicationID)
+		existing, err := s.invoiceRepo.FindByApplicationIDAndFeeType(ctx, *req.ApplicationID, feeType)
 		if err == nil && existing != nil {
 			return existing, nil
 		}
@@ -221,6 +222,10 @@ func (s *invoiceService) GetInvoiceDetail(ctx context.Context, id uuid.UUID, req
 
 func (s *invoiceService) GetInvoiceByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Invoice, error) {
 	return s.invoiceRepo.FindByApplicationID(ctx, appID)
+}
+
+func (s *invoiceService) GetInvoiceByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error) {
+	return s.invoiceRepo.FindByApplicationIDAndFeeType(ctx, appID, feeType)
 }
 
 func (s *invoiceService) GetInvoiceDetailDTO(ctx context.Context, id uuid.UUID, requesterID uuid.UUID, role string) (*InvoiceDetailResponse, error) {

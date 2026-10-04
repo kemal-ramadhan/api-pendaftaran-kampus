@@ -22,6 +22,7 @@ type InvoiceRepository interface {
 	FindByInvoiceNumber(ctx context.Context, invNo string) (*model.Invoice, error)
 	FindByUserID(ctx context.Context, userID uuid.UUID) ([]model.Invoice, error)
 	FindByApplicationID(ctx context.Context, appID uuid.UUID) (*model.Invoice, error)
+	FindByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error)
 	GenerateInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error)
 	GenerateAdjustmentInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error)
 	UpdateStatus(ctx context.Context, id uuid.UUID, status model.InvoiceStatus, paidAmount int64) error
@@ -92,6 +93,21 @@ func (r *invoiceRepository) FindByApplicationID(ctx context.Context, appID uuid.
 	err := r.db.WithContext(ctx).
 		Preload("Payments.Receipt").
 		Where("application_id = ?", appID).
+		First(&inv).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrInvoiceNotFound
+		}
+		return nil, err
+	}
+	return &inv, nil
+}
+
+func (r *invoiceRepository) FindByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error) {
+	var inv model.Invoice
+	err := r.db.WithContext(ctx).
+		Preload("Payments.Receipt").
+		Where("application_id = ? AND fee_type = ?", appID, feeType).
 		First(&inv).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

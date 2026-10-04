@@ -59,6 +59,15 @@ func (m *mockInvoiceRepo) FindByApplicationID(ctx context.Context, appID uuid.UU
 	return nil, repository.ErrInvoiceNotFound
 }
 
+func (m *mockInvoiceRepo) FindByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error) {
+	for _, inv := range m.invoices {
+		if inv.ApplicationID != nil && *inv.ApplicationID == appID && inv.FeeType == feeType {
+			return inv, nil
+		}
+	}
+	return nil, repository.ErrInvoiceNotFound
+}
+
 func (m *mockInvoiceRepo) FindByInvoiceNumber(ctx context.Context, invoiceNumber string) (*model.Invoice, error) {
 	for _, inv := range m.invoices {
 		if inv.InvoiceNumber == invoiceNumber {

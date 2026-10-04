@@ -177,6 +177,15 @@ func (m *mockInvoiceRepoForInstallment) FindByApplicationID(ctx context.Context,
 	return nil, repository.ErrInvoiceNotFound
 }
 
+func (m *mockInvoiceRepoForInstallment) FindByApplicationIDAndFeeType(ctx context.Context, appID uuid.UUID, feeType string) (*model.Invoice, error) {
+	for _, inv := range m.invoices {
+		if inv.ApplicationID != nil && *inv.ApplicationID == appID && inv.FeeType == feeType {
+			return inv, nil
+		}
+	}
+	return nil, repository.ErrInvoiceNotFound
+}
+
 func (m *mockInvoiceRepoForInstallment) GenerateInvoiceNumber(ctx context.Context, tx *gorm.DB) (string, error) {
 	return "INV-TEST-001", nil
 }
