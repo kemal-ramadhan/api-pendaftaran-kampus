@@ -137,7 +137,6 @@ MHS_EMAIL="calon_mhs_${RAND_ID}@example.com"
 MHS_PASSWORD="Password123!"
 MHS_NAME="Calon Mahasiswa E2E"
 MHS_PHONE="081234567890"
-MHS_NIK="3201$(printf "%012d" "${RANDOM}${RANDOM}")"
 TEST_EMAIL="${TEST_EMAIL:-$MHS_EMAIL}"
 TEST_PASSWORD="${TEST_PASSWORD:-$MHS_PASSWORD}"
 
@@ -910,7 +909,7 @@ RESP=$(curl -s -w "\n%{http_code}" -X PUT "${IDENTITY_URL}/me/profile" \
   -H "Content-Type: application/json" \
   -d '{
     "full_name": "Ahmad Syafiq E2E",
-    "nik": "$MHS_NIK",
+    "nik": "3201015505050002",
     "birth_place": "Bandung",
     "birth_date": "2005-05-15",
     "gender": "L",
@@ -3244,27 +3243,23 @@ e2e_register_and_login() {
   echo "$tok"
 }
 
+NIK_COUNTER=1000
 e2e_fill_biodata() {
   local token="$1"
-  local u_nik="3201$(printf "%012d" "${RANDOM}${RANDOM}")"
+  NIK_COUNTER=$((NIK_COUNTER + 1))
+  local u_nik="320101010101${NIK_COUNTER}"
   curl -s -X PUT "${IDENTITY_URL}/me/profile" \
     -H "Authorization: Bearer $token" \
     -H "Content-Type: application/json" \
     -d "{
+      \"full_name\": \"Calon Mahasiswa CR\",
       \"nik\": \"$u_nik\",
       \"birth_place\": \"Jakarta\",
       \"birth_date\": \"2005-01-01\",
-      \"gender\": \"male\",
-      \"religion\": \"islam\",
-      \"address\": \"Jl. Pengujian E2E No. 99\",
-      \"province\": \"DKI Jakarta\",
-      \"city\": \"Jakarta Pusat\",
-      \"postal_code\": \"10110\",
-      \"parent_name\": \"Wali Uji\",
-      \"parent_phone\": \"081234567800\",
-      \"school_name\": \"SMA Uji Coba\",
-      \"school_major\": \"IPA\",
-      \"graduation_year\": 2024
+      \"gender\": \"L\",
+      \"religion\": \"Islam\",
+      \"nationality\": \"WNI\",
+      \"phone\": \"081234567800\"
     }" >/dev/null
 }
 
