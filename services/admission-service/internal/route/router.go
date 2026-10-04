@@ -133,13 +133,16 @@ func SetupRouter(
 
 				// CR-006 Admin (Riwayat & Pindah Jalur - admission.path_change.manage)
 				adminGroup.GET("/path-change-requests", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminListPathChangeRequests)
+				adminGroup.GET("/path-changes/pending", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminListPathChangeRequests)
 				adminGroup.POST("/path-change-requests/:id/approve", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminApprovePathChangeRequest)
 				adminGroup.POST("/path-change-requests/:id/reject", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminRejectPathChangeRequest)
 				adminGroup.POST("/applications/:id/move", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminMoveApplication)
+				adminGroup.POST("/applications/:id/move-path", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminMoveApplication)
 				adminGroup.POST("/path-changes/direct", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminMoveApplication)
 				adminGroup.POST("/path-changes/:id/review", rbac.RequirePermission("admission.path_change.manage"), changeCtrl.AdminApprovePathChangeRequest)
 				adminGroup.GET("/applications/:id/changes", rbac.RequirePermission("admission.path_change.manage", "admission.document.verify"), changeCtrl.AdminGetApplicationChanges)
 				adminGroup.GET("/path-changes/export", rbac.RequirePermission("report.export", "admission.path_change.manage"), changeCtrl.AdminExportPathChanges)
+				adminGroup.POST("/applications/:id/verify-docs", rbac.RequirePermission("admission.document.verify"), adminCtrl.VerifyDocuments)
 
 				// CR-007 Admin (Pengunduran Diri - admission.withdrawal.manage)
 				adminGroup.GET("/withdrawals", rbac.RequirePermission("admission.withdrawal.manage"), withdrawalCtrl.AdminListWithdrawals)

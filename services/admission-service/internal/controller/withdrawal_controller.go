@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/service"
 )
@@ -21,16 +22,20 @@ func NewWithdrawalController(svc service.WithdrawalService) *WithdrawalControlle
 	return &WithdrawalController{svc: svc}
 }
 
+func (ctrl *WithdrawalController) getUserID(c *gin.Context) (uuid.UUID, error) {
+	if val, exists := c.Get("user_id"); exists {
+		if idStr, ok := val.(string); ok && idStr != "" {
+			return uuid.Parse(idStr)
+		}
+	}
+	return gatewayauth.GetUserID(c)
+}
+
 // GetEligibility menangani GET /applications/me/withdrawal/eligibility
 func (ctrl *WithdrawalController) GetEligibility(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -45,14 +50,9 @@ func (ctrl *WithdrawalController) GetEligibility(c *gin.Context) {
 
 // RequestWithdrawal menangani POST /applications/me/withdrawal
 func (ctrl *WithdrawalController) RequestWithdrawal(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -89,14 +89,9 @@ func (ctrl *WithdrawalController) RequestWithdrawal(c *gin.Context) {
 
 // GetMyWithdrawal menangani GET /applications/me/withdrawal
 func (ctrl *WithdrawalController) GetMyWithdrawal(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -111,14 +106,9 @@ func (ctrl *WithdrawalController) GetMyWithdrawal(c *gin.Context) {
 
 // CancelPendingWithdrawal menangani DELETE /applications/me/withdrawal/pending
 func (ctrl *WithdrawalController) CancelPendingWithdrawal(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -132,14 +122,9 @@ func (ctrl *WithdrawalController) CancelPendingWithdrawal(c *gin.Context) {
 
 // GetWithdrawalLetterPDF menangani GET /applications/me/withdrawal/letter
 func (ctrl *WithdrawalController) GetWithdrawalLetterPDF(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -208,12 +193,11 @@ func (ctrl *WithdrawalController) AdminApproveWithdrawal(c *gin.Context) {
 		return
 	}
 
-	reviewerIDVal, exists := c.Get("user_id")
-	if !exists {
+	reviewerID, err := ctrl.getUserID(c)
+	if err != nil {
 		response.Unauthorized(c, "UNAUTHORIZED", "Identitas admin tidak ditemukan")
 		return
 	}
-	reviewerID, _ := uuid.Parse(reviewerIDVal.(string))
 
 	var req struct {
 		Note string `json:"note"`
@@ -237,12 +221,11 @@ func (ctrl *WithdrawalController) AdminRejectWithdrawal(c *gin.Context) {
 		return
 	}
 
-	reviewerIDVal, exists := c.Get("user_id")
-	if !exists {
+	reviewerID, err := ctrl.getUserID(c)
+	if err != nil {
 		response.Unauthorized(c, "UNAUTHORIZED", "Identitas admin tidak ditemukan")
 		return
 	}
-	reviewerID, _ := uuid.Parse(reviewerIDVal.(string))
 
 	var req struct {
 		Note string `json:"note" binding:"required"`
@@ -269,12 +252,11 @@ func (ctrl *WithdrawalController) AdminWithdrawApplication(c *gin.Context) {
 		return
 	}
 
-	adminIDVal, exists := c.Get("user_id")
-	if !exists {
+	adminID, err := ctrl.getUserID(c)
+	if err != nil {
 		response.Unauthorized(c, "UNAUTHORIZED", "Identitas admin tidak ditemukan")
 		return
 	}
-	adminID, _ := uuid.Parse(adminIDVal.(string))
 
 	var input service.AdminWithdrawInput
 	var attachmentKey string

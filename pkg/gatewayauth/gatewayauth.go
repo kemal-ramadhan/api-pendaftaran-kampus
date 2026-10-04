@@ -75,6 +75,16 @@ func Middleware(sharedSecret string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Jika sharedSecret tidak diset, abaikan verifikasi (hanya untuk development lokal tanpa gateway)
 		if sharedSecret == "" {
+			userID := c.GetHeader(HeaderUserID)
+			if userID != "" {
+				c.Set("user_id", userID)
+			}
+			if email := c.GetHeader(HeaderUserEmail); email != "" {
+				c.Set("user_email", email)
+			}
+			if roles := c.GetHeader(HeaderUserRoles); roles != "" {
+				c.Set("user_roles", roles)
+			}
 			c.Next()
 			return
 		}
@@ -88,6 +98,16 @@ func Middleware(sharedSecret string) gin.HandlerFunc {
 			response.Error(c, http.StatusUnauthorized, response.ErrCodeGatewaySignatureInvalid, "Akses ditolak: signature gateway tidak valid atau kedaluwarsa", nil)
 			c.Abort()
 			return
+		}
+
+		if userID != "" {
+			c.Set("user_id", userID)
+		}
+		if email := c.GetHeader(HeaderUserEmail); email != "" {
+			c.Set("user_email", email)
+		}
+		if roles := c.GetHeader(HeaderUserRoles); roles != "" {
+			c.Set("user_roles", roles)
 		}
 
 		c.Next()

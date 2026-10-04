@@ -33,11 +33,13 @@ type PathChangeInput struct {
 }
 
 type AdminMoveApplicationInput struct {
-	PeriodID      *uint      `json:"period_id,omitempty"`
-	PathID        uint       `json:"path_id" binding:"required"`
-	FirstChoiceID uuid.UUID  `json:"first_choice_program" binding:"required"`
+	PeriodID       *uint      `json:"period_id,omitempty"`
+	PathID         uint       `json:"path_id"`
+	TargetPathID   uint       `json:"target_path_id"`
+	FirstChoiceID  uuid.UUID  `json:"first_choice_program"`
 	SecondChoiceID *uuid.UUID `json:"second_choice_program,omitempty"`
-	Reason        string     `json:"reason" binding:"required"`
+	Action         string     `json:"action,omitempty"`
+	Reason         string     `json:"reason"`
 }
 
 type PathChangeOptionsResponse struct {
@@ -629,6 +631,12 @@ func (s *changeService) AdminRejectPathChangeRequest(ctx context.Context, reques
 
 // 8. AdminMoveApplication: Pindah langsung oleh admin
 func (s *changeService) AdminMoveApplication(ctx context.Context, appID, actorID uuid.UUID, input *AdminMoveApplicationInput) error {
+	if input.PathID == 0 && input.TargetPathID > 0 {
+		input.PathID = input.TargetPathID
+	}
+	if input.Reason == "" && input.Action != "" {
+		input.Reason = fmt.Sprintf("Aksi %s oleh administrator", input.Action)
+	}
 	input.Reason = strings.TrimSpace(input.Reason)
 	if input.Reason == "" {
 		return errors.New("alasan pemindahan oleh admin wajib diisi")
@@ -637,6 +645,13 @@ func (s *changeService) AdminMoveApplication(ctx context.Context, appID, actorID
 	app, err := s.appRepo.FindByID(ctx, appID)
 	if err != nil || app == nil {
 		return errors.New("pendaftaran tidak ditemukan")
+	}
+
+	if input.FirstChoiceID == uuid.Nil {
+		input.FirstChoiceID = app.Choice1ID
+	}
+	if input.SecondChoiceID == nil {
+		input.SecondChoiceID = app.Choice2ID
 	}
 
 	switch app.Status {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/admission-service/internal/service"
 )
@@ -20,16 +21,20 @@ func NewChangeController(svc service.ChangeService) *ChangeController {
 	return &ChangeController{svc: svc}
 }
 
+func (ctrl *ChangeController) getUserID(c *gin.Context) (uuid.UUID, error) {
+	if val, exists := c.Get("user_id"); exists {
+		if idStr, ok := val.(string); ok && idStr != "" {
+			return uuid.Parse(idStr)
+		}
+	}
+	return gatewayauth.GetUserID(c)
+}
+
 // GetMyChanges menangani GET /applications/me/changes
 func (ctrl *ChangeController) GetMyChanges(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -54,14 +59,9 @@ func (ctrl *ChangeController) GetMyChanges(c *gin.Context) {
 
 // GetPathChangeOptions menangani GET /applications/me/path-change/options
 func (ctrl *ChangeController) GetPathChangeOptions(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -76,14 +76,9 @@ func (ctrl *ChangeController) GetPathChangeOptions(c *gin.Context) {
 
 // RequestOrApplyPathChange menangani POST /applications/me/path-change
 func (ctrl *ChangeController) RequestOrApplyPathChange(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -128,14 +123,9 @@ func (ctrl *ChangeController) RequestOrApplyPathChange(c *gin.Context) {
 
 // CancelPendingPathChange menangani DELETE /applications/me/path-change/pending
 func (ctrl *ChangeController) CancelPendingPathChange(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -149,14 +139,9 @@ func (ctrl *ChangeController) CancelPendingPathChange(c *gin.Context) {
 
 // GetDashboard menangani GET /applications/me/dashboard
 func (ctrl *ChangeController) GetDashboard(c *gin.Context) {
-	userIDVal, exists := c.Get("user_id")
-	if !exists {
-		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
-		return
-	}
-	userID, err := uuid.Parse(userIDVal.(string))
+	userID, err := ctrl.getUserID(c)
 	if err != nil {
-		response.Unauthorized(c, "UNAUTHORIZED", "Format ID pengguna tidak valid")
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
 		return
 	}
 
@@ -172,6 +157,9 @@ func (ctrl *ChangeController) GetDashboard(c *gin.Context) {
 // AdminListPathChangeRequests menangani GET /admin/path-change-requests
 func (ctrl *ChangeController) AdminListPathChangeRequests(c *gin.Context) {
 	status := c.Query("status")
+	if status == "" && strings.Contains(c.Request.URL.Path, "pending") {
+		status = "pending"
+	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "20"))
 	offset, _ := strconv.Atoi(c.DefaultQuery("offset", "0"))
 
@@ -199,8 +187,7 @@ func (ctrl *ChangeController) AdminApprovePathChangeRequest(c *gin.Context) {
 		return
 	}
 
-	reviewerIDVal, _ := c.Get("user_id")
-	reviewerID, _ := uuid.Parse(reviewerIDVal.(string))
+	reviewerID, _ := ctrl.getUserID(c)
 
 	var body struct {
 		Note string `json:"note"`
@@ -224,8 +211,7 @@ func (ctrl *ChangeController) AdminRejectPathChangeRequest(c *gin.Context) {
 		return
 	}
 
-	reviewerIDVal, _ := c.Get("user_id")
-	reviewerID, _ := uuid.Parse(reviewerIDVal.(string))
+	reviewerID, _ := ctrl.getUserID(c)
 
 	var body struct {
 		Note string `json:"note" binding:"required"`
@@ -252,8 +238,7 @@ func (ctrl *ChangeController) AdminMoveApplication(c *gin.Context) {
 		return
 	}
 
-	actorIDVal, _ := c.Get("user_id")
-	actorID, _ := uuid.Parse(actorIDVal.(string))
+	actorID, _ := ctrl.getUserID(c)
 
 	var input service.AdminMoveApplicationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
