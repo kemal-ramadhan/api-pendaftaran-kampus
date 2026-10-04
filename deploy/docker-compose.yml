@@ -64,7 +64,8 @@ services:
       test: ["CMD-SHELL", "mc ready local || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 10
+      start_period: 20s
     networks:
       - pmb-network
 
@@ -134,7 +135,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -195,7 +197,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8000/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -232,7 +235,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8083/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -277,7 +281,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8084/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -320,7 +325,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8085/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -365,7 +371,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8087/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -402,7 +409,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8089/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -441,7 +449,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8090/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -481,7 +490,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8091/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -521,7 +531,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8092/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -550,7 +561,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8081/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
@@ -590,7 +602,8 @@ services:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8082/health || exit 1"]
       interval: 5s
       timeout: 3s
-      retries: 5
+      retries: 15
+      start_period: 30s
     networks:
       - pmb-network
 
