@@ -28,9 +28,9 @@ Pastikan variabel lingkungan pada `.env` server produksi terpasang dengan nilai 
 ```env
 PAYMENT_PROVIDER=duitku
 DUITKU_ENV=production
-DUITKU_MERCHANT_CODE=DXXXX                # Kode merchant resmi dari Duitku
-DUITKU_API_KEY=xxxxxxxxxxxxxxxxxxxxxxxx  # Production API Key
-DUITKU_EXPIRY_MINUTES=1440               # Batas waktu tagihan VA (default 24 jam)
+DUITKU_MERCHANT_CODE=DXXXX                  # Kode merchant resmi dari Duitku
+DUITKU_API_KEY=<kunci_api_resmi_duitku>     # Production API Key
+DUITKU_EXPIRY_MINUTES=1440                 # Batas waktu tagihan VA (default 24 jam)
 DUITKU_CALLBACK_URL=https://pmb.kampus.ac.id/api/v1/finance/webhooks/payments/duitku
 DUITKU_RETURN_URL=https://pmb.kampus.ac.id/dashboard/pembayaran/status
 DUITKU_CALLBACK_IP_ALLOWLIST=             # Daftar IP resmi Duitku jika menggunakan filtering IP
