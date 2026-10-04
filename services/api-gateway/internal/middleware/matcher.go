@@ -55,9 +55,13 @@ func MatchRouteMiddleware(rc *config.RoutesConfig) gin.HandlerFunc {
 			}
 
 			targetPattern := fmt.Sprintf("%s %s", reqMethod, remainder)
+			targetPatternLower := strings.ToLower(targetPattern)
 			for _, pub := range matched.PublicPaths {
 				cleanPub := strings.TrimSpace(pub)
-				if strings.EqualFold(cleanPub, targetPattern) {
+				cleanPubLower := strings.ToLower(cleanPub)
+				if strings.EqualFold(cleanPub, targetPattern) ||
+					strings.HasPrefix(targetPatternLower, cleanPubLower+"/") ||
+					(strings.HasSuffix(cleanPubLower, "/*") && strings.HasPrefix(targetPatternLower, strings.TrimSuffix(cleanPubLower, "/*"))) {
 					isPublic = true
 					break
 				}

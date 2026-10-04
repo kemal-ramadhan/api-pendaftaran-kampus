@@ -104,6 +104,7 @@ routes:
       - GET /periods/active
       - GET /paths
       - GET /withdrawals/verify
+      - GET /withdrawals/verify/*
     max_body: 10MB
   - prefix: /api/v1/finance/webhooks/payments
     service: finance
