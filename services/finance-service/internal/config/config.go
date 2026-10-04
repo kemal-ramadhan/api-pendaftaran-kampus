@@ -22,7 +22,7 @@ type Config struct {
 	AdmissionServiceURL    string
 	NotificationServiceURL string
 	PaymentWebhookSecret   string
-	PaymentProvider        string // mock | duitku
+	PaymentProvider           string // mock | duitku
 	DuitkuEnv                 string // sandbox | production
 	DuitkuMerchantCode        string
 	DuitkuApiKey              string
@@ -34,6 +34,8 @@ type Config struct {
 	DuitkuWebAPIBaseURL       string
 	DuitkuReconcileInterval   string
 	DuitkuCallbackIPAllowlist string
+	AllowSandboxInProduction  bool
+	ReconciliationIntervalMinutes int
 	MinioEndpoint             string
 	MinioAccessKey            string
 	MinioSecretKey            string
@@ -72,19 +74,36 @@ func LoadConfig() (*Config, error) {
 		DuitkuExpiryMinutes:       getEnvAsInt("DUITKU_EXPIRY_MINUTES", 1440),
 		DuitkuCallbackURL:         getEnv("DUITKU_CALLBACK_URL", ""),
 		DuitkuReturnURL:           getEnv("DUITKU_RETURN_URL", ""),
-		DuitkuHTTPTimeout:         getEnv("DUITKU_HTTP_TIMEOUT", "15s"),
-		DuitkuPOPBaseURL:          getEnv("DUITKU_POP_BASE_URL", defaultPOP),
-		DuitkuWebAPIBaseURL:       getEnv("DUITKU_WEBAPI_BASE_URL", defaultWebAPI),
-		DuitkuReconcileInterval:   getEnv("DUITKU_RECONCILE_INTERVAL", "10m"),
-		DuitkuCallbackIPAllowlist: getEnv("DUITKU_CALLBACK_IP_ALLOWLIST", ""),
-		MinioEndpoint:             getEnv("MINIO_ENDPOINT", "localhost:9000"),
-		MinioAccessKey:            getEnv("MINIO_ACCESS_KEY", "minioadmin"),
-		MinioSecretKey:            getEnv("MINIO_SECRET_KEY", "minioadmin"),
-		MinioUseSSL:               getEnvAsBool("MINIO_USE_SSL", false),
-		MinioPublicEndpoint:       getEnv("MINIO_PUBLIC_ENDPOINT", ""),
+		DuitkuHTTPTimeout:             getEnv("DUITKU_HTTP_TIMEOUT", "15s"),
+		DuitkuPOPBaseURL:              getEnv("DUITKU_POP_BASE_URL", defaultPOP),
+		DuitkuWebAPIBaseURL:           getEnv("DUITKU_WEBAPI_BASE_URL", defaultWebAPI),
+		DuitkuReconcileInterval:       getEnv("DUITKU_RECONCILE_INTERVAL", "10m"),
+		DuitkuCallbackIPAllowlist:     getEnv("DUITKU_CALLBACK_IP_ALLOWLIST", ""),
+		AllowSandboxInProduction:      getEnvAsBool("ALLOW_SANDBOX_IN_PRODUCTION", false),
+		ReconciliationIntervalMinutes: getEnvAsInt("RECONCILIATION_INTERVAL_MINUTES", 10),
+		MinioEndpoint:                 getEnv("MINIO_ENDPOINT", "localhost:9000"),
+		MinioAccessKey:                getEnv("MINIO_ACCESS_KEY", "minioadmin"),
+		MinioSecretKey:                getEnv("MINIO_SECRET_KEY", "minioadmin"),
+		MinioUseSSL:                   getEnvAsBool("MINIO_USE_SSL", false),
+		MinioPublicEndpoint:           getEnv("MINIO_PUBLIC_ENDPOINT", ""),
 	}
 
 	return cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if c.AppEnv == "production" && c.PaymentProvider == "duitku" {
+		if strings.ToLower(c.DuitkuEnv) != "production" && !c.AllowSandboxInProduction {
+			return fmt.Errorf("DUITKU_ENV harus 'production' pada lingkungan produksi kecuali ALLOW_SANDBOX_IN_PRODUCTION=true")
+		}
+		if c.DuitkuMerchantCode == "" || c.DuitkuMerchantCode == "DXXXX" {
+			return fmt.Errorf("DUITKU_MERCHANT_CODE wajib diisi untuk produksi")
+		}
+		if c.DuitkuApiKey == "" || c.DuitkuApiKey == "secret" {
+			return fmt.Errorf("DUITKU_API_KEY wajib diisi untuk produksi")
+		}
+	}
+	return nil
 }
 
 func (c *Config) DSN() string {

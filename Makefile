@@ -1,4 +1,4 @@
-.PHONY: up up-all down restart ps logs build vet test lint swag gen-keys ocr-benchmark test-ocr e2e test-pkg test-auth test-gateway test-org test-identity test-notification test-admission test-finance test-exam test-scoring test-selection test-student test-nim
+.PHONY: up up-all down restart ps logs build vet test lint swag gen-keys ocr-benchmark test-ocr e2e test-pkg test-auth test-gateway test-org test-identity test-notification test-admission test-finance test-exam test-scoring test-selection test-student test-nim demo-seed demo-reset backup restore
 
 COMPOSE_FILE := deploy/docker-compose.yml
 
@@ -79,4 +79,34 @@ ocr-benchmark:
 
 test-ocr:
 	docker compose -f $(COMPOSE_FILE) exec -T ocr-service pytest -v tests/
+
+demo-seed:
+	@echo "Seeding initial demo master data..."
+	docker compose -f $(COMPOSE_FILE) exec -T auth-service /app/auth-service -seed || true
+	docker compose -f $(COMPOSE_FILE) exec -T admission-service /app/admission-service -seed || true
+	docker compose -f $(COMPOSE_FILE) exec -T finance-service /app/finance-service -seed || true
+	@echo "Demo data seeding completed."
+
+demo-reset:
+	@echo "Resetting demo transaction data..."
+	docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U pmb_user -d pmb_admission -c "TRUNCATE applications, application_documents, selection_results CASCADE;" || true
+	docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U pmb_user -d pmb_finance -c "TRUNCATE invoices, payments, receipts, installment_requests, installments CASCADE;" || true
+	@echo "Demo transaction data reset completed."
+
+backup:
+	@echo "Backing up databases..."
+	@mkdir -p backups
+	docker compose -f $(COMPOSE_FILE) exec -T postgres pg_dumpall -U pmb_user | gzip > backups/pmb_backup_$$(date +%Y%m%d_%H%M%S).sql.gz
+	@echo "Database backup completed in backups/."
+
+restore:
+	@echo "Restoring database from latest backup in backups/..."
+	@LATEST_BACKUP=$$(ls -t backups/*.sql.gz 2>/dev/null | head -n 1); \
+	if [ -n "$$LATEST_BACKUP" ]; then \
+		echo "Restoring from $$LATEST_BACKUP"; \
+		gunzip -c "$$LATEST_BACKUP" | docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U pmb_user -d postgres; \
+		echo "Restore completed successfully."; \
+	else \
+		echo "No backup file found in backups/"; \
+	fi
 

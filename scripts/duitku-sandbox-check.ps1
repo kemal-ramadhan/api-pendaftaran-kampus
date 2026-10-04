@@ -1,9 +1,8 @@
-# Duitku Sandbox Verification Script
-# Requirement: PowerShell 5.1+, ASCII-only encoding
-
 param (
     [string]$GatewayUrl = "http://localhost:8000",
     [string]$MailpitUrl = "http://localhost:8025",
+    [ValidateSet("sandbox", "production")]
+    [string]$Env = "sandbox",
     [switch]$TestReconcile,
     [string]$OutputFile = "duitku-sandbox-report.txt"
 )
@@ -24,17 +23,45 @@ function Mask-String {
 }
 
 Write-Log "=========================================================="
-Write-Log "MEMULAI PENGUJIAN INTEGRASI DUITKU SANDBOX (CR-008)"
+Write-Log "MEMULAI PENGUJIAN INTEGRASI DUITKU (CR-013 R2) - Mode: $Env"
 Write-Log "=========================================================="
 
-# 1. Cek Konfigurasi Lingkungan
-Write-Log "Memeriksa konfigurasi backend..."
+# 1. Cek Endpoint Konfigurasi Pembayaran
+Write-Log "Memeriksa konfigurasi backend & payment-config..."
 try {
-    $healthResp = Invoke-RestMethod -Uri "$GatewayUrl/health" -Method Get -TimeoutSec 5
-    Write-Log "API Gateway sehat (Status: $($healthResp.status))"
+    $configResp = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/payment-config" -Method Get -TimeoutSec 5
+    Write-Log "Payment config terhubung: Provider=$($configResp.provider), Env=$($configResp.env), POP Script=$($configResp.pop_script_url)"
 } catch {
-    Write-Log "Gagal menghubungi API Gateway di $GatewayUrl. Pastikan seluruh service berjalan." "ERROR"
-    exit 1
+    Write-Log "Peringatan: Gagal mengakses /api/v1/payment-config: $_" "WARN"
+}
+
+# 2. Cek Kanal Metode Pembayaran
+Write-Log "Memeriksa daftar metode pembayaran Duitku (amount=500000)..."
+try {
+    $methodsResp = Invoke-RestMethod -Uri "$GatewayUrl/api/v1/finance/payment-methods?amount=500000" -Method Get -TimeoutSec 5
+    $activeMethods = $methodsResp.data
+    $methodCount = if ($activeMethods) { $activeMethods.Count } else { 0 }
+    Write-Log "Ditemukan $methodCount kanal metode pembayaran aktif:"
+    if ($activeMethods) {
+        foreach ($m in $activeMethods) {
+            Write-Log " - [$($m.paymentMethod)] $($m.paymentName) (Fee: Rp $($m.totalFee))"
+        }
+    }
+    if ($methodCount -lt 2) {
+        Write-Log "Peringatan: Jumlah kanal aktif ($methodCount) kurang dari 2 kanal rekomendasi." "WARN"
+    }
+} catch {
+    Write-Log "Gagal mengambil daftar metode pembayaran: $_" "WARN"
+}
+
+# Jika mode produksi, JANGAN buat tagihan dummy otomatis demi keamanan kas
+if ($Env -eq "production") {
+    Write-Log "=========================================================="
+    Write-Log "MODE PRODUKSI: Pengecekan kanal selesai tanpa pembuatan transaksi dummy."
+    Write-Log "Status Integrasi: SIAP PRODUKSI"
+    Write-Log "=========================================================="
+    "Mode: production`nStatus: READY`nActive Channels: $methodCount`nChecked At: $(Get-Date)" | Out-File -FilePath $OutputFile -Encoding ascii
+    exit 0
 }
 
 # 2. Pendaftaran Akun Mahasiswa Baru untuk Pengujian

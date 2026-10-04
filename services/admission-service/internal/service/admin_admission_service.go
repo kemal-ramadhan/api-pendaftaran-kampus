@@ -834,15 +834,21 @@ func formatRupiah(amount int64) string {
 
 func generateDefaultCamabaSteps(app *model.Application) []CamabaStepItem {
 	hasPath := app != nil
-	hasPayment := app != nil && app.Status != model.StatusDraft && app.Status != model.StatusAwaitingPayment
+	isFree := app != nil && app.AdmissionPath != nil && app.AdmissionPath.RegistrationFee == 0
+	hasPayment := (app != nil && app.Status != model.StatusDraft && app.Status != model.StatusAwaitingPayment) || isFree
 	hasDocs := app != nil && (app.Status == model.StatusSubmitted || app.Status == model.StatusVerified || app.Status == model.StatusExamScheduled || app.Status == model.StatusPassed || app.Status == model.StatusEnrolled)
 	hasSelection := app != nil && (app.Status == model.StatusPassed || app.Status == model.StatusEnrolled)
 	hasRereg := app != nil && app.Status == model.StatusEnrolled
 
+	paymentSubtitle := "Lunas"
+	if isFree {
+		paymentSubtitle = "Gratis — tidak perlu pembayaran"
+	}
+
 	return []CamabaStepItem{
 		{Key: "profile", Title: "Profil Pendaftar", Subtitle: "Lengkap", IsCompleted: true, IsCurrent: false, State: "done"},
 		{Key: "path", Title: "Jalur & Program Studi", Subtitle: "Tersimpan", IsCompleted: hasPath, IsCurrent: !hasPath, State: mapStepState(hasPath)},
-		{Key: "payment", Title: "Biaya Pendaftaran", Subtitle: "Lunas", IsCompleted: hasPayment, IsCurrent: hasPath && !hasPayment, State: mapStepState(hasPayment)},
+		{Key: "payment", Title: "Biaya Pendaftaran", Subtitle: paymentSubtitle, IsCompleted: hasPayment, IsCurrent: hasPath && !hasPayment, State: mapStepState(hasPayment)},
 		{Key: "documents", Title: "Berkas Dokumen", Subtitle: "5/5 Diunggah", IsCompleted: hasDocs, IsCurrent: hasPayment && !hasDocs, State: mapStepState(hasDocs)},
 		{Key: "selection", Title: "Proses Seleksi", Subtitle: "Siap Ujian CBT", IsCompleted: hasSelection, IsCurrent: hasDocs && !hasSelection, State: mapStepState(hasSelection)},
 		{Key: "reregistration", Title: "Daftar Ulang & UKT", Subtitle: "Registrasi Mhs", IsCompleted: hasRereg, IsCurrent: hasSelection && !hasRereg, State: mapStepState(hasRereg)},
@@ -914,6 +920,8 @@ func generateCamabaSummaryCards(app *model.Application) []CamabaSummaryCard {
 	paySt := "Belum Bayar"
 	cbtVal := "Terkunci"
 	cbtSt := "Bayar Formulir untuk Buka Sesi"
+	payActionLabel := "Bayar Sekarang"
+	payActionURL := "/payment"
 
 	if app != nil {
 		validCount := 0
@@ -927,7 +935,15 @@ func generateCamabaSummaryCards(app *model.Application) []CamabaSummaryCard {
 			docSt = "Lengkap"
 		}
 
-		if app.Status != model.StatusDraft && app.Status != model.StatusAwaitingPayment {
+		isFree := app.AdmissionPath != nil && app.AdmissionPath.RegistrationFee == 0
+		if isFree {
+			payVal = "Gratis"
+			paySt = "Tidak Perlu Pembayaran"
+			payActionLabel = "Lihat Rincian"
+			payActionURL = "/status"
+			cbtVal = "Sesi Terbuka"
+			cbtSt = "Siap Mulai CBT"
+		} else if app.Status != model.StatusDraft && app.Status != model.StatusAwaitingPayment {
 			paySt = "Lunas Terverifikasi"
 			cbtVal = "Sesi Terbuka"
 			cbtSt = "Siap Mulai CBT"
@@ -936,7 +952,7 @@ func generateCamabaSummaryCards(app *model.Application) []CamabaSummaryCard {
 
 	return []CamabaSummaryCard{
 		{Key: "documents", Title: "Berkas Dokumen", Value: docVal, StatusLabel: docSt, ActionLabel: "Buka Berkas", ActionURL: "/documents"},
-		{Key: "payment", Title: "Biaya Formulir", Value: payVal, StatusLabel: paySt, ActionLabel: "Bayar Sekarang", ActionURL: "/payment"},
+		{Key: "payment", Title: "Biaya Formulir", Value: payVal, StatusLabel: paySt, ActionLabel: payActionLabel, ActionURL: payActionURL},
 		{Key: "exam", Title: "Ujian CBT Online", Value: cbtVal, StatusLabel: cbtSt, ActionLabel: "Buka CBT", ActionURL: "/exam"},
 	}
 }

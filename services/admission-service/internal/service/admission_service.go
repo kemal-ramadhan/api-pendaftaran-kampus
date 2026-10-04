@@ -257,6 +257,13 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 			return fmt.Errorf("gagal membuat nomor registrasi: %w", genErr)
 		}
 
+		initialStatus := model.StatusAwaitingPayment
+		initialNotes := "Pendaftaran berhasil dibuat dan menunggu pembayaran tagihan"
+		if path.RegistrationFee == 0 {
+			initialStatus = model.StatusFormOpen
+			initialNotes = "Pendaftaran jalur gratis berhasil dibuat - otomatis aktif tanpa pembayaran formulir"
+		}
+
 		app := &model.Application{
 			ID:              uuid.New(),
 			RegistrationNo:  regNo,
@@ -265,7 +272,7 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 			AdmissionPathID: req.AdmissionPathID,
 			Choice1ID:       req.Choice1ID,
 			Choice2ID:       req.Choice2ID,
-			Status:          model.StatusAwaitingPayment,
+			Status:          initialStatus,
 		}
 
 		if err := s.appRepo.CreateInTx(tx, app); err != nil {
@@ -276,9 +283,9 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 			ID:            uuid.New(),
 			ApplicationID: app.ID,
 			FromStatus:    model.StatusDraft,
-			ToStatus:      model.StatusAwaitingPayment,
+			ToStatus:      initialStatus,
 			ChangedBy:     &req.UserID,
-			Notes:         "Pendaftaran berhasil dibuat dan menunggu pembayaran tagihan",
+			Notes:         initialNotes,
 		}
 		if err := s.appRepo.CreateStatusLog(tx, statusLog); err != nil {
 			return fmt.Errorf("gagal mencatat riwayat status pendaftaran: %w", err)

@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
+	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/config"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/finance-service/internal/service"
 )
@@ -17,10 +18,37 @@ import (
 type PaymentController struct {
 	svc      service.PaymentService
 	adminSvc service.FinanceAdminService
+	cfg      *config.Config
 }
 
-func NewPaymentController(svc service.PaymentService, adminSvc service.FinanceAdminService) *PaymentController {
-	return &PaymentController{svc: svc, adminSvc: adminSvc}
+func NewPaymentController(svc service.PaymentService, adminSvc service.FinanceAdminService, cfg *config.Config) *PaymentController {
+	return &PaymentController{svc: svc, adminSvc: adminSvc, cfg: cfg}
+}
+
+// GetPaymentConfig mengembalikan konfigurasi payment gateway dan URL pustaka POP JS
+func (ctrl *PaymentController) GetPaymentConfig(c *gin.Context) {
+	popURL := "https://app-sandbox.duitku.com/lib/js/duitku.js"
+	env := "sandbox"
+	providerName := "mock"
+	canSimulate := true
+
+	if ctrl.cfg != nil {
+		providerName = ctrl.cfg.PaymentProvider
+		env = ctrl.cfg.DuitkuEnv
+		if ctrl.cfg.DuitkuEnv == "production" {
+			popURL = "https://app.duitku.com/lib/js/duitku.js"
+		}
+		if ctrl.cfg.AppEnv == "production" || ctrl.cfg.PaymentProvider == "duitku" {
+			canSimulate = false
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"provider":       providerName,
+		"env":            env,
+		"pop_script_url": popURL,
+		"can_simulate":   canSimulate,
+	})
 }
 
 type PayInput struct {
@@ -49,6 +77,10 @@ func (ctrl *PaymentController) PayWithVirtualAccount(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrForbiddenAccess) {
 			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak diizinkan membayar tagihan ini")
+			return
+		}
+		if errors.Is(err, service.ErrInvoiceFree) {
+			response.Conflict(c, "INVOICE_FREE", "Tagihan ini gratis (Rp 0) dan tidak memerlukan pembayaran.")
 			return
 		}
 		if errors.Is(err, service.ErrInvoiceAlreadyPaid) {
@@ -106,6 +138,10 @@ func (ctrl *PaymentController) PayWithManualTransfer(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrForbiddenAccess) {
 			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak diizinkan mengakses tagihan ini")
+			return
+		}
+		if errors.Is(err, service.ErrInvoiceFree) {
+			response.Conflict(c, "INVOICE_FREE", "Tagihan ini gratis (Rp 0) dan tidak memerlukan pembayaran.")
 			return
 		}
 		if errors.Is(err, service.ErrInvoiceAlreadyPaid) {

@@ -93,11 +93,13 @@ func TestFinanceAdminService_RenewInvoiceDueDate(t *testing.T) {
 
 	invID := uuid.New()
 	invRepo.invoices[invID] = &model.Invoice{
-		ID:           invID,
-		UserID:       userID,
-		Status:       model.InvoiceStatusUnpaid,
-		DueDate:      time.Now().Add(-1 * time.Hour), // sudah expired
-		RenewalCount: 0,
+		ID:            invID,
+		UserID:        userID,
+		Amount:        250000,
+		PaymentScheme: "full",
+		Status:        model.InvoiceStatusUnpaid,
+		DueDate:       time.Now().Add(-1 * time.Hour), // sudah expired
+		RenewalCount:  0,
 	}
 
 	// Perpanjangan pertama (renewal 1)
@@ -114,6 +116,18 @@ func TestFinanceAdminService_RenewInvoiceDueDate(t *testing.T) {
 	// Perpanjangan ketiga (harus ditolak karena maks 2 kali)
 	_, errLimit := svc.RenewInvoiceDueDate(ctx, invID, userID)
 	assert.ErrorIs(t, errLimit, ErrRenewalLimitExceeded)
+
+	// Uji tagihan gratis (skema free) harus ditolak dengan ErrInvoiceFree
+	freeInvID := uuid.New()
+	invRepo.invoices[freeInvID] = &model.Invoice{
+		ID:            freeInvID,
+		UserID:        userID,
+		Amount:        0,
+		PaymentScheme: "free",
+		Status:        model.InvoiceStatusPaid,
+	}
+	_, errFree := svc.RenewInvoiceDueDate(ctx, freeInvID, userID)
+	assert.ErrorIs(t, errFree, ErrInvoiceFree)
 }
 
 func TestFinanceAdminService_ReceiptViewAndPaymentMethods(t *testing.T) {

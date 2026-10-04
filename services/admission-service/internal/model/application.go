@@ -66,9 +66,16 @@ func (a *Application) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-// IsCancellable memeriksa apakah pendaftaran diizinkan untuk dibatalkan (CR-002)
+// IsCancellable memeriksa apakah pendaftaran diizinkan untuk dibatalkan (CR-002, Bagian 26)
 func (a *Application) IsCancellable() bool {
-	return a.Status == StatusDraft || a.Status == StatusAwaitingPayment
+	if a.Status == StatusDraft || a.Status == StatusAwaitingPayment {
+		return true
+	}
+	// Pendaftaran jalur gratis (registration_fee = 0) diperlakukan seperti belum membayar (boleh dibatalkan pada tahap form_open)
+	if a.Status == StatusFormOpen && a.AdmissionPath != nil && a.AdmissionPath.RegistrationFee == 0 {
+		return true
+	}
+	return false
 }
 
 // IsActive memeriksa apakah pendaftaran masih aktif

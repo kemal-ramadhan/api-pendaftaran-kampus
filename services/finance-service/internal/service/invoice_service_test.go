@@ -135,6 +135,21 @@ func TestInvoiceService_ValidationAndAccess(t *testing.T) {
 		assert.Contains(t, err.Error(), "nominal tagihan harus lebih besar dari 0")
 	})
 
+	t.Run("create invoice with zero amount for free registration path should succeed", func(t *testing.T) {
+		appID := uuid.New()
+		req := &CreateInvoiceRequest{
+			UserID:        uuid.New(),
+			ApplicationID: &appID,
+			FeeType:       "registration",
+			Amount:        0,
+		}
+		inv, err := svc.CreateInvoice(ctx, req)
+		assert.NoError(t, err)
+		assert.NotNil(t, inv)
+		assert.Equal(t, model.InvoiceStatusPaid, inv.Status)
+		assert.Equal(t, "free", inv.PaymentScheme)
+	})
+
 	t.Run("invoice access control - user isolation", func(t *testing.T) {
 		ownerID := uuid.New()
 		otherUserID := uuid.New()

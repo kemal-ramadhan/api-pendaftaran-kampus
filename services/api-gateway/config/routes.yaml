@@ -121,6 +121,14 @@ routes:
     service: finance
     rewrite: /payment-methods
     auth: public
+  - prefix: /api/v1/finance/payment-config
+    service: finance
+    rewrite: /payment-config
+    auth: public
+  - prefix: /api/v1/payment-config
+    service: finance
+    rewrite: /payment-config
+    auth: public
   - prefix: /api/v1/dev/payments
     service: finance
     rewrite: /dev/payments

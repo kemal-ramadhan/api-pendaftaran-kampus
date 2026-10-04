@@ -28,6 +28,7 @@ const (
 	PaymentMethodManualTransfer    PaymentMethod = "manual_transfer"
 	PaymentMethodManualConfirmation PaymentMethod = "manual_confirmation"
 	PaymentMethodQRIS              PaymentMethod = "qris"
+	PaymentMethodFree              PaymentMethod = "free"
 )
 
 type Payment struct {

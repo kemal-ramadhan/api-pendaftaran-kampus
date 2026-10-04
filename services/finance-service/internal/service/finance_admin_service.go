@@ -171,6 +171,9 @@ func (s *financeAdminService) GetReconciliation(ctx context.Context, periodID *u
 		}
 
 		stLabel := mapInvoiceStatusLabel(inv.Status)
+		if inv.PaymentScheme == "free" || (inv.Amount == 0 && inv.Status == model.InvoiceStatusPaid) {
+			stLabel = "Gratis"
+		}
 		items = append(items, ReconciliationInvoiceItem{
 			ID:            inv.ID,
 			InvoiceNumber: inv.InvoiceNumber,
@@ -418,6 +421,9 @@ func (s *financeAdminService) GetLedger(ctx context.Context, periodID *uint, cha
 
 	var allItems []LedgerItem
 	for _, p := range payments {
+		if p.Method == model.PaymentMethodFree || p.Method == "free" || p.Amount == 0 {
+			continue
+		}
 		credit := p.Amount
 		totalCredit += credit
 		runningBalance += credit
@@ -671,6 +677,10 @@ func (s *financeAdminService) RenewInvoiceDueDate(ctx context.Context, invoiceID
 
 	if inv.UserID != userID {
 		return nil, ErrForbiddenAccess
+	}
+
+	if inv.PaymentScheme == "free" || inv.Amount == 0 {
+		return nil, ErrInvoiceFree
 	}
 
 	if inv.IsPaid() {

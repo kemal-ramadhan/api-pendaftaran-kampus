@@ -43,6 +43,10 @@ func main() {
 	}
 	defer func() { _ = log.Sync() }()
 
+	if err := cfg.Validate(); err != nil {
+		log.Fatal("Validasi konfigurasi finance-service gagal", zap.Error(err))
+	}
+
 	log.Info("Memulai PMB Finance Service...", zap.String("env", cfg.AppEnv), zap.Int("port", cfg.AppPort))
 
 	// 3. Inisialisasi Basis Data
@@ -175,7 +179,7 @@ func main() {
 	// 10. Inisialisasi Controller
 	healthCtrl := controller.NewHealthController(db)
 	invCtrl := controller.NewInvoiceController(invSvc, financeAdminSvc)
-	payCtrl := controller.NewPaymentController(paySvc, financeAdminSvc)
+	payCtrl := controller.NewPaymentController(paySvc, financeAdminSvc, cfg)
 	rcCtrl := controller.NewReceiptController(paySvc)
 	webhookCtrl := controller.NewWebhookController(paySvc)
 	devCtrl := controller.NewDevController(paySvc, cfg)
@@ -203,7 +207,26 @@ func main() {
 		reportCtrl,
 	)
 
-	// 12. Jalankan HTTP Server
+	// 12. Background Worker Rekonsiliasi Otomatis (CR-013 R2.3)
+	if cfg.ReconciliationIntervalMinutes > 0 {
+		go func() {
+			log.Info("Memulai background worker rekonsiliasi pembayaran", zap.Int("interval_minutes", cfg.ReconciliationIntervalMinutes))
+			ticker := time.NewTicker(time.Duration(cfg.ReconciliationIntervalMinutes) * time.Minute)
+			defer ticker.Stop()
+			for range ticker.C {
+				recCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+				reconciled, recErr := paySvc.ReconcilePendingPayments(recCtx)
+				cancel()
+				if recErr != nil {
+					log.Warn("Background rekonsiliasi berkala menemui error", zap.Error(recErr))
+				} else if reconciled > 0 {
+					log.Info("Background rekonsiliasi berhasil memperbarui status pembayaran", zap.Int("total", reconciled))
+				}
+			}
+		}()
+	}
+
+	// 13. Jalankan HTTP Server
 	srv := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.AppPort),
 		Handler:      r,

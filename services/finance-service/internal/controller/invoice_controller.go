@@ -91,6 +91,10 @@ func (ctrl *InvoiceController) RenewInvoice(c *gin.Context) {
 
 	inv, err := ctrl.adminSvc.RenewInvoiceDueDate(c.Request.Context(), invID, userID)
 	if err != nil {
+		if errors.Is(err, service.ErrInvoiceFree) {
+			response.Conflict(c, "INVOICE_FREE", "Tagihan ini gratis (Rp 0) dan tidak memerlukan pembayaran.")
+			return
+		}
 		if errors.Is(err, service.ErrInvoiceAlreadyPaid) {
 			response.BadRequest(c, "ALREADY_PAID", err.Error())
 			return

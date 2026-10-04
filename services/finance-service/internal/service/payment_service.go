@@ -91,6 +91,10 @@ func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, u
 		return nil, ErrForbiddenAccess
 	}
 
+	if inv.PaymentScheme == "free" || inv.Amount == 0 {
+		return nil, ErrInvoiceFree
+	}
+
 	if inv.IsPaid() {
 		return nil, ErrInvoiceAlreadyPaid
 	}
@@ -162,6 +166,10 @@ func (s *paymentService) PayWithManualTransfer(ctx context.Context, invoiceID, u
 
 	if inv.UserID != userID {
 		return nil, ErrForbiddenAccess
+	}
+
+	if inv.PaymentScheme == "free" || inv.Amount == 0 {
+		return nil, ErrInvoiceFree
 	}
 
 	if inv.IsPaid() {

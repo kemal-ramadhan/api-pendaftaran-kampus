@@ -165,7 +165,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Integrasi Duitku siap pakai (`DUITKU_ENV=sandbox|production`, `GET /finance/payment-config`, pengaman konfigurasi start, rekonsiliasi, callback idempoten).
   - Jalur gratis (`registration_fee = 0`): tagihan Rp 0 langsung lunas metode `free`, bypass pembayaran, `409 INVOICE_FREE` jika dibayar, pembatalan dan pindah jalur.
   - `scripts/smoke-camaba.sh`, `deploy/docker-compose.prod.yml`, `docs/BUGS.md`, `docs/DUITKU-PRODUKSI.md`, `docs/DEPLOY.md`, `docs/RELEASE-CHECKLIST.md`, `docs/PANDUAN-ALUR.md`.
-- **Status**: **open** (Fase R / R0–R3).
+- **Status**: **done** (Fase R / R0–R3 selesai, siap rilis v0.5.1-rilis).
 
 ### CR-014 — Kode Referal Guru BK, Pembayaran Kolektif & Komisi (4 Oktober 2026)
 - **Arahan Lead**: Fitur kode referal guru BK untuk launching 22 Okt dengan 150 guru BK. Siswa bayar ke guru BK di luar sistem, verifikasi guru BK melewati pembayaran di sistem, guru BK menyetor ke kampus, komisi (persen/nominal).

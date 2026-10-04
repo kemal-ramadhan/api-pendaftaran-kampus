@@ -65,7 +65,7 @@ func setupTestFinanceRouter(gatewaySecret string, isDev bool) *gin.Engine {
 
 	healthCtrl := controller.NewHealthController(nil)
 	invCtrl := controller.NewInvoiceController(invSvc, nil)
-	payCtrl := controller.NewPaymentController(paySvc, nil)
+	payCtrl := controller.NewPaymentController(paySvc, nil, appCfg)
 	rcCtrl := controller.NewReceiptController(paySvc)
 	webhookCtrl := controller.NewWebhookController(paySvc)
 	devCtrl := controller.NewDevController(paySvc, appCfg)

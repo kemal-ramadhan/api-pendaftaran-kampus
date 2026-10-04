@@ -60,7 +60,7 @@ func main() {
 
 	// Inisialisasi Database PostgreSQL dengan retry
 	var db *gorm.DB
-	for attempt := 1; attempt <= 15; attempt++ {
+	for attempt := 1; attempt <= 30; attempt++ {
 		db, err = config.ConnectDB(cfg)
 		if err == nil {
 			break
@@ -69,9 +69,9 @@ func main() {
 		time.Sleep(1 * time.Second)
 	}
 	if err != nil {
-		appLog.Warn("Koneksi DB belum tersedia saat start: " + err.Error())
-	} else {
-		appLog.Info("✅ Terhubung ke PostgreSQL")
+		appLog.Fatal("Koneksi DB belum tersedia setelah retry: " + err.Error())
+	}
+	appLog.Info("✅ Terhubung ke PostgreSQL")
 		// Jalankan Migrasi & Seeder
 		migCtx, migCancel := context.WithTimeout(context.Background(), 30*time.Second)
 		if err := migrations.RunMigrations(migCtx, db, appLog); err != nil {
@@ -88,7 +88,6 @@ func main() {
 			appLog.Warn("Gagal seed superadmin", zap.Error(err))
 		}
 		migCancel()
-	}
 
 	// Inisialisasi Redis Client
 	rdb, err := config.ConnectRedis(cfg)

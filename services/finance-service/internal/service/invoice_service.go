@@ -17,6 +17,7 @@ var (
 	ErrInvoiceAlreadyPaid = errors.New("tagihan ini sudah lunas")
 	ErrCancelNotAllowed   = errors.New("CANCEL_NOT_ALLOWED: tagihan tidak dapat dibatalkan karena sudah dibayar atau sedang diverifikasi")
 	ErrRepriceNotAllowed  = errors.New("PAYMENT_IN_PROGRESS: tagihan tidak dapat diubah nominalnya karena ada pembayaran sedang diproses atau sudah lunas")
+	ErrInvoiceFree        = errors.New("INVOICE_FREE: Tagihan ini gratis (Rp 0) dan tidak memerlukan pembayaran.")
 )
 
 type CreateAdjustmentInvoiceRequest struct {
@@ -95,7 +96,17 @@ func NewInvoiceService(invoiceRepo repository.InvoiceRepository) InvoiceService 
 }
 
 func (s *invoiceService) CreateInvoice(ctx context.Context, req *CreateInvoiceRequest) (*model.Invoice, error) {
-	if req.Amount <= 0 {
+	if req.Amount < 0 {
+		return nil, fmt.Errorf("nominal tagihan harus lebih besar dari 0")
+	}
+
+	feeType := req.FeeType
+	if feeType == "" {
+		feeType = "registration"
+	}
+
+	// Hanya pendaftaran jalur gratis (memiliki ApplicationID dan feeType registration) yang boleh nominal 0
+	if req.Amount == 0 && (req.ApplicationID == nil || feeType != "registration") {
 		return nil, fmt.Errorf("nominal tagihan harus lebih besar dari 0")
 	}
 
@@ -113,11 +124,6 @@ func (s *invoiceService) CreateInvoice(ctx context.Context, req *CreateInvoiceRe
 	}
 	dueDate := time.Now().AddDate(0, 0, dueDays)
 
-	feeType := req.FeeType
-	if feeType == "" {
-		feeType = "registration"
-	}
-
 	var newInvoice *model.Invoice
 
 	runInTx := func(fn func(tx *gorm.DB) error) error {
@@ -133,6 +139,13 @@ func (s *invoiceService) CreateInvoice(ctx context.Context, req *CreateInvoiceRe
 			return fmt.Errorf("gagal membuat nomor tagihan: %w", genErr)
 		}
 
+		status := model.InvoiceStatusUnpaid
+		scheme := "full"
+		if req.Amount == 0 {
+			status = model.InvoiceStatusPaid
+			scheme = "free"
+		}
+
 		inv := &model.Invoice{
 			ID:            uuid.New(),
 			InvoiceNumber: invNumber,
@@ -142,13 +155,34 @@ func (s *invoiceService) CreateInvoice(ctx context.Context, req *CreateInvoiceRe
 			Description:   req.Description,
 			Amount:        req.Amount,
 			PaidAmount:    0,
-			Status:        model.InvoiceStatusUnpaid,
+			Status:        status,
 			DueDate:       dueDate,
-			PaymentScheme: "full",
+			PaymentScheme: scheme,
 		}
 
 		if err := s.invoiceRepo.CreateInTx(tx, inv); err != nil {
 			return fmt.Errorf("gagal menyimpan invoice: %w", err)
+		}
+
+		if req.Amount == 0 && tx != nil {
+			now := time.Now()
+			pay := &model.Payment{
+				ID:          uuid.New(),
+				InvoiceID:   inv.ID,
+				Method:      model.PaymentMethodFree,
+				Provider:    "system",
+				ProviderRef: fmt.Sprintf("FREE-%s", inv.ID.String()[:8]),
+				Channel:     "free",
+				Amount:      0,
+				Status:      model.PaymentStatusSuccess,
+				Notes:       "Pendaftaran jalur gratis",
+				PaidAt:      &now,
+				CreatedAt:   now,
+				UpdatedAt:   now,
+			}
+			if err := tx.Create(pay).Error; err != nil {
+				return fmt.Errorf("gagal membuat pembayaran gratis: %w", err)
+			}
 		}
 
 		newInvoice = inv
@@ -264,9 +298,12 @@ func (s *invoiceService) CancelInvoice(ctx context.Context, invoiceID uuid.UUID)
 	}
 
 	// Periksa apakah ada pembayaran yang sudah sukses atau sedang diverifikasi
-	for _, p := range inv.Payments {
-		if p.Status == model.PaymentStatusSuccess || p.Status == model.PaymentStatusAwaitingVerification {
-			return ErrCancelNotAllowed
+	// Kecuali pembayaran untuk jalur gratis (method: free atau payment_scheme: free)
+	if inv.PaymentScheme != "free" {
+		for _, p := range inv.Payments {
+			if (p.Status == model.PaymentStatusSuccess || p.Status == model.PaymentStatusAwaitingVerification) && p.Method != model.PaymentMethodFree {
+				return ErrCancelNotAllowed
+			}
 		}
 	}
 

@@ -36,10 +36,12 @@ func SetupRouter(
 	r.GET("/health/ready", healthCtrl.Readiness)
 	r.HEAD("/health/ready", healthCtrl.Readiness)
 
-	// 2. Webhook publik provider pembayaran & daftar metode pembayaran
+	// 2. Webhook publik provider pembayaran & daftar metode pembayaran & config
 	r.POST("/webhooks/payments/:provider", webhookCtrl.HandleWebhook)
 	r.GET("/payment-methods", payCtrl.GetPaymentMethods)
 	r.GET("/finance/payment-methods", payCtrl.GetPaymentMethods)
+	r.GET("/payment-config", payCtrl.GetPaymentConfig)
+	r.GET("/finance/payment-config", payCtrl.GetPaymentConfig)
 
 	// 3. Endpoint simulasi development (hanya aktif pada development)
 	if cfg.IsDevelopment {
