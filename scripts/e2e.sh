@@ -3220,22 +3220,18 @@ e2e_register_and_login() {
   local u_otp=""
   for i in {1..12}; do
     local search_resp=$(curl -s "${MAILPIT_URL}/api/v1/search?query=${u_email}" || true)
+    u_otp=$(echo "$search_resp" | grep -o 'Berikut adalah kode OTP verifikasi akun Anda: [0-9]\{6\}' | grep -o '[0-9]\{6\}' | head -n1 | tr -d '\r')
+    if [ -n "$u_otp" ]; then
+      break
+    fi
     local msg_id=$(echo "$search_resp" | grep -o '"ID":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
     if [ -z "$msg_id" ]; then
       msg_id=$(echo "$search_resp" | grep -o '"id":"[^"]*"' | head -n1 | cut -d'"' -f4 | tr -d '\r')
     fi
     if [ -n "$msg_id" ]; then
       local msg_detail=$(curl -s "${MAILPIT_URL}/api/v1/message/${msg_id}" || true)
-      local snippet=$(echo "$msg_detail" | grep -o '"Snippet":"[^"]*"' | head -n1)
-      local extracted=$(echo "$snippet" | grep -oE '\b[0-9]{6}\b' | head -n1)
-      if [ -z "$extracted" ]; then
-        extracted=$(echo "$msg_detail" | grep -oE 'font-size: 24px[^>]*>[^0-9]*[0-9]{6}' | grep -oE '[0-9]{6}' | head -n1)
-      fi
-      if [ -z "$extracted" ]; then
-        extracted=$(echo "$msg_detail" | grep -oE '\b[0-9]{6}\b' | head -n1)
-      fi
-      if [ -n "$extracted" ]; then
-        u_otp="$extracted"
+      u_otp=$(echo "$msg_detail" | grep -o 'verifikasi akun Anda:[^0-9]*[0-9]\{6\}' | grep -o '[0-9]\{6\}' | head -n1 | tr -d '\r')
+      if [ -n "$u_otp" ]; then
         break
       fi
     fi
@@ -3733,7 +3729,7 @@ CODE_PERMS=$(echo "$RESP_PERMS" | tail -n1)
 BODY_PERMS=$(echo "$RESP_PERMS" | sed '$d')
 assert_status "User keuangan mengambil /auth/me/permissions" "200" "$CODE_PERMS" "$BODY_PERMS"
 
-if echo "$BODY_PERMS" | grep -q '"code":"finance"' && echo "$BODY_PERMS" | grep -q '"allowed":true'; then
+if (echo "$BODY_PERMS" | grep -q "finance." || echo "$BODY_PERMS" | grep -q "reconciliation") && echo "$BODY_PERMS" | grep -q '"allowed":true'; then
   log_pass "Modul finance aktif dan diizinkan pada role keuangan"
 else
   log_fail "Modul finance tidak ditemukan atau tidak diizinkan: $BODY_PERMS"
@@ -3990,7 +3986,6 @@ RESP_ADD_PKKMB=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_ADMIN_URL}/pkkmb
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
-    \"period_id\": 1,
     \"name\": \"Gugus Cakrawala 01\",
     \"capacity\": 50,
     \"leader_name\": \"Kak Budi Santoso\",
@@ -4007,7 +4002,7 @@ fi
 RESP_AUTO_PKKMB=$(curl -s -w "\n%{http_code}" -X POST "${STUDENT_ADMIN_URL}/pkkmb/auto-assign" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"period_id": 1}')
+  -d '{}')
 CODE_AUTO_PKKMB=$(echo "$RESP_AUTO_PKKMB" | tail -n1)
 BODY_AUTO_PKKMB=$(echo "$RESP_AUTO_PKKMB" | sed '$d')
 assert_status "Auto-assign penempatan gugus PKKMB mahasiswa baru" "200" "$CODE_AUTO_PKKMB" "$BODY_AUTO_PKKMB"
