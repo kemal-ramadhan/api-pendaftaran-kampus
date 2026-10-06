@@ -108,7 +108,7 @@ func (c *Config) Validate() error {
 
 func (c *Config) DSN() string {
 	return fmt.Sprintf(
-		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Jakarta",
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=disable TimeZone=Asia/Jakarta client_encoding=UTF8",
 		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName,
 	)
 }

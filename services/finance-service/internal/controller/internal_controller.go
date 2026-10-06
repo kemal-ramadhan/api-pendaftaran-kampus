@@ -21,12 +21,13 @@ func NewInternalController(svc service.InvoiceService) *InternalController {
 }
 
 type CreateInvoiceInternalInput struct {
-	UserID        string      `json:"user_id"`
-	ApplicationID string      `json:"application_id"`
-	FeeType       string      `json:"fee_type"`
-	Amount        interface{} `json:"amount"` // bisa float atau int atau string dari payload
-	Description   string      `json:"description"`
-	DueDateDays   int         `json:"due_date_days"`
+	UserID          string      `json:"user_id"`
+	ApplicationID   string      `json:"application_id"`
+	FeeType         string      `json:"fee_type"`
+	Amount          interface{} `json:"amount"`
+	RegistrationFee interface{} `json:"registration_fee"`
+	Description     string      `json:"description"`
+	DueDateDays     int         `json:"due_date_days"`
 }
 
 func (ctrl *InternalController) CreateInvoice(c *gin.Context) {
@@ -47,6 +48,19 @@ func (ctrl *InternalController) CreateInvoice(c *gin.Context) {
 		if parsed, err := uuid.Parse(input.ApplicationID); err == nil {
 			appUUID = &parsed
 		}
+	}
+
+	if input.Amount == nil && input.RegistrationFee != nil {
+		input.Amount = input.RegistrationFee
+	}
+	if input.FeeType == "" {
+		input.FeeType = "registration"
+	}
+	if input.Description == "" {
+		input.Description = "Biaya Pendaftaran PMB"
+	}
+	if input.DueDateDays == 0 {
+		input.DueDateDays = 3
 	}
 
 	var intAmount int64

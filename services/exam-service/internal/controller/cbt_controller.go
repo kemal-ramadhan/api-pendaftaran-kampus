@@ -275,10 +275,26 @@ func (ctrl *CBTController) GetAttemptResult(c *gin.Context) {
 
 // Admin endpoints
 func (ctrl *CBTController) CreateQuestionBank(c *gin.Context) {
-	var bank model.QuestionBank
-	if err := c.ShouldBindJSON(&bank); err != nil {
+	var input struct {
+		Name     string `json:"name"`
+		Subject  string `json:"subject"`
+		Category string `json:"category"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
 		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
 		return
+	}
+	subj := input.Subject
+	if subj == "" {
+		subj = input.Category
+	}
+	if subj == "" {
+		subj = "Kemampuan Akademik"
+	}
+	bank := model.QuestionBank{
+		Name:     input.Name,
+		Subject:  subj,
+		IsActive: true,
 	}
 	res, err := ctrl.svc.CreateQuestionBank(c.Request.Context(), &bank)
 	if err != nil {
@@ -297,12 +313,152 @@ func (ctrl *CBTController) ListQuestionBanks(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Daftar bank soal", banks)
 }
 
-func (ctrl *CBTController) CreateQuestion(c *gin.Context) {
-	var q model.Question
-	if err := c.ShouldBindJSON(&q); err != nil {
+func (ctrl *CBTController) GetQuestionBank(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID bank soal tidak valid")
+		return
+	}
+	res, err := ctrl.svc.GetQuestionBank(c.Request.Context(), id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Detail bank soal", res)
+}
+
+func (ctrl *CBTController) UpdateQuestionBank(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID bank soal tidak valid")
+		return
+	}
+	var input struct {
+		Name     string `json:"name"`
+		Subject  string `json:"subject"`
+		Category string `json:"category"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
 		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
 		return
 	}
+	subj := input.Subject
+	if subj == "" {
+		subj = input.Category
+	}
+	if subj == "" {
+		subj = "Kemampuan Akademik"
+	}
+	bank := model.QuestionBank{
+		ID:       id,
+		Name:     input.Name,
+		Subject:  subj,
+		IsActive: true,
+	}
+	res, err := ctrl.svc.UpdateQuestionBank(c.Request.Context(), &bank)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Bank soal berhasil diperbarui", res)
+}
+
+func (ctrl *CBTController) DeleteQuestionBank(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID bank soal tidak valid")
+		return
+	}
+	if err := ctrl.svc.DeleteQuestionBank(c.Request.Context(), id); err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Bank soal berhasil dihapus", gin.H{"deleted": true})
+}
+
+func (ctrl *CBTController) CreateQuestion(c *gin.Context) {
+	var input struct {
+		BankID         *uuid.UUID `json:"bank_id"`
+		QuestionBankID *uuid.UUID `json:"question_bank_id"`
+		Type           string     `json:"type"`
+		QuestionType   string     `json:"question_type"`
+		Content        string     `json:"content"`
+		QuestionText   string     `json:"question_text"`
+		Points         int        `json:"points"`
+		Difficulty     string     `json:"difficulty"`
+		Explanation    *string    `json:"explanation"`
+		Options        []struct {
+			Label      string `json:"label"`
+			OptionKey  string `json:"option_key"`
+			Content    string `json:"content"`
+			OptionText string `json:"option_text"`
+			IsCorrect  bool   `json:"is_correct"`
+		} `json:"options"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	var bankID uuid.UUID
+	if input.BankID != nil && *input.BankID != uuid.Nil {
+		bankID = *input.BankID
+	} else if input.QuestionBankID != nil && *input.QuestionBankID != uuid.Nil {
+		bankID = *input.QuestionBankID
+	}
+
+	qType := input.Type
+	if qType == "" {
+		qType = input.QuestionType
+	}
+	if qType == "" {
+		qType = "multiple_choice"
+	}
+
+	content := input.Content
+	if content == "" {
+		content = input.QuestionText
+	}
+
+	pts := input.Points
+	if pts <= 0 {
+		pts = 10
+	}
+
+	diff := input.Difficulty
+	if diff == "" {
+		diff = "medium"
+	}
+
+	q := model.Question{
+		BankID:      bankID,
+		Type:        model.QuestionType(qType),
+		Content:     content,
+		Points:      pts,
+		Difficulty:  diff,
+		Explanation: input.Explanation,
+		IsActive:    true,
+	}
+
+	for _, opt := range input.Options {
+		lbl := opt.Label
+		if lbl == "" {
+			lbl = opt.OptionKey
+		}
+		txt := opt.Content
+		if txt == "" {
+			txt = opt.OptionText
+		}
+		q.Options = append(q.Options, model.QuestionOption{
+			Label:     lbl,
+			Content:   txt,
+			IsCorrect: opt.IsCorrect,
+		})
+	}
+
 	res, err := ctrl.svc.CreateQuestion(c.Request.Context(), &q)
 	if err != nil {
 		response.InternalServerError(c, err.Error())
@@ -324,6 +480,175 @@ func (ctrl *CBTController) ListQuestions(c *gin.Context) {
 		return
 	}
 	response.Success(c, http.StatusOK, "Daftar soal", qs)
+}
+
+func (ctrl *CBTController) GetQuestion(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID soal tidak valid")
+		return
+	}
+	res, err := ctrl.svc.GetQuestion(c.Request.Context(), id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Detail soal", res)
+}
+
+func (ctrl *CBTController) UpdateQuestion(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID soal tidak valid")
+		return
+	}
+	var input struct {
+		BankID         *uuid.UUID `json:"bank_id"`
+		QuestionBankID *uuid.UUID `json:"question_bank_id"`
+		Type           string     `json:"type"`
+		QuestionType   string     `json:"question_type"`
+		Content        string     `json:"content"`
+		QuestionText   string     `json:"question_text"`
+		Points         int        `json:"points"`
+		Difficulty     string     `json:"difficulty"`
+		Explanation    *string    `json:"explanation"`
+		Options        []struct {
+			ID         *uuid.UUID `json:"id"`
+			Label      string     `json:"label"`
+			OptionKey  string     `json:"option_key"`
+			Content    string     `json:"content"`
+			OptionText string     `json:"option_text"`
+			IsCorrect  bool       `json:"is_correct"`
+		} `json:"options"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "VALIDATION_ERROR", err.Error())
+		return
+	}
+
+	var bankID uuid.UUID
+	if input.BankID != nil && *input.BankID != uuid.Nil {
+		bankID = *input.BankID
+	} else if input.QuestionBankID != nil && *input.QuestionBankID != uuid.Nil {
+		bankID = *input.QuestionBankID
+	}
+
+	qType := input.Type
+	if qType == "" {
+		qType = input.QuestionType
+	}
+	if qType == "" {
+		qType = "multiple_choice"
+	}
+
+	content := input.Content
+	if content == "" {
+		content = input.QuestionText
+	}
+
+	pts := input.Points
+	if pts <= 0 {
+		pts = 10
+	}
+
+	diff := input.Difficulty
+	if diff == "" {
+		diff = "medium"
+	}
+
+	q := model.Question{
+		ID:          id,
+		BankID:      bankID,
+		Type:        model.QuestionType(qType),
+		Content:     content,
+		Points:      pts,
+		Difficulty:  diff,
+		Explanation: input.Explanation,
+		IsActive:    true,
+	}
+
+	for _, opt := range input.Options {
+		lbl := opt.Label
+		if lbl == "" {
+			lbl = opt.OptionKey
+		}
+		txt := opt.Content
+		if txt == "" {
+			txt = opt.OptionText
+		}
+		qOpt := model.QuestionOption{
+			QuestionID: id,
+			Label:      lbl,
+			Content:    txt,
+			IsCorrect:  opt.IsCorrect,
+		}
+		if opt.ID != nil && *opt.ID != uuid.Nil {
+			qOpt.ID = *opt.ID
+		}
+		q.Options = append(q.Options, qOpt)
+	}
+
+	res, err := ctrl.svc.UpdateQuestion(c.Request.Context(), &q)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Soal berhasil diperbarui", res)
+}
+
+func (ctrl *CBTController) DeleteQuestion(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID soal tidak valid")
+		return
+	}
+	if err := ctrl.svc.DeleteQuestion(c.Request.Context(), id); err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Soal berhasil dihapus", gin.H{"deleted": true})
+}
+
+func (ctrl *CBTController) ListCBTExams(c *gin.Context) {
+	exams, err := ctrl.svc.ListCBTExams(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar ujian CBT", exams)
+}
+
+func (ctrl *CBTController) GetCBTExam(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID ujian tidak valid")
+		return
+	}
+	exam, err := ctrl.svc.GetCBTExam(c.Request.Context(), id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Detail ujian CBT", exam)
+}
+
+func (ctrl *CBTController) ListExamAttempts(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID ujian tidak valid")
+		return
+	}
+	attempts, err := ctrl.svc.ListExamAttempts(c.Request.Context(), id)
+	if err != nil {
+		response.InternalServerError(c, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Daftar attempt pengerjaan CBT", attempts)
 }
 
 func (ctrl *CBTController) CreateCBTExam(c *gin.Context) {

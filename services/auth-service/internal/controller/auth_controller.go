@@ -78,6 +78,10 @@ func (ctl *AuthController) VerifyOTP(c *gin.Context) {
 
 	res, err := ctl.authService.VerifyOTP(c.Request.Context(), req, c.ClientIP(), c.Request.UserAgent())
 	if err != nil {
+		if errors.Is(err, service.ErrAccountAlreadyActive) {
+			response.Error(c, http.StatusBadRequest, "ACCOUNT_ALREADY_ACTIVE", "Akun Anda sudah aktif dan terverifikasi. Silakan masuk (login) ke sistem.", nil)
+			return
+		}
 		if errors.Is(err, service.ErrOTPExpired) {
 			response.Error(c, http.StatusBadRequest, response.ErrCodeOtpExpired, "Kode OTP telah kedaluwarsa, silakan kirim ulang", nil)
 			return
@@ -118,11 +122,19 @@ func (ctl *AuthController) ResendOTP(c *gin.Context) {
 			response.Error(c, http.StatusTooManyRequests, response.ErrCodeOtpResendCooldown, "Mohon tunggu 60 detik sebelum meminta OTP kembali", nil)
 			return
 		}
+		if errors.Is(err, service.ErrUserNotFound) {
+			response.Error(c, http.StatusNotFound, response.ErrCodeNotFound, "Email belum terdaftar. Silakan lakukan pendaftaran terlebih dahulu.", nil)
+			return
+		}
+		if errors.Is(err, service.ErrAccountAlreadyActive) {
+			response.Error(c, http.StatusBadRequest, "ACCOUNT_ALREADY_ACTIVE", "Akun Anda sudah aktif dan terverifikasi. Silakan masuk (login) ke portal PMB.", nil)
+			return
+		}
 		response.InternalServerError(c, "Gagal mengirim ulang OTP")
 		return
 	}
 
-	response.Success(c, http.StatusOK, "Jika email terdaftar, kode OTP baru telah dikirimkan", nil)
+	response.Success(c, http.StatusOK, "Kode OTP baru telah berhasil dikirimkan ke email Anda", nil)
 }
 
 // Login godoc

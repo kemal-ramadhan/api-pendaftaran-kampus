@@ -38,7 +38,7 @@ func main() {
 	log.Info("Memulai PMB Selection Service...", zap.String("env", cfg.AppEnv), zap.String("port", cfg.Port))
 
 	// 3. Inisialisasi Basis Data
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s client_encoding=UTF8",
 		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBSSLMode,
 	)
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})

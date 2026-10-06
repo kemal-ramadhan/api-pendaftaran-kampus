@@ -95,6 +95,10 @@ func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, u
 		return nil, ErrInvoiceFree
 	}
 
+	if inv.Status == model.InvoiceStatusCancelled {
+		return nil, errors.New("tagihan sudah dibatalkan dan tidak dapat dibayar")
+	}
+
 	if inv.IsPaid() {
 		return nil, ErrInvoiceAlreadyPaid
 	}
@@ -128,10 +132,44 @@ func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, u
 		}
 	}
 
-	// Inisiasi VA baru via Provider
-	vaResult, err := s.provider.CreateVA(ctx, invoiceID, payAmount)
-	if err != nil {
-		return nil, fmt.Errorf("gagal membuat Virtual Account: %w", err)
+	// Inisiasi Pembayaran Gateway via Provider
+	merchantOrderID := fmt.Sprintf("INV-%s-%d", invoiceID.String()[:8], time.Now().Unix())
+	payReq := &provider.PaymentRequest{
+		InvoiceID:       invoiceID,
+		MerchantOrderID: merchantOrderID,
+		Amount:          payAmount,
+		ProductDetails:  inv.Description,
+		CustomerName:    "Calon Mahasiswa PMB",
+	}
+
+	payResult, err := s.provider.CreatePayment(ctx, payReq)
+	var (
+		providerRef = fmt.Sprintf("PAY-%s", uuid.New().String()[:8])
+		vaNumber    = ""
+		paymentURL  = ""
+		paymentCode = ""
+		pubOrderID  = ""
+	)
+	if err == nil && payResult != nil {
+		providerRef = payResult.ProviderRef
+		vaNumber = payResult.VANumber
+		paymentURL = payResult.PaymentURL
+		paymentCode = payResult.PaymentCode
+		pubOrderID = payResult.PublisherOrderID
+	} else {
+		// Fallback ke CreateVA jika CreatePayment belum di-override
+		vaResult, vaErr := s.provider.CreateVA(ctx, invoiceID, payAmount)
+		if vaErr != nil {
+			return nil, fmt.Errorf("gagal membuat transaksi pembayaran: %w", err)
+		}
+		providerRef = vaResult.ProviderRef
+		vaNumber = vaResult.VANumber
+		paymentCode = vaResult.VANumber
+	}
+
+	providerName := "mock"
+	if s.cfg != nil && s.cfg.PaymentProvider != "" {
+		providerName = s.cfg.PaymentProvider
 	}
 
 	payment := &model.Payment{
@@ -143,12 +181,15 @@ func (s *paymentService) PayWithVirtualAccount(ctx context.Context, invoiceID, u
 			}
 			return nil
 		}(),
-		Method:      model.PaymentMethodVirtualAccount,
-		Provider:    "mock",
-		ProviderRef: vaResult.ProviderRef,
-		VANumber:    vaResult.VANumber,
-		Amount:      payAmount,
-		Status:      model.PaymentStatusPending,
+		Method:           model.PaymentMethodVirtualAccount,
+		Provider:         providerName,
+		ProviderRef:      providerRef,
+		VANumber:         vaNumber,
+		PaymentURL:       paymentURL,
+		PaymentCode:      paymentCode,
+		PublisherOrderID: pubOrderID,
+		Amount:           payAmount,
+		Status:           model.PaymentStatusPending,
 	}
 
 	if err := s.paymentRepo.CreateInTx(s.paymentRepo.DB(), payment); err != nil {

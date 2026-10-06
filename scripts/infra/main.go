@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
@@ -67,6 +68,16 @@ func main() {
 	} else {
 		defer sRedis.Close()
 		fmt.Println("🔴 Redis aktif di 127.0.0.1:6379")
+
+		// Jalankan ticker background agar waktu virtual miniredis bergerak secara real-time
+		// sehingga kunci TTL (rate limit, OTP, session) dapat kedaluwarsa secara otomatis
+		go func() {
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				sRedis.FastForward(1 * time.Second)
+			}
+		}()
 	}
 
 	// 2. Embedded PostgreSQL di port 5432
@@ -88,77 +99,83 @@ func main() {
 		initOtherDBs("postgres://pmb_user:pmb_password@127.0.0.1:5432/pmb_auth?sslmode=disable")
 	}
 
-	// 3. Mock Mailpit (SMTP :1025, HTTP :8025)
-	store := &MailStore{}
-
-	// SMTP Listener
-	smtpListener, err := net.Listen("tcp", "127.0.0.1:1025")
-	if err != nil {
-		fmt.Printf("Peringatan SMTP 1025: %v\n", err)
+	// 3. Mock Mailpit (SMTP :1025, HTTP :8025) - hanya jika belum ada Mailpit berjalan
+	connCheck, errConn := net.DialTimeout("tcp", "127.0.0.1:1025", 500*time.Millisecond)
+	if errConn == nil {
+		connCheck.Close()
+		fmt.Println("📧 Mailpit resmi terdeteksi aktif di 127.0.0.1:1025 (melewati mock)")
 	} else {
-		defer smtpListener.Close()
-		fmt.Println("📧 Mailpit SMTP aktif di 127.0.0.1:1025")
-		go func() {
-			for {
-				conn, err := smtpListener.Accept()
-				if err != nil {
-					return
+		store := &MailStore{}
+
+		// SMTP Listener
+		smtpListener, err := net.Listen("tcp", "127.0.0.1:1025")
+		if err != nil {
+			fmt.Printf("Peringatan SMTP 1025: %v\n", err)
+		} else {
+			defer smtpListener.Close()
+			fmt.Println("📧 Mailpit SMTP aktif di 127.0.0.1:1025")
+			go func() {
+				for {
+					conn, err := smtpListener.Accept()
+					if err != nil {
+						return
+					}
+					go handleSMTP(conn, store)
 				}
-				go handleSMTP(conn, store)
+			}()
+		}
+
+		// HTTP API Listener
+		mux := http.NewServeMux()
+		mux.HandleFunc("/api/v1/messages", func(w http.ResponseWriter, r *http.Request) {
+			msgs := store.List()
+			type summary struct {
+				ID      string `json:"ID"`
+				Snippet string `json:"Snippet"`
 			}
+			var summaries []summary
+			for _, m := range msgs {
+				summaries = append(summaries, summary{ID: m.ID, Snippet: m.Snippet})
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"total":    len(msgs),
+				"messages": summaries,
+			})
+		})
+
+		mux.HandleFunc("/api/v1/message/", func(w http.ResponseWriter, r *http.Request) {
+			parts := strings.Split(r.URL.Path, "/")
+			id := parts[len(parts)-1]
+			msg, ok := store.Get(id)
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]interface{}{
+				"ID":      msg.ID,
+				"Snippet": msg.Snippet,
+				"Text":    msg.Body,
+				"HTML":    msg.Body,
+			})
+		})
+
+		httpServer := &http.Server{Addr: "127.0.0.1:8025", Handler: mux}
+		go func() {
+			fmt.Println("📬 Mailpit Web/API aktif di http://127.0.0.1:8025")
+			_ = httpServer.ListenAndServe()
 		}()
+		defer httpServer.Close()
 	}
 
-	// HTTP API Listener
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/v1/messages", func(w http.ResponseWriter, r *http.Request) {
-		msgs := store.List()
-		type summary struct {
-			ID      string `json:"ID"`
-			Snippet string `json:"Snippet"`
-		}
-		var summaries []summary
-		for _, m := range msgs {
-			summaries = append(summaries, summary{ID: m.ID, Snippet: m.Snippet})
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"total":    len(msgs),
-			"messages": summaries,
-		})
-	})
-
-	mux.HandleFunc("/api/v1/message/", func(w http.ResponseWriter, r *http.Request) {
-		parts := strings.Split(r.URL.Path, "/")
-		id := parts[len(parts)-1]
-		msg, ok := store.Get(id)
-		if !ok {
-			http.NotFound(w, r)
-			return
-		}
-		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]interface{}{
-			"ID":      msg.ID,
-			"Snippet": msg.Snippet,
-			"Text":    msg.Body,
-			"HTML":    msg.Body,
-		})
-	})
-
-	httpServer := &http.Server{Addr: "127.0.0.1:8025", Handler: mux}
-	go func() {
-		fmt.Println("📬 Mailpit Web/API aktif di http://127.0.0.1:8025")
-		_ = httpServer.ListenAndServe()
-	}()
-
-	fmt.Println("✨ Infrastruktur siap! Menunggu shutdown signal (SIGINT/SIGTERM)...")
+	fmt.Println("Infrastruktur siap! Menunggu shutdown signal (SIGINT/SIGTERM)...")
 
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM)
 	<-sig
 
 	fmt.Println("Menutup infrastruktur...")
-	_ = httpServer.Close()
 }
 
 func handleSMTP(conn net.Conn, store *MailStore) {
@@ -200,7 +217,7 @@ func handleSMTP(conn net.Conn, store *MailStore) {
 					To:      toAddr,
 				})
 
-				writer.WriteString("250 OK: queued as " + msgID + "\r\n")
+				fmt.Fprintf(writer, "250 OK: queued as %s\r\n", msgID)
 				writer.Flush()
 				continue
 			}
@@ -280,4 +297,3 @@ func initOtherDBs(connStr string) {
 		}
 	}
 }
-

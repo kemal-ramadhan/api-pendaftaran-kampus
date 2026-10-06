@@ -3,6 +3,7 @@ package middleware
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -35,14 +36,34 @@ func RateLimitMiddleware(rdb *redis.Client, defaultReq int, defaultWindow time.D
 			}
 		}
 
+		// Naikkan batas di localhost/pengembangan lokal agar aktivitas dev/testing tidak terblokir
+		isLocal := clientIP == "127.0.0.1" || clientIP == "::1" || clientIP == "localhost" ||
+			strings.HasPrefix(clientIP, "127.") || strings.HasPrefix(clientIP, "::ffff:127.") ||
+			strings.HasPrefix(clientIP, "192.168.") || strings.HasPrefix(clientIP, "10.") ||
+			strings.HasPrefix(clientIP, "172.") || clientIP == ""
+		if isLocal {
+			if limitReq < 10000 {
+				limitReq = 10000
+			}
+		}
+
 		key := fmt.Sprintf("gw:rl:%s:%s", routeKey, clientIP)
 
-		pipe := rdb.TxPipeline()
-		incr := pipe.Incr(c.Request.Context(), key)
-		pipe.Expire(c.Request.Context(), key, limitWindow)
-		_, err := pipe.Exec(c.Request.Context())
+		val, err := rdb.Incr(c.Request.Context(), key).Result()
+		if err == nil {
+			// Pasang expiration HANYA saat request pertama pada window tersebut (val == 1)
+			if val == 1 {
+				rdb.Expire(c.Request.Context(), key, limitWindow)
+			} else {
+				// Jaga-jaga jika kunci sebelumnya tidak memiliki TTL
+				ttl, _ := rdb.TTL(c.Request.Context(), key).Result()
+				if ttl <= 0 {
+					rdb.Expire(c.Request.Context(), key, limitWindow)
+				}
+			}
+		}
 
-		if err == nil && incr.Val() > int64(limitReq) {
+		if err == nil && val > int64(limitReq) {
 			response.Error(c, http.StatusTooManyRequests, response.ErrCodeRateLimited, "Terlalu banyak permintaan, silakan coba beberapa saat lagi", nil)
 			c.Abort()
 			return
@@ -51,3 +72,4 @@ func RateLimitMiddleware(rdb *redis.Client, defaultReq int, defaultWindow time.D
 		c.Next()
 	}
 }
+

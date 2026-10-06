@@ -129,7 +129,7 @@ func LoadConfig() *Config {
 
 func ConnectDB(cfg *Config) (*gorm.DB, error) {
 	dsn := fmt.Sprintf(
-		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta",
+		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable TimeZone=Asia/Jakarta client_encoding=UTF8",
 		cfg.DBHost,
 		cfg.DBUser,
 		cfg.DBPassword,

@@ -101,6 +101,8 @@ func (r *changeRepository) GetPathChangeRequestByID(ctx context.Context, id uuid
 func (r *changeRepository) GetPendingPathChangeRequest(ctx context.Context, appID uuid.UUID) (*model.PathChangeRequest, error) {
 	var req model.PathChangeRequest
 	err := r.db.WithContext(ctx).
+		Preload("FromPath").
+		Preload("ToPath").
 		Where("application_id = ? AND status = ?", appID, model.PathChangePending).
 		First(&req).Error
 	if err != nil {

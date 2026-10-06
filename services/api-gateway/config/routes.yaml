@@ -55,7 +55,7 @@ routes:
     service: auth
     rewrite: /auth/admin
     auth: required
-    roles: [superadmin]
+    roles: [superadmin, admin_pmb]
   - prefix: /api/v1/auth
     service: auth
     rewrite: /auth
@@ -144,6 +144,11 @@ routes:
     service: finance
     rewrite: /receipts
     auth: required
+  - prefix: /api/v1/finance/me
+    service: finance
+    rewrite: /finance/me
+    auth: required
+    max_body: 10MB
   - prefix: /api/v1/invoices
     service: finance
     rewrite: /invoices

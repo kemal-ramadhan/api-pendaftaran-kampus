@@ -91,7 +91,7 @@ func LoadConfig() (*Config, error) {
 	jwtAudience := getEnv("JWT_AUDIENCE", "pmb-api")
 	redisAddr := getEnv("REDIS_ADDR", "redis:6379")
 	redisPassword := getEnv("REDIS_PASSWORD", "")
-	gatewaySecret := getEnv("GATEWAY_SHARED_SECRET", "")
+	gatewaySecret := getEnv("GATEWAY_SHARED_SECRET", "default-dev-gateway-secret")
 	corsRaw := getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:5173")
 	rateLimitRaw := getEnv("RATE_LIMIT_GLOBAL", "120/1m")
 	trustedProxiesRaw := getEnv("TRUSTED_PROXIES", "")

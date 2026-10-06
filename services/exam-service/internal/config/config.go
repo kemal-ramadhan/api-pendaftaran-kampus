@@ -46,7 +46,7 @@ func LoadConfig() *Config {
 		DBSSLMode:              getEnv("DB_SSLMODE", "disable"),
 		RedisAddr:              getEnv("REDIS_ADDR", "localhost:6379"),
 		InternalToken:          getEnv("INTERNAL_TOKEN", "secret-internal-token"),
-		GatewaySharedKey:       getEnv("GATEWAY_SHARED_KEY", "gateway-secret-key-minimum-32-bytes-long!"),
+		GatewaySharedKey:       getEnv("GATEWAY_SHARED_SECRET", getEnv("GATEWAY_SHARED_KEY", "change-this-gateway-shared-secret")),
 		MinIOEndpoint:          getEnv("MINIO_ENDPOINT", "localhost:9000"),
 		MinIOAccessKey:         getEnv("MINIO_ACCESS_KEY", "minioadmin"),
 		MinIOSecretKey:         getEnv("MINIO_SECRET_KEY", "minioadmin"),

@@ -62,10 +62,10 @@ func SetupRoutes(
 		authProtected.POST("/logout-all", authCtrl.LogoutAll)
 	}
 
-	// Admin Endpoints (Role: superadmin)
+	// Admin Endpoints (Role: superadmin, admin_pmb)
 	admin := auth.Group("/admin")
 	admin.Use(middleware.AuthMiddleware(tokenMgr, sessionStore))
-	admin.Use(middleware.RequireRole(model.RoleSuperadmin))
+	admin.Use(middleware.RequireRole(model.RoleSuperadmin, model.RoleAdminPMB))
 	{
 		admin.GET("/roles", adminCtrl.GetRoles)
 		admin.GET("/permissions", adminCtrl.GetPermissions)

@@ -133,6 +133,23 @@ func (ctrl *ChangeController) CancelPendingPathChange(c *gin.Context) {
 	response.Success(c, http.StatusOK, "Permohonan pindah jalur berhasil dibatalkan", gin.H{"cancelled": true})
 }
 
+// GetMyPendingPathChange menangani GET /applications/me/path-change/pending
+func (ctrl *ChangeController) GetMyPendingPathChange(c *gin.Context) {
+	userID, err := ctrl.getUserID(c)
+	if err != nil {
+		response.Unauthorized(c, "UNAUTHORIZED", "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	req, err := ctrl.svc.GetMyPendingPathChange(c.Request.Context(), userID)
+	if err != nil || req == nil {
+		response.NotFound(c, "Tidak ada permohonan pindah jalur yang sedang diproses")
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Permohonan pindah jalur berhasil diambil", req)
+}
+
 // GetDashboard menangani GET /applications/me/dashboard
 func (ctrl *ChangeController) GetDashboard(c *gin.Context) {
 	userID, err := ctrl.getUserID(c)

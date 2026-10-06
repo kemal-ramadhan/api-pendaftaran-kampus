@@ -2,6 +2,7 @@ package limiter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -92,13 +93,30 @@ func (l *rateLimiter) CheckResendOTPCooldown(ctx context.Context, email string) 
 		return false, 0, nil
 	}
 	key := fmt.Sprintf("auth:cooldown:resend:%s", sanitizeEmail(email))
-	ttl, err := l.rdb.TTL(ctx, key).Result()
+	val, err := l.rdb.Get(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, 0, nil
+		}
 		return false, 0, err
 	}
-	if ttl > 0 {
-		return true, ttl, nil
+
+	var expUnix int64
+	if _, scanErr := fmt.Sscanf(val, "%d", &expUnix); scanErr != nil || expUnix <= 0 {
+		ttl, ttlErr := l.rdb.TTL(ctx, key).Result()
+		if ttlErr == nil && ttl > 0 {
+			return true, ttl, nil
+		}
+		return false, 0, nil
 	}
+
+	nowUnix := time.Now().Unix()
+	if expUnix > nowUnix {
+		rem := time.Duration(expUnix-nowUnix) * time.Second
+		return true, rem, nil
+	}
+
+	_ = l.rdb.Del(ctx, key)
 	return false, 0, nil
 }
 
@@ -107,7 +125,8 @@ func (l *rateLimiter) SetResendOTPCooldown(ctx context.Context, email string) er
 		return nil
 	}
 	key := fmt.Sprintf("auth:cooldown:resend:%s", sanitizeEmail(email))
-	return l.rdb.Set(ctx, key, "1", 60*time.Second).Err()
+	expUnix := time.Now().Add(60 * time.Second).Unix()
+	return l.rdb.Set(ctx, key, fmt.Sprintf("%d", expUnix), 65*time.Second).Err()
 }
 
 func (l *rateLimiter) CheckForgotPasswordCooldown(ctx context.Context, email string) (bool, time.Duration, error) {
@@ -115,13 +134,30 @@ func (l *rateLimiter) CheckForgotPasswordCooldown(ctx context.Context, email str
 		return false, 0, nil
 	}
 	key := fmt.Sprintf("auth:cooldown:forgot:%s", sanitizeEmail(email))
-	ttl, err := l.rdb.TTL(ctx, key).Result()
+	val, err := l.rdb.Get(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return false, 0, nil
+		}
 		return false, 0, err
 	}
-	if ttl > 0 {
-		return true, ttl, nil
+
+	var expUnix int64
+	if _, scanErr := fmt.Sscanf(val, "%d", &expUnix); scanErr != nil || expUnix <= 0 {
+		ttl, ttlErr := l.rdb.TTL(ctx, key).Result()
+		if ttlErr == nil && ttl > 0 {
+			return true, ttl, nil
+		}
+		return false, 0, nil
 	}
+
+	nowUnix := time.Now().Unix()
+	if expUnix > nowUnix {
+		rem := time.Duration(expUnix-nowUnix) * time.Second
+		return true, rem, nil
+	}
+
+	_ = l.rdb.Del(ctx, key)
 	return false, 0, nil
 }
 
@@ -130,5 +166,6 @@ func (l *rateLimiter) SetForgotPasswordCooldown(ctx context.Context, email strin
 		return nil
 	}
 	key := fmt.Sprintf("auth:cooldown:forgot:%s", sanitizeEmail(email))
-	return l.rdb.Set(ctx, key, "1", 60*time.Second).Err()
+	expUnix := time.Now().Add(60 * time.Second).Unix()
+	return l.rdb.Set(ctx, key, fmt.Sprintf("%d", expUnix), 65*time.Second).Err()
 }

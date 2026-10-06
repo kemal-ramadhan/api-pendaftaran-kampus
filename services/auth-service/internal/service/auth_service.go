@@ -38,6 +38,7 @@ var (
 	ErrOldPasswordMismatch     = errors.New("kata sandi saat ini tidak sesuai")
 	ErrUserNotFound            = errors.New("pengguna tidak ditemukan")
 	ErrRoleNotFound            = errors.New("role tidak ditemukan")
+	ErrAccountAlreadyActive    = errors.New("akun sudah aktif dan terverifikasi")
 	ErrLastSuperadmin          = errors.New("sistem harus memiliki minimal satu superadmin aktif")
 	ErrSelfDemoteSuperadmin    = errors.New("superadmin tidak boleh mencabut role superadmin dari dirinya sendiri")
 	ErrSelfDeactivateSuperadmin = errors.New("superadmin tidak boleh menonaktifkan akun miliknya sendiri")
@@ -237,6 +238,10 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest, i
 		return nil, ErrOTPInvalid
 	}
 
+	if user.Status == model.UserStatusActive {
+		return nil, ErrAccountAlreadyActive
+	}
+
 	otpRecord, err := s.otpRepo.FindLatestActive(ctx, user.ID, model.OTPPurposeEmailVerification)
 	if err != nil || otpRecord == nil {
 		return nil, ErrOTPExpired
@@ -292,6 +297,7 @@ func (s *authService) VerifyOTP(ctx context.Context, req dto.VerifyOTPRequest, i
 
 func (s *authService) ResendOTP(ctx context.Context, req dto.ResendOTPRequest) error {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
+	s.log.Info("Menerima permintaan ResendOTP", zap.String("email", email))
 
 	inCooldown, _, err := s.rateLimiter.CheckResendOTPCooldown(ctx, email)
 	if err != nil {
@@ -303,13 +309,18 @@ func (s *authService) ResendOTP(ctx context.Context, req dto.ResendOTPRequest) e
 
 	user, err := s.userRepo.FindByEmail(ctx, email)
 	if err != nil {
+		s.log.Error("Gagal mencari user di DB saat ResendOTP", zap.String("email", email), zap.Error(err))
 		return err
 	}
 
-	// Mencegah enumerasi akun: jika user tidak ada atau sudah active, tetap return sukses tanpa kirim email
-	if user == nil || user.Status == model.UserStatusActive {
-		_ = s.rateLimiter.SetResendOTPCooldown(ctx, email)
-		return nil
+	if user == nil {
+		s.log.Warn("ResendOTP ditolak: email tidak ditemukan di database", zap.String("email", email))
+		return ErrUserNotFound
+	}
+
+	if user.Status == model.UserStatusActive {
+		s.log.Warn("ResendOTP ditolak: user sudah berstatus aktif", zap.String("email", email))
+		return ErrAccountAlreadyActive
 	}
 
 	otpCode, err := utils.GenerateSecureOTP()
@@ -333,13 +344,18 @@ func (s *authService) ResendOTP(ctx context.Context, req dto.ResendOTPRequest) e
 	}
 
 	if err := s.otpRepo.Create(ctx, &userOTP); err != nil {
+		s.log.Error("Gagal menyimpan OTP baru", zap.String("email", email), zap.Error(err))
 		return err
 	}
 
 	go func() {
 		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		_ = s.mailer.SendOTP(bgCtx, user.Email, user.FullName, otpCode)
+		if err := s.mailer.SendOTP(bgCtx, user.Email, user.FullName, otpCode); err != nil {
+			s.log.Error("Gagal mengirim email OTP saat ResendOTP", zap.String("email", user.Email), zap.Error(err))
+		} else {
+			s.log.Info("Berhasil mengirim email OTP baru via SMTP", zap.String("email", user.Email), zap.String("otp", otpCode))
+		}
 	}()
 
 	_ = s.rateLimiter.SetResendOTPCooldown(ctx, email)

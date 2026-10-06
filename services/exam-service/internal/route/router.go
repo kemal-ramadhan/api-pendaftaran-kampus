@@ -108,9 +108,20 @@ func SetupRouter(
 			// Admin CBT
 			adminGroup.POST("/cbt/banks", cbtCtrl.CreateQuestionBank)
 			adminGroup.GET("/cbt/banks", cbtCtrl.ListQuestionBanks)
+			adminGroup.GET("/cbt/banks/:id", cbtCtrl.GetQuestionBank)
+			adminGroup.PUT("/cbt/banks/:id", cbtCtrl.UpdateQuestionBank)
+			adminGroup.DELETE("/cbt/banks/:id", cbtCtrl.DeleteQuestionBank)
+
 			adminGroup.POST("/cbt/questions", cbtCtrl.CreateQuestion)
 			adminGroup.GET("/cbt/questions", cbtCtrl.ListQuestions)
+			adminGroup.GET("/cbt/questions/:id", cbtCtrl.GetQuestion)
+			adminGroup.PUT("/cbt/questions/:id", cbtCtrl.UpdateQuestion)
+			adminGroup.DELETE("/cbt/questions/:id", cbtCtrl.DeleteQuestion)
+
 			adminGroup.POST("/cbt/exams", cbtCtrl.CreateCBTExam)
+			adminGroup.GET("/cbt/exams", cbtCtrl.ListCBTExams)
+			adminGroup.GET("/cbt/exams/:id", cbtCtrl.GetCBTExam)
+			adminGroup.GET("/cbt/exams/:id/attempts", cbtCtrl.ListExamAttempts)
 			adminGroup.POST("/cbt/exams/:id/publish", cbtCtrl.PublishCBTExam)
 			adminGroup.POST("/cbt/attempts/:id/reset", cbtCtrl.ResetAttempt)
 			adminGroup.POST("/cbt/attempts/:id/extend", cbtCtrl.ExtendAttempt)

@@ -302,6 +302,11 @@ func (s *invoiceService) CancelInvoice(ctx context.Context, invoiceID uuid.UUID)
 		return nil
 	}
 
+	// Tagihan lunas tidak boleh dibatalkan
+	if inv.Status == model.InvoiceStatusPaid || inv.IsPaid() {
+		return ErrCancelNotAllowed
+	}
+
 	// Periksa apakah ada pembayaran yang sudah sukses atau sedang diverifikasi
 	// Kecuali pembayaran untuk jalur gratis (method: free atau payment_scheme: free)
 	if inv.PaymentScheme != "free" {

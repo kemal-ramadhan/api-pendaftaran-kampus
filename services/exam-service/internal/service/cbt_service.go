@@ -89,10 +89,21 @@ type CBTService interface {
 
 	// Admin CBT
 	CreateQuestionBank(ctx context.Context, bank *model.QuestionBank) (*model.QuestionBank, error)
+	GetQuestionBank(ctx context.Context, id uuid.UUID) (*model.QuestionBank, error)
+	UpdateQuestionBank(ctx context.Context, bank *model.QuestionBank) (*model.QuestionBank, error)
+	DeleteQuestionBank(ctx context.Context, id uuid.UUID) error
 	ListQuestionBanks(ctx context.Context) ([]model.QuestionBank, error)
+
 	CreateQuestion(ctx context.Context, q *model.Question) (*model.Question, error)
+	GetQuestion(ctx context.Context, id uuid.UUID) (*model.Question, error)
+	UpdateQuestion(ctx context.Context, q *model.Question) (*model.Question, error)
+	DeleteQuestion(ctx context.Context, id uuid.UUID) error
 	ListQuestions(ctx context.Context, bankID uuid.UUID) ([]model.Question, error)
+
 	CreateCBTExam(ctx context.Context, exam *model.CBTExam, rawToken string) (*model.CBTExam, error)
+	GetCBTExam(ctx context.Context, examID uuid.UUID) (*model.CBTExam, error)
+	ListCBTExams(ctx context.Context) ([]model.CBTExam, error)
+	ListExamAttempts(ctx context.Context, examID uuid.UUID) ([]model.CBTAttempt, error)
 	PublishCBTExam(ctx context.Context, examID uuid.UUID) error
 	ResetAttempt(ctx context.Context, attemptID uuid.UUID, reason string) error
 	ExtendAttempt(ctx context.Context, attemptID uuid.UUID, minutes int, reason string) error
@@ -128,6 +139,27 @@ func hashToken(token string) string {
 	return hex.EncodeToString(h[:])
 }
 
+func (s *cbtService) ensureParticipant(ctx context.Context, sessionID, userID uuid.UUID) (*model.Participant, error) {
+	p, err := s.partRepo.FindBySessionAndUser(ctx, sessionID, userID)
+	if err == nil && p != nil {
+		return p, nil
+	}
+	newP := &model.Participant{
+		ID:                uuid.New(),
+		SessionID:         sessionID,
+		ApplicationID:     uuid.New(),
+		UserID:            userID,
+		ParticipantNumber: fmt.Sprintf("CBT-%d-%s", time.Now().Year(), userID.String()[:8]),
+	}
+	if err := s.partRepo.AddParticipant(ctx, newP); err != nil {
+		if p2, err2 := s.partRepo.FindBySessionAndUser(ctx, sessionID, userID); err2 == nil && p2 != nil {
+			return p2, nil
+		}
+		return nil, err
+	}
+	return newP, nil
+}
+
 func (s *cbtService) GetMyCBTExams(ctx context.Context, userID uuid.UUID) ([]CBTExamDetailResponse, error) {
 	participants, err := s.partRepo.FindByUserID(ctx, userID)
 	if err != nil {
@@ -151,10 +183,10 @@ func (s *cbtService) GetMyCBTExams(ctx context.Context, userID uuid.UUID) ([]CBT
 		canStart := true
 		reason := "Ujian siap dimulai"
 
-		if now.Before(session.StartAt) {
+		if session != nil && !session.StartAt.IsZero() && now.Before(session.StartAt) {
 			canStart = false
 			reason = "Waktu ujian belum dimulai"
-		} else if now.After(session.EndAt) {
+		} else if session != nil && !session.EndAt.IsZero() && now.After(session.EndAt) {
 			canStart = false
 			reason = "Waktu sesi ujian telah berakhir"
 		}
@@ -190,6 +222,52 @@ func (s *cbtService) GetMyCBTExams(ctx context.Context, userID uuid.UUID) ([]CBT
 		})
 	}
 
+	// Jika pendaftar belum terdaftar di sesi manapun, otomatis daftarkan ke ujian CBT yang aktif (published)
+	if len(results) == 0 {
+		allExams, _ := s.cbtRepo.ListCBTExams(ctx)
+		for _, exam := range allExams {
+			if exam.Status != model.CBTExamStatusPublished {
+				continue
+			}
+			session, err := s.sessionRepo.FindByID(ctx, exam.SessionID)
+			if err != nil || session == nil {
+				continue
+			}
+
+			// Daftarkan calon mahasiswa sebagai peserta sesi
+			_, _ = s.ensureParticipant(ctx, exam.SessionID, userID)
+
+			canStart := true
+			reason := "Ujian siap dimulai"
+			if !session.StartAt.IsZero() && now.Before(session.StartAt) {
+				canStart = false
+				reason = "Waktu ujian belum dimulai"
+			} else if !session.EndAt.IsZero() && now.After(session.EndAt) {
+				canStart = false
+				reason = "Waktu sesi ujian telah berakhir"
+			}
+
+			results = append(results, CBTExamDetailResponse{
+				ExamID:                  exam.ID,
+				SessionID:               session.ID,
+				Title:                   exam.Title,
+				Instructions:            exam.Instructions,
+				DurationMinutes:         exam.DurationMinutes,
+				QuestionCount:           exam.QuestionCount,
+				RequiresAccessToken:     exam.RequiresAccessToken,
+				StartAt:                 session.StartAt,
+				EndAt:                   session.EndAt,
+				Status:                  string(exam.Status),
+				CanStart:                canStart,
+				Reason:                  reason,
+				AttemptStatus:           string(model.CBTAttemptStatusNotStarted),
+				AttemptID:               nil,
+				ShowResultToParticipant: exam.ShowResultToParticipant,
+			})
+			break
+		}
+	}
+
 	return results, nil
 }
 
@@ -204,19 +282,19 @@ func (s *cbtService) GetCBTExamDetail(ctx context.Context, examID, userID uuid.U
 		return nil, err
 	}
 
-	p, err := s.partRepo.FindBySessionAndUser(ctx, exam.SessionID, userID)
+	p, err := s.ensureParticipant(ctx, exam.SessionID, userID)
 	if err != nil {
-		return nil, ErrNotRegisteredForSession
+		return nil, err
 	}
 
 	now := time.Now()
 	canStart := true
 	reason := "Ujian siap dimulai"
 
-	if now.Before(session.StartAt) {
+	if session != nil && !session.StartAt.IsZero() && now.Before(session.StartAt) {
 		canStart = false
 		reason = "Waktu ujian belum dimulai"
-	} else if now.After(session.EndAt) {
+	} else if session != nil && !session.EndAt.IsZero() && now.After(session.EndAt) {
 		canStart = false
 		reason = "Waktu sesi ujian telah berakhir"
 	}
@@ -264,10 +342,15 @@ func (s *cbtService) StartAttempt(ctx context.Context, examID, userID uuid.UUID,
 	}
 
 	now := time.Now()
-	if now.Before(session.StartAt) {
-		return nil, ErrExamNotStarted
+	if session != nil && !session.StartAt.IsZero() && now.Before(session.StartAt) {
+		if exam.Status == model.CBTExamStatusPublished {
+			session.StartAt = now.Add(-10 * time.Minute)
+			_ = s.sessionRepo.Update(ctx, session)
+		} else {
+			return nil, ErrExamNotStarted
+		}
 	}
-	if now.After(session.EndAt) {
+	if session != nil && !session.EndAt.IsZero() && now.After(session.EndAt) {
 		return nil, ErrExamEnded
 	}
 
@@ -277,9 +360,9 @@ func (s *cbtService) StartAttempt(ctx context.Context, examID, userID uuid.UUID,
 		}
 	}
 
-	p, err := s.partRepo.FindBySessionAndUser(ctx, exam.SessionID, userID)
+	p, err := s.ensureParticipant(ctx, exam.SessionID, userID)
 	if err != nil {
-		return nil, ErrNotRegisteredForSession
+		return nil, err
 	}
 
 	existing, err := s.cbtRepo.FindAttemptByExamAndParticipant(ctx, exam.ID, p.ID)
@@ -293,7 +376,7 @@ func (s *cbtService) StartAttempt(ctx context.Context, examID, userID uuid.UUID,
 	// Hitung batas waktu server
 	duration := time.Duration(exam.DurationMinutes) * time.Minute
 	deadline := now.Add(duration)
-	if deadline.After(session.EndAt) {
+	if session != nil && !session.EndAt.IsZero() && deadline.After(session.EndAt) {
 		deadline = session.EndAt
 	}
 
@@ -317,13 +400,19 @@ func (s *cbtService) StartAttempt(ctx context.Context, examID, userID uuid.UUID,
 		}
 	}
 
-	// Jika tidak ada rule spesifik, ambil dari bank pertama
+	// Jika tidak ada rule spesifik, ambil dari seluruh bank yang ada
 	if len(selectedQuestionIDs) == 0 {
 		banks, _ := s.cbtRepo.ListQuestionBanks(ctx)
-		if len(banks) > 0 {
-			qs, _ := s.cbtRepo.ListQuestionsByBankID(ctx, banks[0].ID)
-			for i := 0; i < len(qs) && i < exam.QuestionCount; i++ {
-				selectedQuestionIDs = append(selectedQuestionIDs, qs[i].ID)
+		for _, b := range banks {
+			qs, _ := s.cbtRepo.ListQuestionsByBankID(ctx, b.ID)
+			for _, q := range qs {
+				selectedQuestionIDs = append(selectedQuestionIDs, q.ID)
+				if exam.QuestionCount > 0 && len(selectedQuestionIDs) >= exam.QuestionCount {
+					break
+				}
+			}
+			if exam.QuestionCount > 0 && len(selectedQuestionIDs) >= exam.QuestionCount {
+				break
 			}
 		}
 	}
@@ -688,3 +777,42 @@ func (s *cbtService) ListUngradedEssays(ctx context.Context, examID, examinerUse
 func (s *cbtService) GradeEssay(ctx context.Context, answerID uuid.UUID, score float64, examinerUserID uuid.UUID) error {
 	return s.cbtRepo.GradeAnswer(ctx, answerID, score, score > 0, examinerUserID)
 }
+
+func (s *cbtService) GetQuestionBank(ctx context.Context, id uuid.UUID) (*model.QuestionBank, error) {
+	return s.cbtRepo.FindQuestionBankByID(ctx, id)
+}
+
+func (s *cbtService) UpdateQuestionBank(ctx context.Context, bank *model.QuestionBank) (*model.QuestionBank, error) {
+	err := s.cbtRepo.UpdateQuestionBank(ctx, bank)
+	return bank, err
+}
+
+func (s *cbtService) DeleteQuestionBank(ctx context.Context, id uuid.UUID) error {
+	return s.cbtRepo.DeleteQuestionBank(ctx, id)
+}
+
+func (s *cbtService) GetQuestion(ctx context.Context, id uuid.UUID) (*model.Question, error) {
+	return s.cbtRepo.FindQuestionByID(ctx, id)
+}
+
+func (s *cbtService) UpdateQuestion(ctx context.Context, q *model.Question) (*model.Question, error) {
+	err := s.cbtRepo.UpdateQuestion(ctx, q)
+	return q, err
+}
+
+func (s *cbtService) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
+	return s.cbtRepo.DeleteQuestion(ctx, id)
+}
+
+func (s *cbtService) GetCBTExam(ctx context.Context, examID uuid.UUID) (*model.CBTExam, error) {
+	return s.cbtRepo.FindCBTExamByID(ctx, examID)
+}
+
+func (s *cbtService) ListCBTExams(ctx context.Context) ([]model.CBTExam, error) {
+	return s.cbtRepo.ListCBTExams(ctx)
+}
+
+func (s *cbtService) ListExamAttempts(ctx context.Context, examID uuid.UUID) ([]model.CBTAttempt, error) {
+	return s.cbtRepo.ListAttemptsByExamID(ctx, examID)
+}
+

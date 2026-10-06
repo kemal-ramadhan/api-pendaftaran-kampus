@@ -12,16 +12,21 @@ import (
 func Seed(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 	logger.Info("Memeriksa seeder Organization Service...")
 
-	// 1. Seed Faculties
+	// 1. Seed Faculties Universitas Bakti Tunas Husada
 	faculties := []model.Faculty{
 		{
-			Code:     "FT",
-			Name:     "Fakultas Teknik",
+			Code:     "FF",
+			Name:     "Fakultas Farmasi",
 			IsActive: true,
 		},
 		{
-			Code:     "FEB",
-			Name:     "Fakultas Ekonomi dan Bisnis",
+			Code:     "FIK",
+			Name:     "Fakultas Ilmu Kesehatan",
+			IsActive: true,
+		},
+		{
+			Code:     "FTB",
+			Name:     "Fakultas Teknologi & Bisnis",
 			IsActive: true,
 		},
 	}
@@ -47,42 +52,69 @@ func Seed(ctx context.Context, db *gorm.DB, logger *zap.Logger) error {
 		}
 	}
 
-	// 2. Seed Study Programs
+	// 2. Seed Study Programs Universitas BTH
 	programs := []model.StudyProgram{
 		{
-			FacultyID:     facultyMap["FT"],
-			Code:          "TI",
-			NIMCode:       "55",
-			Name:          "Teknik Informatika",
+			FacultyID:     facultyMap["FF"],
+			Code:          "FARM",
+			NIMCode:       "01",
+			Name:          "S1 Farmasi",
 			Degree:        "S1",
 			Accreditation: "Unggul",
 			IsActive:      true,
 		},
 		{
-			FacultyID:     facultyMap["FT"],
-			Code:          "SI",
-			NIMCode:       "57",
-			Name:          "Sistem Informasi",
+			FacultyID:     facultyMap["FTB"],
+			Code:          "TI",
+			NIMCode:       "55",
+			Name:          "S1 Teknologi Informasi",
 			Degree:        "S1",
 			Accreditation: "Baik Sekali",
 			IsActive:      true,
 		},
 		{
-			FacultyID:     facultyMap["FEB"],
-			Code:          "MN",
-			NIMCode:       "61",
-			Name:          "Manajemen",
+			FacultyID:     facultyMap["FIK"],
+			Code:          "ARS",
+			NIMCode:       "03",
+			Name:          "S1 Administrasi Rumah Sakit",
 			Degree:        "S1",
-			Accreditation: "A",
+			Accreditation: "Baik Sekali",
 			IsActive:      true,
 		},
 		{
-			FacultyID:     facultyMap["FEB"],
-			Code:          "AK",
-			NIMCode:       "62",
-			Name:          "Akuntansi",
+			FacultyID:     facultyMap["FIK"],
+			Code:          "TLM",
+			NIMCode:       "04",
+			Name:          "D3 Analis Kesehatan (TLM)",
+			Degree:        "D3",
+			Accreditation: "Baik Sekali",
+			IsActive:      true,
+		},
+		{
+			FacultyID:     facultyMap["FF"],
+			Code:          "DFARM",
+			NIMCode:       "05",
+			Name:          "D3 Farmasi",
+			Degree:        "D3",
+			Accreditation: "Unggul",
+			IsActive:      true,
+		},
+		{
+			FacultyID:     facultyMap["FTB"],
+			Code:          "BD",
+			NIMCode:       "57",
+			Name:          "S1 Bisnis Digital",
 			Degree:        "S1",
-			Accreditation: "A",
+			Accreditation: "Baik",
+			IsActive:      true,
+		},
+		{
+			FacultyID:     facultyMap["FIK"],
+			Code:          "SKEP",
+			NIMCode:       "09",
+			Name:          "S1 Keperawatan",
+			Degree:        "S1",
+			Accreditation: "Baik Sekali",
 			IsActive:      true,
 			AdmissionOpen: true,
 		},

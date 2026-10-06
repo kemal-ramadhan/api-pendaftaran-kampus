@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -301,6 +302,7 @@ func (s *admissionService) CreateApplication(ctx context.Context, req *CreateApp
 		outboxPayload := map[string]interface{}{
 			"user_id":        app.UserID.String(),
 			"application_id": app.ID.String(),
+			"fee_type":       "registration",
 			"amount":         path.RegistrationFee,
 			"description":    fmt.Sprintf("Biaya Pendaftaran PMB Jalur %s (%s)", path.Name, regNo),
 			"due_date_days":  3,
@@ -1182,8 +1184,12 @@ func OutboxDispatcher(financeCli internalclient.Client) outbox.DispatcherFunc {
 			if financeCli == nil {
 				return errors.New("finance client belum siap atau belum aktif")
 			}
+			var payloadData interface{}
+			if err := json.Unmarshal([]byte(event.Payload), &payloadData); err != nil {
+				payloadData = event.Payload
+			}
 			var resp interface{}
-			err := financeCli.Post(ctx, "/internal/invoices", event.Payload, &resp)
+			err := financeCli.Post(ctx, "/internal/invoices", payloadData, &resp)
 			if err != nil {
 				log.Printf("[OUTBOX-WORKER] Finance service belum tersedia, event %s ditahan untuk retry: %v", event.ID, err)
 				return err

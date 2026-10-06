@@ -23,9 +23,13 @@ type CBTRepository interface {
 
 	// Bank Soal & Soal
 	CreateQuestionBank(ctx context.Context, bank *model.QuestionBank) error
+	UpdateQuestionBank(ctx context.Context, bank *model.QuestionBank) error
+	DeleteQuestionBank(ctx context.Context, id uuid.UUID) error
 	FindQuestionBankByID(ctx context.Context, id uuid.UUID) (*model.QuestionBank, error)
 	ListQuestionBanks(ctx context.Context) ([]model.QuestionBank, error)
 	CreateQuestion(ctx context.Context, q *model.Question) error
+	UpdateQuestion(ctx context.Context, q *model.Question) error
+	DeleteQuestion(ctx context.Context, id uuid.UUID) error
 	FindQuestionByID(ctx context.Context, id uuid.UUID) (*model.Question, error)
 	ListQuestionsByBankID(ctx context.Context, bankID uuid.UUID) ([]model.Question, error)
 	GetQuestionsByIDs(ctx context.Context, ids []uuid.UUID) ([]model.Question, error)
@@ -90,11 +94,59 @@ func (r *cbtRepository) ListQuestionBanks(ctx context.Context) ([]model.Question
 	return banks, err
 }
 
+func (r *cbtRepository) UpdateQuestionBank(ctx context.Context, bank *model.QuestionBank) error {
+	return r.db.WithContext(ctx).Save(bank).Error
+}
+
+func (r *cbtRepository) DeleteQuestionBank(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var qIDs []uuid.UUID
+		tx.Model(&model.Question{}).Where("bank_id = ?", id).Pluck("id", &qIDs)
+		if len(qIDs) > 0 {
+			tx.Where("question_id IN ?", qIDs).Delete(&model.QuestionOption{})
+			tx.Where("bank_id = ?", id).Delete(&model.Question{})
+		}
+		return tx.Delete(&model.QuestionBank{}, "id = ?", id).Error
+	})
+}
+
 func (r *cbtRepository) CreateQuestion(ctx context.Context, q *model.Question) error {
 	if q.ID == uuid.Nil {
 		q.ID = uuid.New()
 	}
+	for i := range q.Options {
+		if q.Options[i].ID == uuid.Nil {
+			q.Options[i].ID = uuid.New()
+		}
+		q.Options[i].QuestionID = q.ID
+	}
 	return r.db.WithContext(ctx).Create(q).Error
+}
+
+func (r *cbtRepository) UpdateQuestion(ctx context.Context, q *model.Question) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Save(q).Error; err != nil {
+			return err
+		}
+		if len(q.Options) > 0 {
+			_ = tx.Where("question_id = ?", q.ID).Delete(&model.QuestionOption{}).Error
+			for i := range q.Options {
+				q.Options[i].ID = uuid.New()
+				q.Options[i].QuestionID = q.ID
+				if err := tx.Create(&q.Options[i]).Error; err != nil {
+					return err
+				}
+			}
+		}
+		return nil
+	})
+}
+
+func (r *cbtRepository) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		_ = tx.Where("question_id = ?", id).Delete(&model.QuestionOption{}).Error
+		return tx.Delete(&model.Question{}, "id = ?", id).Error
+	})
 }
 
 func (r *cbtRepository) FindQuestionByID(ctx context.Context, id uuid.UUID) (*model.Question, error) {

@@ -40,12 +40,12 @@ func LoadConfig() (*Config, error) {
 
 		DBHost:     getEnv("DB_HOST", "localhost"),
 		DBPort:     getEnv("DB_PORT", "5432"),
-		DBUser:     getEnv("DB_USER", "postgres"),
-		DBPassword: getEnv("DB_PASSWORD", "postgres"),
+		DBUser:     getEnv("DB_USER", "pmb_user"),
+		DBPassword: getEnv("DB_PASSWORD", "pmb_password"),
 		DBName:     getEnv("DB_NAME", "pmb_nim"),
 		DBSSLMode:  getEnv("DB_SSLMODE", "disable"),
 
-		GatewaySecret: getEnv("GATEWAY_SHARED_SECRET", "secret-gateway-hmac"),
+		GatewaySecret: getEnv("GATEWAY_SHARED_SECRET", getEnv("GATEWAY_SHARED_KEY", "change-this-gateway-shared-secret")),
 		InternalToken: getEnv("INTERNAL_TOKEN", "secret-internal-token"),
 
 		StudentServiceURL:      getEnv("STUDENT_SERVICE_URL", "http://localhost:8091"),
@@ -59,7 +59,7 @@ func LoadConfig() (*Config, error) {
 }
 
 func (c *Config) DSN() string {
-	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	return fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s client_encoding=UTF8",
 		c.DBHost, c.DBPort, c.DBUser, c.DBPassword, c.DBName, c.DBSSLMode)
 }
 

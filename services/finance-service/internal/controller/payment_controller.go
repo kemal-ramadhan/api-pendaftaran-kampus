@@ -227,13 +227,17 @@ func (ctrl *PaymentController) GetPaymentStatus(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Status pembayaran berhasil diambil", gin.H{
-		"payment_id": payment.ID,
-		"invoice_id": payment.InvoiceID,
-		"status":     payment.Status,
-		"is_paid":    payment.Status == "success",
-		"paid_at":    payment.PaidAt,
-		"method":     payment.Method,
-		"amount":     payment.Amount,
+		"payment_id":   payment.ID,
+		"invoice_id":   payment.InvoiceID,
+		"status":       payment.Status,
+		"is_paid":      payment.Status == "success",
+		"paid_at":      payment.PaidAt,
+		"method":       payment.Method,
+		"amount":       payment.Amount,
+		"provider":     payment.Provider,
+		"provider_ref": payment.ProviderRef,
+		"va_number":    payment.VANumber,
+		"payment_url":  payment.PaymentURL,
 	})
 }
 

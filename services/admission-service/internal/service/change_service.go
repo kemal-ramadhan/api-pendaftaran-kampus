@@ -28,8 +28,13 @@ type PathChangeInput struct {
 	PeriodID       *uint      `json:"period_id,omitempty"`
 	PathID         uint       `json:"path_id"`
 	TargetPathID   uint       `json:"target_path_id"`
+	NewPathID      uint       `json:"new_path_id"`
 	FirstChoiceID  uuid.UUID  `json:"first_choice_program"`
+	Choice1ID      uuid.UUID  `json:"choice1_id"`
+	Choice1IDAlt   uuid.UUID  `json:"choice_1_id"`
 	SecondChoiceID *uuid.UUID `json:"second_choice_program,omitempty"`
+	Choice2ID      *uuid.UUID `json:"choice2_id,omitempty"`
+	Choice2IDAlt   *uuid.UUID `json:"choice_2_id,omitempty"`
 	Reason         string     `json:"reason,omitempty"`
 }
 
@@ -87,6 +92,7 @@ type ChangeService interface {
 	GetPathChangeOptions(ctx context.Context, userID uuid.UUID) (*PathChangeOptionsResponse, error)
 	RequestOrApplyPathChange(ctx context.Context, userID uuid.UUID, input *PathChangeInput) (*PathChangeResult, error)
 	CancelPendingPathChange(ctx context.Context, userID uuid.UUID) error
+	GetMyPendingPathChange(ctx context.Context, userID uuid.UUID) (*model.PathChangeRequest, error)
 
 	// Admin
 	AdminListPathChangeRequests(ctx context.Context, status string, limit, offset int) ([]model.PathChangeRequest, int64, error)
@@ -246,14 +252,30 @@ func (s *changeService) RequestOrApplyPathChange(ctx context.Context, userID uui
 		return nil, err
 	}
 
-	if input.PathID == 0 && input.TargetPathID > 0 {
-		input.PathID = input.TargetPathID
+	if input.PathID == 0 {
+		if input.TargetPathID > 0 {
+			input.PathID = input.TargetPathID
+		} else if input.NewPathID > 0 {
+			input.PathID = input.NewPathID
+		}
 	}
 	if input.FirstChoiceID == uuid.Nil {
-		input.FirstChoiceID = app.Choice1ID
+		if input.Choice1ID != uuid.Nil {
+			input.FirstChoiceID = input.Choice1ID
+		} else if input.Choice1IDAlt != uuid.Nil {
+			input.FirstChoiceID = input.Choice1IDAlt
+		} else {
+			input.FirstChoiceID = app.Choice1ID
+		}
 	}
 	if input.SecondChoiceID == nil {
-		input.SecondChoiceID = app.Choice2ID
+		if input.Choice2ID != nil {
+			input.SecondChoiceID = input.Choice2ID
+		} else if input.Choice2IDAlt != nil {
+			input.SecondChoiceID = input.Choice2IDAlt
+		} else {
+			input.SecondChoiceID = app.Choice2ID
+		}
 	}
 
 	targetPath, err := s.pathRepo.FindByID(ctx, input.PathID)
@@ -457,6 +479,21 @@ func (s *changeService) CancelPendingPathChange(ctx context.Context, userID uuid
 	_ = s.changeRepo.CreateChange(ctx, nil, change)
 
 	return nil
+}
+
+// 4b. GetMyPendingPathChange: Ambil permohonan pending milik sendiri
+func (s *changeService) GetMyPendingPathChange(ctx context.Context, userID uuid.UUID) (*model.PathChangeRequest, error) {
+	app, err := s.appRepo.FindActiveByUserID(ctx, userID)
+	if err != nil || app == nil {
+		return nil, errors.New("pendaftaran aktif tidak ditemukan")
+	}
+
+	req, err := s.changeRepo.GetPendingPathChangeRequest(ctx, app.ID)
+	if err != nil || req == nil {
+		return nil, errors.New("tidak ada permohonan pindah jalur yang berstatus pending")
+	}
+
+	return req, nil
 }
 
 // 5. AdminListPathChangeRequests

@@ -81,6 +81,7 @@ func SetupRouter(
 				userGroup.GET("/me/changes", changeCtrl.GetMyChanges)
 				userGroup.GET("/me/path-change/options", changeCtrl.GetPathChangeOptions)
 				userGroup.POST("/me/path-change", changeCtrl.RequestOrApplyPathChange)
+				userGroup.GET("/me/path-change/pending", changeCtrl.GetMyPendingPathChange)
 				userGroup.DELETE("/me/path-change/pending", changeCtrl.CancelPendingPathChange)
 
 				// CR-007 Calon Mahasiswa (Pengunduran Diri)

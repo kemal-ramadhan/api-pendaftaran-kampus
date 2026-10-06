@@ -56,11 +56,31 @@ func (m *mockCBTRepo) ListQuestionBanks(ctx context.Context) ([]model.QuestionBa
 	return list, nil
 }
 
+func (m *mockCBTRepo) UpdateQuestionBank(ctx context.Context, bank *model.QuestionBank) error {
+	m.banks[bank.ID] = bank
+	return nil
+}
+
+func (m *mockCBTRepo) DeleteQuestionBank(ctx context.Context, id uuid.UUID) error {
+	delete(m.banks, id)
+	return nil
+}
+
 func (m *mockCBTRepo) CreateQuestion(ctx context.Context, q *model.Question) error {
 	if q.ID == uuid.Nil {
 		q.ID = uuid.New()
 	}
 	m.questions[q.ID] = q
+	return nil
+}
+
+func (m *mockCBTRepo) UpdateQuestion(ctx context.Context, q *model.Question) error {
+	m.questions[q.ID] = q
+	return nil
+}
+
+func (m *mockCBTRepo) DeleteQuestion(ctx context.Context, id uuid.UUID) error {
+	delete(m.questions, id)
 	return nil
 }
 

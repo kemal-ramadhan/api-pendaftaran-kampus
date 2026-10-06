@@ -1,0 +1,65 @@
+services:
+  auth:
+    url: http://auth-service:8080
+    timeout: 10s
+  ocr:
+    url: http://ocr-service:8088
+    timeout: 30s
+    max_body: 10MB
+  finance:
+    url: http://host.docker.internal:8085
+    timeout: 15s
+    max_body: 10MB
+
+routes:
+  - prefix: /api/v1/auth/.well-known
+    service: auth
+    rewrite: /.well-known
+    auth: public
+  - prefix: /api/v1/auth/admin
+    service: auth
+    rewrite: /auth/admin
+    auth: required
+    roles: [superadmin]
+  - prefix: /api/v1/auth
+    service: auth
+    rewrite: /auth
+    auth: required
+    public_paths:
+      - POST /register
+      - POST /verify
+      - GET /health
+      - POST /resend-otp
+      - POST /login
+      - POST /refresh
+      - POST /forgot-password
+      - POST /reset-password
+    rate_limit: { requests: 60, window: 1m }
+  - prefix: /api/v1/ocr
+    service: ocr
+    rewrite: /internal/ocr
+    auth: required
+    max_body: 10MB
+  - prefix: /api/v1/webhooks/payments
+    service: finance
+    rewrite: /webhooks/payments
+    auth: public
+  - prefix: /api/v1/dev/payments
+    service: finance
+    rewrite: /dev/payments
+    auth: public
+  - prefix: /api/v1/finance/admin
+    service: finance
+    rewrite: /finance/admin
+    auth: required
+    roles: [keuangan, superadmin, admin_pmb, pimpinan]
+    max_body: 10MB
+  - prefix: /api/v1/receipts
+    service: finance
+    rewrite: /receipts
+    auth: required
+  - prefix: /api/v1/invoices
+    service: finance
+    rewrite: /invoices
+    auth: required
+    max_body: 10MB
