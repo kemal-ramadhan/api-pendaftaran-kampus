@@ -30,6 +30,8 @@ func main() {
 		{"penguji@bth.id", "Penguji", "dosen"},
 		{"pimpinan@bth.id", "Pimpinan", "pimpinan"},
 		{"dekan@bth.id", "Dekan Fakultas", "dekan"},
+		{"ahmad.fauzi@example.com", "Ahmad Fauzi", ""},
+		{"ujang@gmail.com", "Ujang Mahasiswa", ""},
 	}
 
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("password123"), 10)
@@ -38,12 +40,13 @@ func main() {
 	}
 
 	for _, u := range users {
-		// Check if role exists
 		var roleID string
-		err := db.QueryRow("SELECT id FROM roles WHERE code = $1", u.RoleCode).Scan(&roleID)
-		if err != nil {
-			fmt.Printf("Role %s not found: %v\n", u.RoleCode, err)
-			continue
+		if u.RoleCode != "" {
+			err := db.QueryRow("SELECT id FROM roles WHERE code = $1", u.RoleCode).Scan(&roleID)
+			if err != nil {
+				fmt.Printf("Role %s not found: %v\n", u.RoleCode, err)
+				continue
+			}
 		}
 
 		// Check if user exists
@@ -69,23 +72,25 @@ func main() {
 		}
 
 		// Check if user has role
-		var userRoleID string // Not an ID, just check if exists
-		err = db.QueryRow("SELECT user_id FROM user_roles WHERE user_id = $1 AND role_id = $2", userID, roleID).Scan(&userRoleID)
-		if err == sql.ErrNoRows {
-			// Assign role
-			_, err = db.Exec(`
-				INSERT INTO user_roles (user_id, role_id, scope_type, scope_id, created_at) 
-				VALUES ($1, $2, '', '', $3)`,
-				userID, roleID, time.Now())
-			if err != nil {
-				fmt.Printf("Failed to assign role %s to user %s: %v\n", u.RoleCode, u.Email, err)
+		if roleID != "" {
+			var userRoleID string // Not an ID, just check if exists
+			err = db.QueryRow("SELECT user_id FROM user_roles WHERE user_id = $1 AND role_id = $2", userID, roleID).Scan(&userRoleID)
+			if err == sql.ErrNoRows {
+				// Assign role
+				_, err = db.Exec(`
+					INSERT INTO user_roles (user_id, role_id, scope_type, scope_id, created_at) 
+					VALUES ($1, $2, '', '', $3)`,
+					userID, roleID, time.Now())
+				if err != nil {
+					fmt.Printf("Failed to assign role %s to user %s: %v\n", u.RoleCode, u.Email, err)
+				} else {
+					fmt.Printf("Assigned role %s to user %s\n", u.RoleCode, u.Email)
+				}
+			} else if err != nil {
+				fmt.Printf("Error checking role for user %s: %v\n", u.Email, err)
 			} else {
-				fmt.Printf("Assigned role %s to user %s\n", u.RoleCode, u.Email)
+				fmt.Printf("User %s already has role %s\n", u.Email, u.RoleCode)
 			}
-		} else if err != nil {
-			fmt.Printf("Error checking role for user %s: %v\n", u.Email, err)
-		} else {
-			fmt.Printf("User %s already has role %s\n", u.Email, u.RoleCode)
 		}
 	}
 }

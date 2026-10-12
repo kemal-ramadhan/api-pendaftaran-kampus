@@ -54,18 +54,75 @@ func (r *userRepository) FindByID(ctx context.Context, id uuid.UUID) (*model.Use
 
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	var user model.User
-	email = strings.ToLower(strings.TrimSpace(email))
-	err := r.db.WithContext(ctx).
-		Preload("UserRoles.Role").
-		Where("email = ?", email).
-		First(&user).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
+	identifier := strings.ToLower(strings.TrimSpace(email))
+	if identifier == "" {
+		return nil, nil
+	}
+
+	query := r.db.WithContext(ctx).Preload("UserRoles.Role")
+
+	// 1. Jika mengandung '@', cari prioritas berdasarkan email pasti
+	if strings.Contains(identifier, "@") {
+		err := query.Where("LOWER(email) = ?", identifier).First(&user).Error
+		if err == nil {
+			return &user, nil
 		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	// 2. Pencocokan identitas persis: Email, Full Name, Username (bagian depan @), Nomor HP
+	cleanDigits := strings.Map(func(r rune) rune {
+		if r >= '0' && r <= '9' {
+			return r
+		}
+		return -1
+	}, identifier)
+
+	err := query.Where(
+		`LOWER(email) = ? 
+		OR LOWER(full_name) = ? 
+		OR SPLIT_PART(LOWER(email), '@', 1) = ? 
+		OR phone = ? 
+		OR (length(?) >= 8 AND REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = ?)`,
+		identifier, identifier, identifier, identifier, cleanDigits, cleanDigits,
+	).First(&user).Error
+
+	if err == nil {
+		return &user, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
-	return &user, nil
+
+	// 3. Alias sistem khusus (admin / superadmin / administrator)
+	if identifier == "admin" || identifier == "superadmin" || identifier == "administrator" || identifier == "admin pmb" {
+		err = r.db.WithContext(ctx).Preload("UserRoles.Role").
+			Where("LOWER(email) = ? OR LOWER(email) = ?", "superadmin@kampus.ac.id", "superadmin@bth.id").
+			First(&user).Error
+		if err == nil {
+			return &user, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	// 4. Pencocokan nama depan / kata dalam full_name (misal: "Ujang" -> "Ujang Mahasiswa", "Rizky" -> "Muhammad Rizky Pratama")
+	if len(identifier) >= 3 {
+		err = r.db.WithContext(ctx).Preload("UserRoles.Role").
+			Where("LOWER(full_name) ILIKE ?", "%"+identifier+"%").
+			First(&user).Error
+		if err == nil {
+			return &user, nil
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, err
+		}
+	}
+
+	return nil, nil
 }
 
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {

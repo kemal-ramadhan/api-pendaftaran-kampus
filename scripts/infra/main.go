@@ -8,7 +8,9 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -99,74 +101,108 @@ func main() {
 		initOtherDBs("postgres://pmb_user:pmb_password@127.0.0.1:5432/pmb_auth?sslmode=disable")
 	}
 
-	// 3. Mock Mailpit (SMTP :1025, HTTP :8025) - hanya jika belum ada Mailpit berjalan
+	// 3. Mailpit (SMTP :1025, Web UI :8025)
 	connCheck, errConn := net.DialTimeout("tcp", "127.0.0.1:1025", 500*time.Millisecond)
 	if errConn == nil {
 		connCheck.Close()
-		fmt.Println("📧 Mailpit resmi terdeteksi aktif di 127.0.0.1:1025 (melewati mock)")
+		fmt.Println("📧 Mailpit resmi terdeteksi aktif di 127.0.0.1:1025 (melewati inisialisasi)")
 	} else {
-		store := &MailStore{}
-
-		// SMTP Listener
-		smtpListener, err := net.Listen("tcp", "127.0.0.1:1025")
-		if err != nil {
-			fmt.Printf("Peringatan SMTP 1025: %v\n", err)
-		} else {
-			defer smtpListener.Close()
-			fmt.Println("📧 Mailpit SMTP aktif di 127.0.0.1:1025")
-			go func() {
-				for {
-					conn, err := smtpListener.Accept()
-					if err != nil {
-						return
+		var mailpitCmd *exec.Cmd
+		mailpitPath := findMailpit()
+		if mailpitPath != "" {
+			fmt.Printf("📬 Menjalankan Mailpit resmi (%s) di :8025 (UI) & :1025 (SMTP)...\n", mailpitPath)
+			mailpitCmd = exec.Command(mailpitPath, "-l", "127.0.0.1:8025", "-s", "127.0.0.1:1025", "--disable-version-check")
+			mailpitCmd.Stdout = os.Stdout
+			mailpitCmd.Stderr = os.Stderr
+			if err := mailpitCmd.Start(); err != nil {
+				fmt.Printf("Peringatan Mailpit resmi: %v. Menggunakan mock internal...\n", err)
+				mailpitCmd = nil
+			} else {
+				defer func() {
+					if mailpitCmd != nil && mailpitCmd.Process != nil {
+						_ = mailpitCmd.Process.Kill()
 					}
-					go handleSMTP(conn, store)
-				}
-			}()
+				}()
+			}
 		}
 
-		// HTTP API Listener
-		mux := http.NewServeMux()
-		mux.HandleFunc("/api/v1/messages", func(w http.ResponseWriter, r *http.Request) {
-			msgs := store.List()
-			type summary struct {
-				ID      string `json:"ID"`
-				Snippet string `json:"Snippet"`
-			}
-			var summaries []summary
-			for _, m := range msgs {
-				summaries = append(summaries, summary{ID: m.ID, Snippet: m.Snippet})
-			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"total":    len(msgs),
-				"messages": summaries,
-			})
-		})
+		if mailpitCmd == nil {
+			store := &MailStore{}
 
-		mux.HandleFunc("/api/v1/message/", func(w http.ResponseWriter, r *http.Request) {
-			parts := strings.Split(r.URL.Path, "/")
-			id := parts[len(parts)-1]
-			msg, ok := store.Get(id)
-			if !ok {
-				http.NotFound(w, r)
-				return
+			// SMTP Listener
+			smtpListener, err := net.Listen("tcp", "127.0.0.1:1025")
+			if err != nil {
+				fmt.Printf("Peringatan SMTP 1025: %v\n", err)
+			} else {
+				defer smtpListener.Close()
+				fmt.Println("📧 Mailpit SMTP aktif di 127.0.0.1:1025")
+				go func() {
+					for {
+						conn, err := smtpListener.Accept()
+						if err != nil {
+							return
+						}
+						go handleSMTP(conn, store)
+					}
+				}()
 			}
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"ID":      msg.ID,
-				"Snippet": msg.Snippet,
-				"Text":    msg.Body,
-				"HTML":    msg.Body,
-			})
-		})
 
-		httpServer := &http.Server{Addr: "127.0.0.1:8025", Handler: mux}
-		go func() {
-			fmt.Println("📬 Mailpit Web/API aktif di http://127.0.0.1:8025")
-			_ = httpServer.ListenAndServe()
-		}()
-		defer httpServer.Close()
+			// HTTP API & Web UI Listener
+			mux := http.NewServeMux()
+
+			// Root Web UI (Mencegah 404 saat dibuka di browser)
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/view") {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.Write([]byte(mailpitWebUIHtml))
+			})
+
+			mux.HandleFunc("/api/v1/messages", func(w http.ResponseWriter, r *http.Request) {
+				msgs := store.List()
+				type summary struct {
+					ID      string `json:"ID"`
+					Snippet string `json:"Snippet"`
+					To      string `json:"To"`
+				}
+				var summaries []summary
+				for _, m := range msgs {
+					summaries = append(summaries, summary{ID: m.ID, Snippet: m.Snippet, To: m.To})
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"total":    len(msgs),
+					"messages": summaries,
+				})
+			})
+
+			mux.HandleFunc("/api/v1/message/", func(w http.ResponseWriter, r *http.Request) {
+				parts := strings.Split(r.URL.Path, "/")
+				id := parts[len(parts)-1]
+				msg, ok := store.Get(id)
+				if !ok {
+					http.NotFound(w, r)
+					return
+				}
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(map[string]interface{}{
+					"ID":      msg.ID,
+					"Snippet": msg.Snippet,
+					"Text":    msg.Body,
+					"HTML":    msg.Body,
+					"To":      msg.To,
+				})
+			})
+
+			httpServer := &http.Server{Addr: "127.0.0.1:8025", Handler: mux}
+			go func() {
+				fmt.Println("📬 Mailpit Web/API aktif di http://127.0.0.1:8025")
+				_ = httpServer.ListenAndServe()
+			}()
+			defer httpServer.Close()
+		}
 	}
 
 	fmt.Println("Infrastruktur siap! Menunggu shutdown signal (SIGINT/SIGTERM)...")
@@ -297,3 +333,161 @@ func initOtherDBs(connStr string) {
 		}
 	}
 }
+
+func findMailpit() string {
+	candidates := []string{
+		"C:\\Users\\inboo\\go\\bin\\mailpit.exe",
+		filepath.Join("..", "..", "bin", "mailpit.exe"),
+		filepath.Join("bin", "mailpit.exe"),
+		"mailpit.exe",
+		"mailpit",
+	}
+	for _, c := range candidates {
+		if path, err := exec.LookPath(c); err == nil {
+			return path
+		}
+		if fi, err := os.Stat(c); err == nil && !fi.IsDir() {
+			return c
+		}
+	}
+	return ""
+}
+
+const mailpitWebUIHtml = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mailpit - Local Email Testing</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📬</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen flex flex-col font-sans">
+  <header class="bg-slate-900 text-white px-6 py-3 flex items-center justify-between shadow-md">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">📬</span>
+      <div>
+        <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+          <span>Mailpit</span>
+          <span class="text-[10px] bg-emerald-500 text-white px-2 py-0.5 rounded-full font-mono uppercase tracking-wider">PMB Local</span>
+        </h1>
+        <p class="text-xs text-slate-400">SMTP: 127.0.0.1:1025 | Web UI: 127.0.0.1:8025</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-3 text-xs">
+      <button onclick="fetchMessages()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-slate-700 flex items-center gap-1.5 transition cursor-pointer">
+        <span>🔄 Refresh Inbox</span>
+      </button>
+      <span id="unreadBadge" class="bg-blue-600 text-white px-2.5 py-1 rounded-full font-bold">0 Pesan</span>
+    </div>
+  </header>
+
+  <div class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 grid grid-cols-1 md:grid-cols-12 gap-6">
+    <div class="md:col-span-5 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+      <div class="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+        <span class="font-bold text-xs text-slate-700 uppercase tracking-wider">Inbox Email Masuk</span>
+        <span class="text-xs text-slate-500" id="statusText">Memuat...</span>
+      </div>
+      <div id="messageList" class="flex-1 overflow-y-auto divide-y divide-slate-100 max-h-[75vh]"></div>
+    </div>
+
+    <div class="md:col-span-7 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
+      <div id="emptyDetail" class="p-12 text-center text-slate-400 my-auto">
+        <span class="text-4xl block mb-2">✉️</span>
+        <p class="text-sm font-medium">Pilih salah satu email di sebelah kiri untuk melihat isi pesan & kode OTP.</p>
+      </div>
+      <div id="detailPanel" class="hidden flex-1 flex flex-col">
+        <div class="p-4 bg-slate-50 border-b border-slate-200 space-y-2">
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-500 font-mono" id="msgIdText"></span>
+            <div id="otpBadgeContainer"></div>
+          </div>
+          <h2 class="text-base font-bold text-slate-900" id="msgSubjectText">Subjek Email</h2>
+          <div class="text-xs text-slate-600 space-y-0.5">
+            <div><strong class="text-slate-500">Penerima:</strong> <span id="msgToText" class="font-mono"></span></div>
+          </div>
+        </div>
+        <div class="p-4 flex-1 overflow-y-auto">
+          <div id="msgBodyContent" class="text-xs font-mono bg-slate-50 p-4 rounded-lg border border-slate-200 whitespace-pre-wrap leading-relaxed"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-500">
+    Mailpit Simulator &bull; Universitas Bakti Tunas Husada PMB System
+  </footer>
+
+  <script>
+    let activeId = null;
+    let allMessages = [];
+
+    async function fetchMessages() {
+      try {
+        const res = await fetch('/api/v1/messages');
+        const data = await res.json();
+        allMessages = data.messages || [];
+        document.getElementById('unreadBadge').innerText = allMessages.length + ' Pesan';
+        document.getElementById('statusText').innerText = 'Sinkron (' + new Date().toLocaleTimeString() + ')';
+        renderList();
+      } catch (e) {
+        document.getElementById('statusText').innerText = 'Gagal memuat API';
+      }
+    }
+
+    function renderList() {
+      const container = document.getElementById('messageList');
+      if (allMessages.length === 0) {
+        container.innerHTML = '<div class="p-8 text-center text-slate-400 text-xs">Belum ada email yang ditangkap di Mailpit.</div>';
+        return;
+      }
+      container.innerHTML = allMessages.map(m => {
+        const activeClass = m.ID === activeId ? 'bg-blue-50 border-l-4 border-blue-600' : 'hover:bg-slate-50';
+        const otpMatch = m.Snippet.match(/\\b(\\d{6})\\b/);
+        const otpBadge = otpMatch ? '<span class=\"bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded text-[10px]\">OTP: ' + otpMatch[1] + '</span>' : '';
+        return '<div onclick=\"loadMessage(\\'' + m.ID + '\\')\" class=\"p-3.5 cursor-pointer transition ' + activeClass + '\">' +
+          '<div class=\"flex items-center justify-between mb-1\">' +
+            '<span class=\"text-[11px] font-mono text-slate-500 truncate max-w-[200px]\">' + (m.To || 'calon.maba') + '</span>' +
+            otpBadge +
+          '</div>' +
+          '<div class=\"text-xs font-semibold text-slate-800 truncate\">' + (m.Snippet.substring(0, 60)) + '</div>' +
+          '<div class=\"text-[11px] text-slate-500 truncate mt-0.5\">' + (m.Snippet.substring(60, 140)) + '</div>' +
+        '</div>';
+      }).join('');
+    }
+
+    async function loadMessage(id) {
+      activeId = id;
+      renderList();
+      try {
+        const res = await fetch('/api/v1/message/' + id);
+        const msg = await res.json();
+        document.getElementById('emptyDetail').classList.add('hidden');
+        document.getElementById('detailPanel').classList.remove('hidden');
+        document.getElementById('msgIdText').innerText = 'ID: ' + msg.ID;
+        document.getElementById('msgBodyContent').innerText = msg.Text || msg.Snippet;
+        
+        const toMatch = (msg.Text || '').match(/To:\\s*([^\\r\\n]+)/i);
+        document.getElementById('msgToText').innerText = toMatch ? toMatch[1].trim() : (msg.To || '-');
+        
+        const subjMatch = (msg.Text || '').match(/Subject:\\s*([^\\r\\n]+)/i);
+        document.getElementById('msgSubjectText').innerText = subjMatch ? subjMatch[1].trim() : 'Email Pemberitahuan PMB';
+
+        const otpMatch = (msg.Text || '').match(/\\b(\\d{6})\\b/);
+        const badgeCont = document.getElementById('otpBadgeContainer');
+        if (otpMatch) {
+          badgeCont.innerHTML = '<div class=\"flex items-center gap-2\"><span class=\"bg-emerald-100 text-emerald-800 border border-emerald-300 font-mono font-bold text-xs px-2.5 py-1 rounded-md\">OTP: ' + otpMatch[1] + '</span><button onclick=\"navigator.clipboard.writeText(\\'' + otpMatch[1] + '\\'); alert(\\'OTP ' + otpMatch[1] + ' disalin!\\')\" class=\"text-xs bg-slate-800 hover:bg-slate-700 text-white px-2.5 py-1 rounded transition cursor-pointer\">Salin OTP</button></div>';
+        } else {
+          badgeCont.innerHTML = '';
+        }
+      } catch (e) {
+        alert('Gagal membuka detail pesan: ' + e);
+      }
+    }
+
+    fetchMessages();
+    setInterval(fetchMessages, 3000);
+  </script>
+</body>
+</html>`
+
