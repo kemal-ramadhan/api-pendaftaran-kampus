@@ -308,6 +308,7 @@ func initOtherDBs(connStr string) {
 	defer db.Close()
 
 	dbs := []string{
+		"pmb_app",
 		"pmb_organization",
 		"pmb_identity",
 		"pmb_notification",

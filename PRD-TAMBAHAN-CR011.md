@@ -1,11 +1,11 @@
-# PRD Tambahan — Kesiapan Rilis PMB (CR-013), Referal & Komisi Guru BK (CR-014), Konsolidasi 3 Service (CR-011), Auth Dua Versi & Persiapan SSO (CR-012)
+# PRD Tambahan — Kesiapan Rilis PMB (CR-013), Referal & Komisi Guru BK (CR-014), Penyesuaian Launching (CR-015), Konsolidasi 3 Service (CR-011), Auth Dua Versi & Persiapan SSO (CR-012)
 
 | | |
 |---|---|
 | **Produk** | Sistem PMB (backend) — repo `diaricakarsa/pmb-backend` |
-| **Isi** | **Bagian R (CR-013):** aplikasi pendaftaran camaba stabil tanpa bug, payment gateway Duitku siap, jalur gratis tanpa pembayaran, data demo, bahan buku panduan. **Bagian F (CR-014):** kode referal guru BK — siswa membayar ke guru BK, guru BK memverifikasi sehingga pembayaran di sistem dilewati, guru BK menyetor ke kampus, dan **komisi** guru BK (persen per transaksi atau nominal per mahasiswa). **Bagian I (CR-011):** 13 service menjadi **3 service** tanpa mengubah API. **Bagian II (CR-012):** auth dua versi (Auth Kampus/SSO + Auth PMB) dengan skema `users` – `service_accounts` – `user_accounts`, persiapan SSO |
-| **Sumber** | Arahan lead (pak Kemal) & pak Endar 3–4 Okt 2026: launching PMB **22 Okt** dengan 150 guru BK; halaman khusus guru BK seperti halaman referal sistem BTH sekarang; *"fokus di point 2 … kalau testnya udah okey kasih tau, mau kita bikin buku panduannya"*; *"minggu ini sistem untuk mahasiswanya udah fix, gak ada bug, termasuk sudah bisa payment gateway"*; sosialisasi **Selasa 6 Okt malam**; *"siswa bayar terlebih dahulu ke guru BK … masukkan kode referal … di halaman guru BK diverifikasi, pembayarannya otomatis di-bypass … guru BK setelah uangnya dikumpulkan disetor ke pihak kampus"*; *"akun guru BK dibuat oleh admin kampus, ada settingan berapa persen komisinya per transaksi"*; *"bisa juga nilai tertentu (mis. 200rb/100rb) per mahasiswa yang daftar"*; *"yang gratis atau jalur tertentu tidak ada komisi, harus ada settingannya"*; *"biaya pendaftaran free: tidak usah ke payment, langsung ke step selanjutnya"*; pengaturan komisi & cara penyelesaiannya seluruhnya di pengaturan admin; pemangkasan service dikerjakan **langsung sekarang** (tidak ditunda); pemangkasan service jadi 3, auth 2 versi, persiapan SSO, skema *UserTabel, ServiceAccount, UserAccount* |
-| **Versi** | v5 — 4 Oktober 2026 (satu dokumen untuk CR-011..CR-014; **tidak ada file prompt terpisah**; pemangkasan service dikerjakan langsung di `main` sebelum fitur referal) |
+| **Isi** | **Bagian R (CR-013):** aplikasi pendaftaran camaba stabil tanpa bug, payment gateway Duitku siap, jalur gratis tanpa pembayaran, data demo, bahan buku panduan. **Bagian F (CR-014):** kode referal guru BK — siswa membayar ke guru BK, guru BK memverifikasi sehingga pembayaran di sistem dilewati, guru BK menyetor ke kampus, dan **komisi** guru BK (persen per transaksi atau nominal per mahasiswa). **Bagian I (CR-011):** 13 service menjadi **3 service** tanpa mengubah API. **Bagian II (CR-012):** auth dua versi (Auth Kampus/SSO + Auth PMB) dengan skema `users` – `service_accounts` – `user_accounts`, persiapan SSO **Bagian G (CR-015):** pembayaran tanpa popup (VA/QRIS tampil di halaman sendiri), wajib gabung grup WhatsApp setelah verifikasi OTP & grup per jalur, grup WA guru BK, format NIM otomatis sesuai SK Rektor, biodata & ekspor format SEVIMA, seluruh identitas kampus di pengaturan |
+| **Sumber** | Arahan lead (pak Kemal) & pak Endar 3–4 Okt 2026: launching PMB **22 Okt** dengan 150 guru BK; halaman khusus guru BK seperti halaman referal sistem BTH sekarang; *"fokus di point 2 … kalau testnya udah okey kasih tau, mau kita bikin buku panduannya"*; *"minggu ini sistem untuk mahasiswanya udah fix, gak ada bug, termasuk sudah bisa payment gateway"*; sosialisasi **Selasa 6 Okt malam**; *"siswa bayar terlebih dahulu ke guru BK … masukkan kode referal … di halaman guru BK diverifikasi, pembayarannya otomatis di-bypass … guru BK setelah uangnya dikumpulkan disetor ke pihak kampus"*; *"akun guru BK dibuat oleh admin kampus, ada settingan berapa persen komisinya per transaksi"*; *"bisa juga nilai tertentu (mis. 200rb/100rb) per mahasiswa yang daftar"*; *"yang gratis atau jalur tertentu tidak ada komisi, harus ada settingannya"*; *"biaya pendaftaran free: tidak usah ke payment, langsung ke step selanjutnya"*; pengaturan komisi & cara penyelesaiannya seluruhnya di pengaturan admin; pemangkasan service dikerjakan **langsung sekarang** (tidak ditunda); pemangkasan service jadi 3, auth 2 versi, persiapan SSO, skema *UserTabel, ServiceAccount, UserAccount*; arahan 8–12 Okt 2026 (Bagian 40) |
+| **Versi** | v6 — 13 Oktober 2026 (menambah Bagian G / CR-015; satu dokumen untuk CR-011..CR-015; **tidak ada file prompt terpisah**) |
 | **Prasyarat** | CR-001..CR-010 selesai dan `final-check` AMAN |
 | **Hubungan dengan dokumen lain** | Aturan umum tetap `PRD-LENGKAP.md`, `PRD-TAMBAHAN-CR006-008.md`, `PRD-TAMBAHAN-CR009-010.md`. Bagian R & F menambah/memperbaiki fitur tanpa mengubah kontrak lama kecuali yang ditandai **[UBAH]**. Bagian I hanya mengubah susunan deployment & struktur kode. Bagian II menambah struktur data & endpoint auth tanpa mengubah perilaku endpoint PMB. Aturan lama tentang "satu service per domain", "database per service", atau "HTTP internal antar service" digantikan Bagian I setelah Bagian I dikerjakan. |
 
@@ -26,17 +26,19 @@
 | **R** | Bagian R (CR-013) | Senin 5 Okt malam (paling lambat Selasa 6 Okt siang) | `main` | `v0.5.1-rilis` |
 | **K** | Bagian I lalu Bagian II (CR-011, CR-012) — pemangkasan 3 service + auth dua versi/SSO | Selasa 6 – Sabtu 10 Okt | `main` | `v0.6.0-3-services`, `v0.7.0-sso-ready` |
 | **F** | Bagian F (CR-014) — dibangun langsung sebagai modul `referral` di `pmb-service` | Minggu 11 – Jumat 16 Okt | `main` | `v0.8.0-referal` |
-| Freeze | Hanya perbaikan bug P0/P1 | 19–21 Okt | `main` | `v0.8.x` (patch) |
+| **G** | Bagian G (CR-015) — penyesuaian menjelang launching | 13 – Minggu 18 Okt | `main` | `v0.9.0-launching` |
+| Freeze | Hanya perbaikan bug P0/P1 | 19–21 Okt | `main` | `v0.9.x` (patch) |
 
-- Semua fase di branch `main`, berurutan R → K → F. Fitur referal dibangun **setelah** pemangkasan supaya langsung berada di arsitektur akhir (tidak dipindah dua kali).
+- **Pembaruan v6 (13 Okt) saat pekerjaan sedang berjalan:** selesaikan milestone yang sedang dikerjakan sampai hijau dan push, lalu **langsung kerjakan G1 (pembayaran tanpa popup)**. Setelah G1, lanjutkan fase yang tertunda sesuai urutan (K bila belum selesai, lalu F), kemudian G2–G6. Bila semua fase sebelumnya sudah selesai, kerjakan G1–G6 berurutan.
+- Semua fase di branch `main`, berurutan R → K → F → G. Fitur referal dibangun **setelah** pemangkasan supaya langsung berada di arsitektur akhir (tidak dipindah dua kali).
 - Demo Selasa 6 Okt dijalankan dari tag `v0.5.1-rilis` (23.6), sehingga pekerjaan fase K di `main` tidak mengganggu demo.
-- Langkah rinci tiap fase ada di **Bagian 7** (milestone R0–R3, M0–M8, F1–F5).
+- Langkah rinci tiap fase ada di **Bagian 7** (milestone R0–R3, M0–M8, F1–F5, G1–G6).
 
 ### 0.3 Aturan setiap langkah (milestone)
 1. Awal langkah: `git pull`; baca `docs/BUGS.md` di `main` — bila ada bug baru berstatus `Open` dengan severity P0/P1, **kerjakan dulu di `main`** (lihat 0.5).
 2. Akhir langkah: `go build/vet/test` semua module + `pytest` OCR → `docker compose -f deploy/docker-compose.yml down -v` → `up -d --build` → semua container healthy → `scripts/e2e.sh` penuh `FAIL: 0` (`PAYMENT_PROVIDER=mock`) → mulai fase R selesai: `scripts/smoke-camaba.sh` lulus → commit → push.
 3. Skenario e2e baru **ditambahkan di akhir** `scripts/e2e.sh`; skenario lama tidak diubah kecuali ditandai [UBAH]. Ringkasan tetap `Total PASS: X, FAIL: Y`.
-4. Akhir setiap fase: jalankan `powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1 -Tahap <rilis|konsolidasi|penuh>` (R = `rilis`, K = `konsolidasi`, F = `penuh`) (bila PowerShell tersedia), perbaiki sampai AMAN, buat tag, push tag, tulis laporan fase (0.8), lalu **langsung lanjut** ke fase berikutnya.
+4. Akhir setiap fase: jalankan `powershell -ExecutionPolicy Bypass -File scripts/final-check.ps1 -Tahap <rilis|konsolidasi|penuh>` (R = `rilis`, K = `konsolidasi`, G = `penuh`; fase F tidak punya tahap final-check tersendiri karena dicakup `penuh`) (bila PowerShell tersedia), perbaiki sampai AMAN, buat tag, push tag, tulis laporan fase (0.8), lalu **langsung lanjut** ke fase berikutnya.
 
 ### 0.4 Larangan
 - Mengubah isi PRD lain atau logika `scripts/final-check.ps1`.
@@ -47,7 +49,7 @@
 Tim (Diar/Wahhed) menambahkan bug ke `docs/BUGS.md` di `main` (format 21.1). Setiap awal langkah periksa bug baru: P0/P1 dikerjakan lebih dulu (commit + push + e2e), lalu lanjutkan langkah yang tertunda. Bug yang ditemukan di versi demo (`v0.5.1-rilis`) dan masih ada di `main` diperbaiki di `main`. Selama freeze 19–21 Okt, `main` hanya menerima perbaikan P0/P1.
 
 ### 0.6 Pencatatan
-Catat CR-013, CR-014, CR-011, CR-012 di `docs/CHANGE_REQUESTS.md` (open → done) dan seluruh keputusan Bagian 8 di `docs/DECISIONS.md`.
+Catat CR-013, CR-014, CR-015, CR-011, CR-012 di `docs/CHANGE_REQUESTS.md` (open → done) dan seluruh keputusan Bagian 8 di `docs/DECISIONS.md`.
 
 ### 0.7 Kondisi berhenti
 Berhenti, tulis alasannya di `docs/LAPORAN-AGENT.md`, commit, push, dan tunggu instruksi bila:
@@ -99,6 +101,8 @@ Satu tabel: `ID | Tanggal | Sumber (agent/Diar/Wahhed/lead) | Halaman/Endpoint |
 Skrip singkat (≤ 3 menit) yang menjalankan alur 1–8 di Bagian 20 (termasuk jalur berbayar dan jalur gratis) dengan `PAYMENT_PROVIDER=mock` lewat gateway, mencetak `SMOKE PASS/FAIL` per langkah.
 
 ## 22. Payment gateway Duitku siap pakai
+
+> Cara membuat pembayaran (POP/popup) di butir 1 dan 7 **digantikan Bagian 41** (VA/QRIS tampil di halaman sendiri). Butir lain tetap berlaku.
 
 1. **Mode lingkungan** `DUITKU_ENV=sandbox|production` memilih URL; tidak ada URL yang di-hardcode:
 
@@ -290,7 +294,147 @@ Unit test: rumus ringkasan (kedua mode), komisi persen/nominal/snapshot/batas, j
 13. Pencarian, paginasi, ekspor CSV (NIK tersamar); rate limit cek kode → 429.
 
 ## 39. Dokumentasi & selesai fase F
-`docs/REFERRAL.md` (alur, komisi & mode penyelesaian, rumus ringkasan, privasi, format CSV), `docs/RBAC.md`, `docs/API.md` bagian "Referal, Guru BK & Komisi", Postman, kontrak, class diagram & ERD `pmb-service` (modul referral, admission, finance), `docs/PANDUAN-ALUR.md` bagian guru BK, `docs/FE-BE-GAP.md`. CR-014 `done`; tag `v0.8.0-referal`; `final-check -Tahap penuh` AMAN.
+`docs/REFERRAL.md` (alur, komisi & mode penyelesaian, rumus ringkasan, privasi, format CSV), `docs/RBAC.md`, `docs/API.md` bagian "Referal, Guru BK & Komisi", Postman, kontrak, class diagram & ERD `pmb-service` (modul referral, admission, finance), `docs/PANDUAN-ALUR.md` bagian guru BK, `docs/FE-BE-GAP.md`. CR-014 `done`; tag `v0.8.0-referal`; laporan fase F (`final-check -Tahap penuh` dijalankan setelah fase G).
+
+---
+
+# BAGIAN G — CR-015 PENYESUAIAN MENJELANG LAUNCHING
+
+## 40. Latar belakang
+
+Arahan lead (pak Kemal) & pak Endar, 8–12 Okt 2026, untuk launching 22 Okt:
+1. *"Untuk payment gateway-nya jangan pakai yang versi popup, kalau bisa yang satu halaman: kita dapatkan VA-nya lalu ditampilkan di tampilan kita."*
+2. *"Ketika pertama kali daftar, setelah verifikasi kode OTP berhasil masuk ke beranda; sebelum ke beranda buat halaman (atau popup) untuk menampilkan grup WA, supaya semuanya wajib gabung grup WA sebelum melanjutkan ke tahap selanjutnya."* (permintaan tim CS)
+3. *"Untuk setiap jalur, ketika dibuat ada inputan link grup, jadi ketika camaba pilih jalur tertentu grupnya pun beda-beda."*
+4. *"Grup WA Guru BK — tambahkan juga di dashboard guru BK."*
+5. *"Yang berhubungan dengan identitas kampus seperti logo, nama, nomor kontak, grup WA, dll dibuat settingan, jadi ketika dipakai di kampus lain tidak usah bongkar kodingan."*
+6. *"Ini format penulisan NIM (SK Rektor No. 065/SK/UBTH/VII/2026), sesuaikan di aplikasinya supaya auto generate."*
+7. *"Untuk base data pengisian biodata ini referensinya (format migrasi SEVIMA): yang hijau wajib, sisanya opsional tapi kalau ada lebih bagus; format export juga begini."*
+8. *"Kejar fungsi-fungsi yang kurang dan payment gateway-nya, semoga minggu depan bisa launching tanpa masalah; jangan lupa dashboard guru BK karena akan disosialisasikan langsung ke guru BK."*
+
+Bagian G dikerjakan di arsitektur yang berlaku saat itu (setelah fase K: modul di `pmb-service`).
+
+## 41. Pembayaran tanpa popup — VA/QRIS tampil di halaman sendiri [UBAH]
+
+1. Pembuatan pembayaran **tidak lagi memakai Duitku POP** (`createInvoice` + `duitku.js` popup). Diganti **Duitku API "Request Transaction" (v2 inquiry)** server-to-server:
+
+   | Keperluan | Sandbox | Produksi | Signature |
+   |---|---|---|---|
+   | Request transaksi | `https://sandbox.duitku.com/webapi/api/merchant/v2/inquiry` | `https://passport.duitku.com/webapi/api/merchant/v2/inquiry` | `MD5(merchantCode + merchantOrderId + paymentAmount + apiKey)` |
+   | Cek status | `https://sandbox.duitku.com/webapi/api/merchant/transactionStatus` | `https://passport.duitku.com/webapi/api/merchant/transactionStatus` | `MD5(merchantCode + merchantOrderId + apiKey)` |
+   | Daftar metode | `https://sandbox.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod` | `https://passport.duitku.com/webapi/api/merchant/paymentmethod/getpaymentmethod` | `SHA256(merchantcode + paymentAmount + datetime + apiKey)`, `datetime` = `yyyy-MM-dd HH:mm:ss` |
+   | Callback (masuk) | — | — | `MD5(merchantCode + amount + merchantOrderId + apiKey)` |
+
+   Sumber: docs.duitku.com/api/en. Format body cek status (JSON vs form) diverifikasi dengan uji sandbox dan dicatat di `docs/DUITKU-PRODUKSI.md`.
+2. Request: `paymentAmount`, `paymentMethod` (kode 2 huruf pilihan camaba), `merchantOrderId` unik per percobaan (`{nomor_invoice}-{n}`), `productDetails` (dari nama institusi di pengaturan, bukan hardcode), `email`, `phoneNumber`, `customerVaName` (≤ 20 karakter, dipotong rapi), `callbackUrl`, `returnUrl`, `expiryPeriod` (menit = sisa waktu sampai jatuh tempo tagihan, maks. sesuai pengaturan), `itemDetails`, `customerDetail`.
+3. API untuk frontend:
+   - `GET /finance/payment-methods?invoice_id=` — hanya metode aktif; default hanya metode yang memberi **VA atau QRIS langsung** (`PAYMENT_DIRECT_ONLY=true`); urutan, badge, aktif/nonaktif per metode diatur admin.
+   - `POST /finance/invoices/{id}/payments` `{payment_method}` → `{payment_id, method_code, method_name, group, bank_name, va_number, qr_string, qr_image_url, payment_url, amount, fee, total, expired_at, instructions[], status}`. `qr_image_url` = PNG yang dibangkitkan server dari `qrString`. `payment_url` hanya diisi untuk metode tanpa VA/QRIS (cadangan). `instructions[]` = langkah bayar per kanal (ATM, m-banking, internet banking) dari template per kode metode yang dapat diubah admin; nomor VA disisipkan otomatis.
+   - `GET /finance/payments/{id}` — status (`pending`/`paid`/`expired`/`superseded`), dipakai frontend untuk polling (rate limit) selain notifikasi in-app saat lunas.
+4. **Idempoten:** membuka ulang halaman dengan metode sama dan pembayaran `pending` yang belum kedaluwarsa → mengembalikan pembayaran yang sama (tanpa inquiry baru).
+5. **Ganti metode:** inquiry baru; pembayaran lama ditandai `superseded`. Bila callback lunas datang untuk pembayaran `superseded`, tetap diterima (tagihan lunas) dan pembayaran lain diabaikan. Bila dua pembayaran sama-sama lunas → tandai `double_payment`, notifikasi ke keuangan untuk pengembalian dana manual, catat di log aktivitas.
+6. Callback & rekonsiliasi (Bagian 22) tetap berlaku dengan signature di atas. Return URL tidak pernah menandai lunas.
+7. `GET /finance/payment-config` tetap ada, mengembalikan `mode: "direct"` (tidak ada URL `duitku.js`). Catat di `docs/API.md` bagian "Perubahan kontrak" untuk frontend.
+8. `scripts/duitku-sandbox-check.ps1`: mode sandbox membuat satu inquiry VA nominal kecil dan mencetak nomor VA; mode `-Env production` tetap **hanya** daftar metode.
+9. Uji: unit test semua signature; integrasi dengan server Duitku palsu (VA, QRIS, metode tanpa VA, kedaluwarsa, ganti metode, pembayaran ganda); e2e lama tetap lulus dengan provider mock yang kini mengembalikan `va_number`.
+
+## 42. Grup WhatsApp
+
+1. **Pengaturan** (Bagian 45): `wa_group_camaba_name`, `wa_group_camaba_url`, `wa_group_guru_bk_name`, `wa_group_guru_bk_url`, `wa_group_required` (default `true`). URL wajib diawali `https://chat.whatsapp.com/`.
+2. **Per jalur:** master jalur mendapat kolom `wa_group_name`, `wa_group_url` (opsional), diisi saat membuat/mengubah jalur.
+3. **Wajib gabung setelah verifikasi OTP (sebelum beranda):**
+   - `GET /admission/me/onboarding` → `{steps: [{key: "wa_group_camaba", name, url, required, confirmed_at}, {key: "wa_group_jalur", ...}], next}`; `next = "wa_group_camaba"` selama grup umum belum dikonfirmasi, lalu `"dashboard"`.
+   - `POST /admission/me/onboarding/{key}/confirm` — mencatat `confirmed_at` (tombol "Saya sudah bergabung" setelah membuka tautan; sistem tidak dapat memeriksa keanggotaan WhatsApp yang sebenarnya).
+   - Selama langkah wajib belum dikonfirmasi, endpoint **aksi** camaba (simpan biodata, pilih jalur, unggah berkas, buat pembayaran, CBT) membalas `409 WA_GROUP_JOIN_REQUIRED` "Silakan bergabung ke grup WhatsApp PMB terlebih dahulu." Endpoint baca (dashboard, profil, notifikasi) tetap berjalan agar frontend bisa menampilkan halaman/popup grup.
+   - Berlaku juga untuk akun yang sudah terdaftar sebelumnya (diminta saat login berikutnya).
+4. **Grup jalur:** setelah camaba menyimpan jalur yang memiliki tautan grup, langkah `wa_group_jalur` muncul dan wajib dikonfirmasi sebelum langkah berikutnya (pembayaran). Pindah jalur ke jalur dengan grup berbeda → konfirmasi ulang.
+5. Bila `wa_group_required = false` atau tautan kosong, langkah tersebut dilewati.
+6. Dashboard camaba selalu menampilkan tautan grup (umum & jalur). Tautan juga dimuat di email selamat datang setelah verifikasi.
+7. **Guru BK:** dashboard guru BK (46) dan email aktivasi guru BK memuat tautan `wa_group_guru_bk`.
+
+## 43. Format NIM sesuai SK Rektor — dibangkitkan otomatis
+
+### 43.1 Struktur (SK No. 065/SK/UBTH/VII/2026)
+| Urutan | Segmen | Panjang | Sumber data |
+|---|---|---|---|
+| 1 | Kode fakultas | 2 | master fakultas `nim_code` |
+| 2 | Kode program studi (klaster) | 2 | master prodi `nim_code` (unik dalam fakultas) |
+| 3 | Jenjang/level KKNI | 1 | master prodi `kkni_level`: 5 Diploma, 6 Sarjana, 7 Profesi, 8 Magister, 9 Doktor |
+| 4 | Kategori jalur | 1 | master jalur `nim_category_code`: 0 Pindahan, 1 Umum (Reguler, Prestasi, dan jalur lainnya), 2 RPL, 3 Mahasiswa asing |
+| 5 | Tahun masuk | 2 | 2 digit terakhir tahun masuk (dari tahun akademik gelombang) |
+| 5a | Kode semester | 0 / 1 | **hanya** bila gelombang ditandai `per_semester_intake = true`: `semester_code` gelombang (aturan SK: gasal `1`, genap `2`; nilai diisi admin per gelombang) |
+| 6 | Nomor urut | 3 | urutan pendaftaran (43.3) |
+
+Contoh wajib lulus uji (dari SK & data migrasi):
+| Kasus | NIM |
+|---|---|
+| D3 Keperawatan (FIKES 11, prodi 01, KKNI 5), Umum, 2026, urut 001 | `11015126001` |
+| S1 Farmasi (Farmasi 10, prodi 01, KKNI 6), Mahasiswa asing, 2026, urut 003 | `10016326003` |
+| S1 Rekayasa Kosmetik (10, 02, 6), Umum, 2026, urut 001 | `10026126001` |
+| S1 Gizi (11, 05, 6), Umum, 2026, urut 003 | `11056126003` |
+| D3 Refraksi Optisi (11, 03, 5), Umum, 2026, urut 043 | `11035126043` |
+| S2 Farmasi (10, 01, 8), Umum, gelombang per semester dengan `semester_code = 2`, 2026, urut 005 | `100181262005` |
+| S2 Farmasi, sama tetapi `semester_code = 1` | `100181261005` |
+
+Kode fakultas & prodi BTH (hanya untuk **seeder/data demo**, bukan kode program): Farmasi `10` (01 Farmasi, 02 Rekayasa Kosmetik); FIKES `11` (01 Keperawatan, 02 Analis Kesehatan, 03 Refraksi Optisi, 04 Administrasi Rumah Sakit, 05 Gizi); FTB `12` (01 Bisnis Digital, 02 Kewirausahaan, 03 Teknologi Pangan, 04 Sistem Informasi).
+
+### 43.2 Templat yang dapat diatur
+Pengaturan `nim_format` (Bagian 45), default `{FAKULTAS}{PRODI}{KKNI}{JALUR}{TAHUN2}{SEMESTER}{URUT:3}`. Token: `{FAKULTAS}`, `{PRODI}`, `{KKNI}`, `{JALUR}`, `{TAHUN2}`, `{TAHUN4}`, `{SEMESTER}` (kosong bila bukan penerimaan per semester), `{URUT:n}`. Templat divalidasi saat disimpan dan ditampilkan pratinjaunya. Format lama dari CR-009 digantikan templat ini.
+
+### 43.3 Nomor urut & penerbitan
+1. Nomor urut dihitung per kombinasi **(fakultas, prodi, KKNI, tahun masuk, kode semester)** — **tidak dipisah per jalur** (SK: urutan mengacu pada nomor registrasi awal, tidak dikelompokkan berdasarkan jalur).
+2. Mode penerbitan (`NIM_ISSUANCE_MODE`, dapat diubah admin): **`batch` (default)** — admin menekan "Generate NIM" per periode/prodi; semua pendaftar yang sudah memenuhi syarat (daftar ulang lunas) dan belum ber-NIM diberi nomor berurutan **menurut nomor registrasi awal**, melanjutkan nomor terakhir; **`auto`** — NIM terbit otomatis saat daftar ulang selesai.
+3. Penghitung dikunci per baris (aman dari tabrakan saat bersamaan); NIM unik di database. Lebih dari 999 → `409 NIM_SEQUENCE_EXHAUSTED`. Data master kurang (kode fakultas/prodi/KKNI/kategori jalur/tahun) → `422 NIM_CONFIG_INCOMPLETE` dengan daftar data yang kurang.
+4. NIM tidak berubah setelah terbit, kecuali koreksi superadmin dengan alasan (audit log). Penetapan NIM manual (CR-009) tetap ada dan diperingatkan bila tidak sesuai templat.
+
+### 43.4 API
+`GET/PUT /nim/admin/format` (templat + pratinjau contoh) · `POST /nim/admin/preview` `{application_id}` (NIM yang akan terbit beserta rincian segmen) · `POST /nim/admin/generate` `{period_id, program_id?, dry_run}` (daftar hasil; `dry_run=true` tidak menyimpan) · field master baru pada endpoint master fakultas, prodi, jalur, gelombang yang ada.
+
+## 44. Biodata & ekspor format SEVIMA
+
+### 44.1 Acuan
+File `docs/referensi/format-migrasi-sevima.xlsx` (disalin tim ke repo; baris data contoh sudah dihapus) berisi sheet **Format Isian** (62 kolom, header hijau = wajib, oranye = opsional) dan sheet referensi: Agama, Sebaran Prodi, Jenis Program, Konsentrasi, Penghasilan, Negara, Pekerjaan, Provinsi, Pendidikan, Status Hidup, Almamater, Jenis Institusi. Kolom **wajib**: Kode Pendaftar, Nama Pendaftar, Jenis Kelamin (L/P), Tempat Lahir, Tgl Lahir, Jenis Program, Pendidikan Terakhir, ID Jenis Institusi.
+
+### 44.2 Data referensi
+Tabel referensi (Identity/Organization) diisi seeder **dari sheet referensi file acuan** dan dapat diubah superadmin: agama, negara, penghasilan, pendidikan, pekerjaan, status hidup, ukuran almamater, jenis institusi (terkait pendidikan; mis. pendidikan SMA → SMA, SMK, MAN, SMKS), provinsi, jenis program. `GET /identity/reference/{jenis}` untuk pilihan dropdown frontend.
+
+### 44.3 Isian biodata tambahan
+Semua **opsional** kecuali yang ditandai wajib; kelengkapan lama (CR-005) tetap berlaku ditambah dua isian wajib baru.
+- Pribadi: agama, kewarganegaraan (default `IDN`), nomor KK (16 digit), ukuran almamater, pekerjaan & instansi pekerjaan, pernah pesantren (ya/tidak, nama, lama), penerima KIP Kuliah (ya/tidak).
+- Alamat: dusun; provinsi memakai ID referensi (nilai teks lama dipetakan berdasarkan nama); kota/kabupaten & kecamatan tetap teks.
+- Ayah & ibu (masing-masing): penghasilan (ID referensi, 5 kelompok), pendidikan, pekerjaan (ID referensi; teks lama tetap disimpan sebagai cadangan), status hidup, alamat, tempat & tanggal lahir.
+- Asal sekolah: **pendidikan terakhir (wajib, default `SMA`)**, **jenis institusi (wajib**, pilihan disaring sesuai pendidikan terakhir), provinsi & kota institusi, nilai UN (opsional); jurusan, tahun lulus, NISN, NPSN memakai isian yang sudah ada.
+- **[UBAH]** Penghasilan orang tua: isian lama `household_income_range` tetap diterima demi kompatibilitas, tetapi formulir baru memakai penghasilan per ayah/ibu; syarat kelengkapan "penghasilan" terpenuhi oleh salah satunya.
+- `PUT /identity/me/biodata` menerima semua isian baru; respons `completeness`/`missing` diperbarui. Pindai KTP (OCR) mengisi agama & kewarganegaraan bila terbaca.
+
+### 44.4 Ekspor format SEVIMA
+- `GET /admission/admin/exports/sevima?period_id=&program_id=&status=` → **xlsx** dengan sheet **Format Isian** yang **urutan kolom, teks header, dan warna header identik** dengan file acuan, ditambah semua sheet referensi. Permission `admission.export.sevima` (admin_pmb, superadmin). Default: semua pendaftaran yang sudah difinalisasi.
+- Pemetaan utama: Kode Pendaftar = nomor registrasi; Tanggal Daftar = waktu daftar WIB `YYYY-MM-DD HH:mm:ss`; tanggal lain `YYYY-MM-DD`; kode referensi diisi ID (bukan nama); NIK, No. KK, No HP, NISN disimpan sebagai **teks** (tidak berubah menjadi angka/notasi ilmiah, nol di depan tetap); Aktif = 1 bila tidak batal/mengundurkan diri; Finalisasi = 1 bila pendaftaran sudah diajukan; Jenis Program, Kode Pilihan 1, Kode Pilihan Diterima = pemetaan prodi ke `sevima_sebaran_prodi_id` & `sevima_jenis_program` (kolom baru master prodi); NIM; No. Ujian = nomor peserta CBT; Daftar Ulang = 1/0; kolom tanpa data dibiarkan kosong.
+- `GET /admission/admin/exports/sevima/validate?period_id=` → daftar pendaftar yang kolom wajibnya kosong atau prodinya belum dipetakan (ekspor tetap bisa dijalankan).
+- Uji: header hasil ekspor dibandingkan otomatis dengan file acuan; satu pendaftar lengkap mengisi semua kolom wajib; NIK/No HP tetap teks; format tanggal benar.
+
+## 45. Pengaturan identitas kampus (tanpa mengubah kode)
+
+1. Halaman pengaturan superadmin (profil institusi, perluasan D.15.11 & CR-009 2.10) memuat seluruh identitas: nama, nama singkat, tagline, nama yayasan, logo & favicon, alamat (boleh lebih dari satu), telepon, faks, email, website, WhatsApp CS & jam layanan, **grup WA camaba & guru BK** (42.1), media sosial, rekening bank, kop surat dokumen PDF, nama & tanda tangan rektor, prefiks nomor registrasi, kode institusi berita acara, **templat NIM** (43.2), warna utama tema frontend, nama pengirim email.
+2. `GET /organization/institution` (publik, tanpa data rahasia) mengembalikan semua isian publik untuk frontend (logo, nama, kontak, warna, tautan grup). Perubahan berlaku tanpa deploy ulang (cache ≤ 1 menit).
+3. **Audit hardcode:** tidak boleh ada identitas institusi (nama kampus/yayasan, singkatan, domain, telepon, alamat, nama rektor) di kode, templat email, templat PDF, halaman login SSO, teks notifikasi, `productDetails`/`customerVaName` Duitku. Semua diambil dari pengaturan. Test otomatis memindai kode sumber (di luar seeder, test, dan `docs/`) untuk nama institusi yang ada di seeder demo dan gagal bila ditemukan.
+4. Data BTH hanya ada di seeder/data demo.
+
+## 46. Dashboard guru BK siap sosialisasi
+- `GET /referral/partner/dashboard` (satu panggilan untuk halaman awal guru BK): profil guru BK, jumlah kode, gabungan ringkasan 33.5 semua kode, 5 pembayaran terbaru yang menunggu verifikasi, komisi, **tautan grup WA guru BK**, kontak CS institusi.
+- `docs/PANDUAN-ALUR.md` bagian guru BK dilengkapi (login & aktivasi, verifikasi pembayaran siswa, setoran, komisi, grup WA) sebagai bahan sosialisasi; data demo guru BK lengkap di `make demo-seed`.
+
+## 47. Pengujian & selesai fase G
+Skenario e2e ditambahkan di akhir:
+1. Pembayaran langsung: pilih VA → `va_number` tampil; buka ulang → pembayaran sama; ganti ke QRIS → `qr_string` & `qr_image_url`, VA lama `superseded`; callback lunas → tagihan lunas, status `paid`.
+2. Onboarding: akun baru setelah OTP → `next = wa_group_camaba`; simpan biodata → `409 WA_GROUP_JOIN_REQUIRED`; konfirmasi → biodata bisa disimpan; pilih jalur bergrup → `wa_group_jalur` wajib sebelum membuat pembayaran; `wa_group_required=false` → tidak ada gerbang.
+3. NIM: semua contoh 43.1 menghasilkan NIM yang tepat; mode batch mengurutkan menurut nomor registrasi lintas jalur; data master kurang → 422; dua generate bersamaan tidak menghasilkan NIM ganda.
+4. Biodata: isian baru tersimpan & terbaca; tanpa pendidikan terakhir/jenis institusi → belum lengkap.
+5. Ekspor SEVIMA: header identik dengan acuan; nilai wajib terisi; validasi menampilkan pendaftar yang kurang.
+6. Pengaturan: ubah nama/logo/grup WA → `GET /organization/institution`, dashboard guru BK, email, dan PDF memakai nilai baru tanpa restart.
+7. Dashboard guru BK memuat tautan grup WA guru BK.
+
+Dokumentasi: `docs/NIM-FORMAT.md` (struktur, templat, mode penerbitan, contoh), `docs/SEVIMA-EXPORT.md` (pemetaan kolom), `docs/PENGATURAN-INSTITUSI.md`, `docs/API.md` ("Perubahan kontrak": pembayaran tanpa popup, onboarding grup WA, biodata), `docs/DUITKU-PRODUKSI.md`, Postman, kontrak JSON, class diagram & ERD, `docs/PANDUAN-ALUR.md`, `docs/FE-BE-GAP.md`. CR-015 `done`; tag `v0.9.0-launching`; `final-check -Tahap penuh` AMAN.
 
 ---
 
@@ -548,7 +692,13 @@ Semua langkah di branch `main`, beruntun mengikuti aturan Bagian 0.3; tidak ada 
 | **F2** Kode & verifikasi | Cek & pasang kode (consent), ditagihkan ke mitra, verifikasi/tolak (satuan & massal), `SettleByPartner`, kunci kode, jalur gratis & bayar sendiri (33.2) | e2e 38 butir 2–4, 7, 11 |
 | **F3** Komisi | Perhitungan & snapshot komisi, jalur tanpa komisi, mode penyelesaian umum + override per kode, pembayaran komisi | e2e 38 butir 5, 6, 9 |
 | **F4** Setoran & portal | Ringkasan 33.5, daftar pengguna, ekspor, setoran & verifikasi, buku besar, notifikasi 36 | e2e 38 butir 8, 13 |
-| **F5** Penutupan F | Dokumentasi 39; data demo guru BK; CR-014 done; tag `v0.8.0-referal`; laporan fase F | `final-check -Tahap penuh` AMAN |
+| **F5** Penutupan F | Dokumentasi 39; data demo guru BK; CR-014 done; tag `v0.8.0-referal`; laporan fase F | e2e FAIL: 0 |
+| **G1** Pembayaran tanpa popup | Bagian 41 seluruhnya (prioritas pertama setelah milestone berjalan) | e2e 47 butir 1 |
+| **G2** Grup WhatsApp | Bagian 42 (pengaturan, per jalur, gerbang onboarding, guru BK) | e2e 47 butir 2 |
+| **G3** Format NIM | Bagian 43 (master data, templat, nomor urut, mode batch/auto, API) | e2e 47 butir 3 |
+| **G4** Biodata & ekspor SEVIMA | Bagian 44 (referensi dari file acuan, isian baru, ekspor & validasi) | e2e 47 butir 4–5 |
+| **G5** Pengaturan identitas & dashboard guru BK | Bagian 45–46 (pengaturan, audit hardcode + test, dashboard guru BK, panduan) | e2e 47 butir 6–7 |
+| **G6** Penutupan G | Dokumentasi 47; CR-015 done; tag `v0.9.0-launching`; laporan fase G | `final-check -Tahap penuh` AMAN |
 
 ## 8. Keputusan (catat di DECISIONS.md)
 
@@ -566,6 +716,13 @@ Semua langkah di branch `main`, beruntun mengikuti aturan Bagian 0.3; tidak ada 
 | F5 | NIK disamarkan untuk guru BK; dokumen & biodata lengkap tidak dapat diakses guru BK; siswa memberi persetujuan saat memasang kode |
 | F6 | Kartu ringkasan mengikuti 33.5 ("Antrian Verifikasi Pembayaran" = pembayaran siswa yang menunggu verifikasi guru BK) |
 | F7 | Referal dibangun langsung sebagai modul `referral` di `pmb-service`; role `guru_bk` milik service account `pmb-mitra` |
+| G1 | Pembayaran memakai Duitku API v2 inquiry (server-to-server); VA/QRIS ditampilkan di halaman sendiri; POP/popup tidak dipakai |
+| G2 | Gabung grup WA dikonfirmasi camaba ("Saya sudah bergabung"); keanggotaan sebenarnya tidak dapat diperiksa sistem |
+| G3 | Grup WA umum wajib setelah verifikasi OTP; grup per jalur wajib setelah memilih jalur; keduanya dapat dimatikan di pengaturan |
+| G4 | NIM mengikuti SK Rektor 065/SK/UBTH/VII/2026 lewat templat yang dapat diatur; nomor urut per prodi-jenjang-tahun(-semester) lintas jalur, menurut nomor registrasi; mode default `batch` |
+| G5 | Kode semester NIM diisi admin per gelombang (aturan SK: gasal 1, genap 2) dan hanya dipakai pada penerimaan per semester |
+| G6 | Biodata mengikuti format migrasi SEVIMA; hanya kolom hijau yang wajib ditambah kelengkapan CR-005 yang sudah berlaku; ekspor xlsx identik dengan format acuan |
+| G7 | Seluruh identitas kampus berada di pengaturan; data BTH hanya di seeder demo |
 | C1 | 3 service: `gateway` (gateway + auth), `pmb-service` (11 modul bisnis termasuk `referral`), `ocr-service` |
 | C2 | `pmb-service` modular monolith: schema per modul, facade antar modul, tanpa query/transaksi lintas schema |
 | C3 | Auth digabung ke gateway agar identitas & pintu masuk dapat dipakai bersama produk kampus berikutnya |
@@ -597,4 +754,12 @@ Semua langkah di branch `main`, beruntun mengikuti aturan Bagian 0.3; tidak ada 
 
 **Fase F**
 - [ ] Modul `referral` di pmb-service: kode referal, verifikasi guru BK, komisi (dua tipe, mode penyelesaian umum + per kode, jalur tanpa komisi), setoran, akun guru BK oleh admin + impor CSV, notifikasi, RBAC `guru_bk`; e2e 38 lulus; arch test batas modul tetap lulus.
-- [ ] `docs/REFERRAL.md` dan dokumen terkait; CR-014 `done`, tag `v0.8.0-referal`, `final-check -Tahap penuh` AMAN, laporan fase F.
+- [ ] `docs/REFERRAL.md` dan dokumen terkait; CR-014 `done`, tag `v0.8.0-referal`, laporan fase F.
+
+**Fase G**
+- [ ] Pembayaran tanpa popup (VA/QRIS di halaman sendiri, idempoten, ganti metode, pembayaran ganda tertangani).
+- [ ] Grup WA: pengaturan, per jalur, gerbang onboarding setelah OTP, grup jalur, tautan di dashboard guru BK.
+- [ ] NIM otomatis sesuai SK (semua contoh 43.1 lulus), templat & master data dapat diatur.
+- [ ] Biodata format SEVIMA + ekspor xlsx identik acuan + validasi.
+- [ ] Identitas kampus sepenuhnya dari pengaturan; test audit hardcode lulus; dashboard guru BK satu panggilan.
+- [ ] Dokumen 47; CR-015 `done`, tag `v0.9.0-launching`, `final-check -Tahap penuh` AMAN, laporan fase G.

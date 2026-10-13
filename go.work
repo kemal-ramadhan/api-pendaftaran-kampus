@@ -3,17 +3,6 @@ go 1.25.0
 use (
 	./pkg
 	./scripts/infra
-	./services/_template
-	./services/admission-service
-	./services/api-gateway
-	./services/auth-service
-	./services/exam-service
-	./services/finance-service
-	./services/identity-service
-	./services/nim-service
-	./services/notification-service
-	./services/organization-service
-	./services/scoring-service
-	./services/selection-service
-	./services/student-service
+	./services/gateway
+	./services/pmb-service
 )

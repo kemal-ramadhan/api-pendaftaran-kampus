@@ -92,38 +92,46 @@ services:
     networks:
       - pmb-network
 
+  # ---------------------------------------------------------------------------
+  # 3 KONSOLIDASI LAYANAN APLIKASI (CR-011)
+  # ---------------------------------------------------------------------------
 
-  auth-service:
+  gateway:
     build:
       context: ..
-      dockerfile: services/auth-service/Dockerfile
-    container_name: pmb-auth-service
+      dockerfile: services/gateway/Dockerfile
+    container_name: pmb-gateway
     restart: unless-stopped
+    ports:
+      - "8000:8000"
+      - "8081:8081"
     environment:
       APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8080
+      APP_PORT: 8000
+      INTERNAL_PORT: 8081
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-pmb_user}
       DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: ${DB_NAME:-pmb_auth}
+      DB_NAME: pmb_auth
+      DB_SSLMODE: disable
       REDIS_ADDR: redis:6379
       JWT_PRIVATE_KEY_PATH: ${JWT_PRIVATE_KEY_PATH:-/certs/jwt_private.pem}
+      JWT_PUBLIC_KEY_PATH: ${JWT_PUBLIC_KEY_PATH:-/certs/jwt_public.pem}
       JWT_KID: ${JWT_KID:-pmb-auth-1}
       JWT_ISSUER: ${JWT_ISSUER:-pmb-auth-service}
       JWT_AUDIENCE: ${JWT_AUDIENCE:-pmb-api}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
-      MAIL_HOST: ${MAIL_HOST:-mailpit}
-      MAIL_PORT: ${MAIL_PORT:-1025}
-      MAIL_USERNAME: ${MAIL_USERNAME:-}
-      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
-      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-pmb@kampus.ac.id}
-      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-PMB Universitas}
-      SEED_SUPERADMIN_EMAIL: ${SEED_SUPERADMIN_EMAIL:-superadmin@kampus.ac.id}
-      SEED_SUPERADMIN_PASSWORD: ${SEED_SUPERADMIN_PASSWORD:-Superadmin123!}
-      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization-service:8081}
+      ROUTES_CONFIG: /app/config/routes.yaml
+      PMB_SERVICE_URL: http://pmb-service:8080
+      OCR_SERVICE_URL: http://ocr-service:8088
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
+      MAIL_DRIVER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_FROM_ADDRESS: pmb@kampus.ac.id
+      MAIL_FROM_NAME: PMB Universitas
     volumes:
       - ../certs:/certs:ro
     depends_on:
@@ -131,67 +139,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  api-gateway:
-    build:
-      context: ..
-      dockerfile: services/api-gateway/Dockerfile
-    container_name: pmb-api-gateway
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8000
-      ROUTES_CONFIG: /app/config/routes.yaml
-      AUTH_SERVICE_URL: http://auth-service:8080
-      ORGANIZATION_SERVICE_URL: ${ORGANIZATION_SERVICE_URL:-http://organization-service:8081}
-      IDENTITY_SERVICE_URL: ${IDENTITY_SERVICE_URL:-http://identity-service:8082}
-      ADMISSION_SERVICE_URL: ${ADMISSION_SERVICE_URL:-http://admission-service:8084}
-      FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
-      EXAM_SERVICE_URL: ${EXAM_SERVICE_URL:-http://exam-service:8087}
-      SCORING_SERVICE_URL: ${SCORING_SERVICE_URL:-http://scoring-service:8089}
-      SELECTION_SERVICE_URL: ${SELECTION_SERVICE_URL:-http://selection-service:8090}
-      STUDENT_SERVICE_URL: ${STUDENT_SERVICE_URL:-http://student-service:8091}
-      NIM_SERVICE_URL: ${NIM_SERVICE_URL:-http://nim-service:8092}
-      OCR_SERVICE_URL: ${OCR_SERVICE_URL:-http://ocr-service:8088}
-      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL:-http://notification-service:8083}
-      JWKS_URL: http://auth-service:8080/.well-known/jwks.json
-      REDIS_ADDR: redis:6379
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173}
-    depends_on:
-      auth-service:
-        condition: service_healthy
-      organization-service:
-        condition: service_healthy
-      identity-service:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-      finance-service:
-        condition: service_healthy
-      exam-service:
-        condition: service_healthy
-      scoring-service:
-        condition: service_healthy
-      selection-service:
-        condition: service_healthy
-      student-service:
-        condition: service_healthy
-      nim-service:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      redis:
+      pmb-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget --spider -q http://localhost:8000/health || exit 1"]
@@ -202,412 +150,48 @@ services:
     networks:
       - pmb-network
 
-  notification-service:
+  pmb-service:
     build:
       context: ..
-      dockerfile: services/notification-service/Dockerfile
-    container_name: pmb-notification-service
+      dockerfile: services/pmb-service/Dockerfile
+    container_name: pmb-service
     restart: unless-stopped
     ports:
-      - "8083:8083"
+      - "8080:8080"
     environment:
       APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8083
+      APP_PORT: 8080
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: ${DB_USER:-pmb_user}
       DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_notification
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      SMTP_HOST: mailpit
-      SMTP_PORT: 1025
-      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-noreply@pmb.ac.id}
-      SMTP_FROM_NAME: ${SMTP_FROM_NAME:-PMB Universitas}
-      WA_DRIVER: log
-      WORKER_INTERVAL_SECONDS: 2
-      WORKER_BATCH_SIZE: 20
-    depends_on:
-      postgres:
-        condition: service_healthy
-      mailpit:
-        condition: service_started
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8083/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  admission-service:
-    build:
-      context: ..
-      dockerfile: services/admission-service/Dockerfile
-    container_name: pmb-admission-service
-    restart: unless-stopped
-    ports:
-      - "8084:8084"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8084
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_admission
+      DB_NAME: pmb_app
+      DB_SSLMODE: disable
+      REDIS_ADDR: redis:6379
       GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
       INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      AUTH_SERVICE_URL: http://auth-service:8080
-      ORGANIZATION_SERVICE_URL: http://organization-service:8081
-      IDENTITY_SERVICE_URL: http://identity-service:8082
-      NOTIFICATION_SERVICE_URL: http://notification-service:8083
-      FINANCE_SERVICE_URL: ${FINANCE_SERVICE_URL:-http://finance-service:8085}
-      EXAM_SERVICE_URL: http://exam-service:8087
-      SELECTION_SERVICE_URL: http://selection-service:8090
-      STUDENT_SERVICE_URL: http://student-service:8091
-      NIM_SERVICE_URL: http://nim-service:8092
+      GATEWAY_INTERNAL_URL: http://gateway:8081
+      OCR_SERVICE_URL: http://ocr-service:8088
+      OCR_ENABLED: "true"
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_USE_SSL: "false"
-      DOCUMENT_BUCKET: pmb-admission-documents
-      OUTBOX_INTERVAL_SECONDS: 1
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      SMTP_FROM_EMAIL: pmb@kampus.ac.id
+      SMTP_FROM_NAME: PMB Universitas
+      OUTBOX_INTERVAL_SECONDS: 2
       OUTBOX_BATCH_SIZE: 20
     depends_on:
       postgres:
         condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      identity-service:
+      redis:
         condition: service_healthy
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8084/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  finance-service:
-    build:
-      context: ..
-      dockerfile: services/finance-service/Dockerfile
-    container_name: pmb-finance-service
-    restart: unless-stopped
-    ports:
-      - "8085:8085"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8085
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_finance
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      NOTIFICATION_SERVICE_URL: http://notification-service:8083
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_USE_SSL: "false"
-      WEBHOOK_SECRET_MOCK: mock-secret-key-123
-      PAYMENT_WEBHOOK_SECRET: mock-secret-key-123
-    depends_on:
-      postgres:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8085/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  exam-service:
-    build:
-      context: ..
-      dockerfile: services/exam-service/Dockerfile
-    container_name: pmb-exam-service
-    restart: unless-stopped
-    ports:
-      - "8087:8087"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: 8087
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_exam
-      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      NOTIFICATION_SERVICE_URL: http://notification-service:8083
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      IDENTITY_SERVICE_URL: http://identity-service:8082
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_USE_SSL: "false"
-      EXAM_CARD_BUCKET: pmb-exam-cards
-    depends_on:
-      postgres:
-        condition: service_healthy
-      notification-service:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-      identity-service:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8087/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  scoring-service:
-    build:
-      context: ..
-      dockerfile: services/scoring-service/Dockerfile
-    container_name: pmb-scoring-service
-    restart: unless-stopped
-    ports:
-      - "8089:8089"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: 8089
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_scoring
-      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      EXAM_SERVICE_URL: http://exam-service:8087
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      IDENTITY_SERVICE_URL: http://identity-service:8082
-      ORGANIZATION_SERVICE_URL: http://organization-service:8081
-    depends_on:
-      postgres:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-      exam-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8089/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  selection-service:
-    build:
-      context: ..
-      dockerfile: services/selection-service/Dockerfile
-    container_name: pmb-selection-service
-    restart: unless-stopped
-    ports:
-      - "8090:8090"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: 8090
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_selection
-      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      SCORING_SERVICE_URL: http://scoring-service:8089
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      FINANCE_SERVICE_URL: http://finance-service:8085
-      NOTIFICATION_SERVICE_URL: http://notification-service:8083
-      IDENTITY_SERVICE_URL: http://identity-service:8082
-      ORGANIZATION_SERVICE_URL: http://organization-service:8081
-    depends_on:
-      postgres:
-        condition: service_healthy
-      scoring-service:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8090/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  student-service:
-    build:
-      context: ..
-      dockerfile: services/student-service/Dockerfile
-    container_name: pmb-student-service
-    restart: unless-stopped
-    ports:
-      - "8091:8091"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: 8091
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_student
-      GATEWAY_SHARED_KEY: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      SELECTION_SERVICE_URL: http://selection-service:8090
-      FINANCE_SERVICE_URL: http://finance-service:8085
-      ORGANIZATION_SERVICE_URL: http://organization-service:8081
-      NIM_SERVICE_URL: http://nim-service:8092
-    depends_on:
-      postgres:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-      selection-service:
-        condition: service_healthy
-      finance-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8091/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  nim-service:
-    build:
-      context: ..
-      dockerfile: services/nim-service/Dockerfile
-    container_name: pmb-nim-service
-    restart: unless-stopped
-    ports:
-      - "8092:8092"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      PORT: 8092
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_nim
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      STUDENT_SERVICE_URL: http://student-service:8091
-      AUTH_SERVICE_URL: http://auth-service:8080
-      ADMISSION_SERVICE_URL: http://admission-service:8084
-      NOTIFICATION_SERVICE_URL: http://notification-service:8083
-      ORGANIZATION_SERVICE_URL: http://organization-service:8081
-    depends_on:
-      postgres:
-        condition: service_healthy
-      student-service:
-        condition: service_healthy
-      auth-service:
-        condition: service_healthy
-      admission-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8092/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  organization-service:
-    build:
-      context: ..
-      dockerfile: services/organization-service/Dockerfile
-    container_name: pmb-organization-service
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8081
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_organization
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8081/health || exit 1"]
-      interval: 5s
-      timeout: 3s
-      retries: 15
-      start_period: 30s
-    networks:
-      - pmb-network
-
-  identity-service:
-    build:
-      context: ..
-      dockerfile: services/identity-service/Dockerfile
-    container_name: pmb-identity-service
-    restart: unless-stopped
-    ports:
-      - "8082:8082"
-    environment:
-      APP_ENV: ${APP_ENV:-development}
-      APP_PORT: 8082
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_identity
-      IDENTITY_ENCRYPTION_KEY: ${IDENTITY_ENCRYPTION_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET:-secret-gateway-hmac}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN:-secret-internal-token}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
-      MINIO_USE_SSL: "false"
-      OCR_SERVICE_URL: http://ocr-service:8088
-      REDIS_ADDR: redis:6379
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-      ocr-service:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://localhost:8082/health || exit 1"]
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:8080/health || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 15

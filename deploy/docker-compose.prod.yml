@@ -82,415 +82,76 @@ services:
       - pmb-network
 
   minio-init:
-    image: minio/mc:latest
+    image: quay.io/minio/mc:latest
     container_name: pmb-minio-init
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
-      /usr/bin/mc mb --ignore-existing myminio/pmb-identity-docs;
-      /usr/bin/mc mb --ignore-existing myminio/pmb-finance-proofs;
-      /usr/bin/mc mb --ignore-existing myminio/pmb-finance-receipts;
+      /usr/bin/mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      /usr/bin/mc mb -p local/pmb-admission-documents;
+      /usr/bin/mc mb -p local/pmb-identity-photos;
+      /usr/bin/mc mb -p local/pmb-identity-ktp;
+      /usr/bin/mc mb -p local/pmb-finance-proofs;
+      /usr/bin/mc mb -p local/pmb-finance-receipts;
+      /usr/bin/mc mb -p local/pmb-exam-cards;
       exit 0;
       "
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 128M
-    networks:
-      - pmb-network
-
-  auth:
-    build:
-      context: ../
-      dockerfile: services/auth-service/Dockerfile
-    container_name: pmb-auth-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8080
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_auth
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-pmb_redis_secret}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@pmb.kampus.ac.id}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "5"
-    networks:
-      - pmb-network
-
-  organization:
-    build:
-      context: ../
-      dockerfile: services/organization-service/Dockerfile
-    container_name: pmb-organization-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8081
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_organization
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  identity:
-    build:
-      context: ../
-      dockerfile: services/identity-service/Dockerfile
-    container_name: pmb-identity-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8082
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_identity
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-      OCR_SERVICE_URL: http://ocr:8000
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    networks:
-      - pmb-network
-
-  admission:
-    build:
-      context: ../
-      dockerfile: services/admission-service/Dockerfile
-    container_name: pmb-admission-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8084
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_admission
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-      FINANCE_SERVICE_URL: http://finance:8085
-      NOTIFICATION_SERVICE_URL: http://notification:8083
-      ORGANIZATION_SERVICE_URL: http://organization:8081
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    networks:
-      - pmb-network
-
-  finance:
-    build:
-      context: ../
-      dockerfile: services/finance-service/Dockerfile
-    container_name: pmb-finance-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8085
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_finance
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-      PAYMENT_PROVIDER: ${PAYMENT_PROVIDER:-duitku}
-      DUITKU_ENV: ${DUITKU_ENV:-production}
-      DUITKU_MERCHANT_CODE: ${DUITKU_MERCHANT_CODE}
-      DUITKU_API_KEY: ${DUITKU_API_KEY}
-      DUITKU_CALLBACK_URL: ${DUITKU_CALLBACK_URL}
-      DUITKU_RETURN_URL: ${DUITKU_RETURN_URL}
-      ALLOW_SANDBOX_IN_PRODUCTION: ${ALLOW_SANDBOX_IN_PRODUCTION:-false}
-      RECONCILIATION_INTERVAL_MINUTES: ${RECONCILIATION_INTERVAL_MINUTES:-10}
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
-      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
-    depends_on:
-      postgres:
-        condition: service_healthy
-      minio:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    networks:
-      - pmb-network
-
-  exam:
-    build:
-      context: ../
-      dockerfile: services/exam-service/Dockerfile
-    container_name: pmb-exam-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8087
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_exam
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '1.0'
-          memory: 512M
-    networks:
-      - pmb-network
-
-  scoring:
-    build:
-      context: ../
-      dockerfile: services/scoring-service/Dockerfile
-    container_name: pmb-scoring-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8089
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_scoring
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  selection:
-    build:
-      context: ../
-      dockerfile: services/selection-service/Dockerfile
-    container_name: pmb-selection-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8090
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_selection
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  student:
-    build:
-      context: ../
-      dockerfile: services/student-service/Dockerfile
-    container_name: pmb-student-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8091
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_student
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  nim:
-    build:
-      context: ../
-      dockerfile: services/nim-service/Dockerfile
-    container_name: pmb-nim-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8092
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_nim
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  notification:
-    build:
-      context: ../
-      dockerfile: services/notification-service/Dockerfile
-    container_name: pmb-notification-service
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      APP_PORT: 8083
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: ${DB_USER:-pmb_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pmb_password}
-      DB_NAME: pmb_notification
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
-      SMTP_HOST: ${SMTP_HOST}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER}
-      SMTP_PASSWORD: ${SMTP_PASSWORD}
-      SMTP_FROM: ${SMTP_FROM:-no-reply@pmb.kampus.ac.id}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 256M
-    networks:
-      - pmb-network
-
-  ocr:
-    build:
-      context: ../services/ocr-service
-      dockerfile: Dockerfile
-    container_name: pmb-ocr-service
-    restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: '2.0'
-          memory: 2048M
     networks:
       - pmb-network
 
   gateway:
     build:
-      context: ../
-      dockerfile: services/api-gateway/Dockerfile
-    container_name: pmb-api-gateway
+      context: ..
+      dockerfile: services/gateway/Dockerfile
+    container_name: pmb-gateway
     restart: unless-stopped
     ports:
       - "8000:8000"
+      - "8081:8081"
     environment:
       APP_ENV: production
-      GATEWAY_PORT: 8000
-      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
-      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
+      APP_PORT: 8000
+      INTERNAL_PORT: 8081
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: pmb_auth
+      DB_SSLMODE: disable
+      REDIS_ADDR: redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-pmb_redis_secret}
-      AUTH_SERVICE_URL: http://auth:8080
-      ORGANIZATION_SERVICE_URL: http://organization:8081
-      IDENTITY_SERVICE_URL: http://identity:8082
-      NOTIFICATION_SERVICE_URL: http://notification:8083
-      ADMISSION_SERVICE_URL: http://admission:8084
-      FINANCE_SERVICE_URL: http://finance:8085
-      EXAM_SERVICE_URL: http://exam:8087
-      SCORING_SERVICE_URL: http://scoring:8089
-      SELECTION_SERVICE_URL: http://selection:8090
-      STUDENT_SERVICE_URL: http://student:8091
-      NIM_SERVICE_URL: http://nim:8092
-      OCR_SERVICE_URL: http://ocr:8000
+      JWT_PRIVATE_KEY_PATH: /certs/jwt_private.pem
+      JWT_PUBLIC_KEY_PATH: /certs/jwt_public.pem
+      JWT_KID: ${JWT_KID:-pmb-auth-1}
+      JWT_ISSUER: ${JWT_ISSUER:-pmb-auth-service}
+      JWT_AUDIENCE: ${JWT_AUDIENCE:-pmb-api}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
+      ROUTES_CONFIG: /app/config/routes.yaml
+      PMB_SERVICE_URL: http://pmb-service:8080
+      OCR_SERVICE_URL: http://ocr-service:8088
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+      MAIL_DRIVER: ${MAIL_DRIVER:-smtp}
+      MAIL_HOST: ${MAIL_HOST}
+      MAIL_PORT: ${MAIL_PORT:-587}
+      MAIL_USERNAME: ${MAIL_USERNAME}
+      MAIL_PASSWORD: ${MAIL_PASSWORD}
+      MAIL_FROM_ADDRESS: ${MAIL_FROM_ADDRESS:-pmb@kampus.ac.id}
+      MAIL_FROM_NAME: ${MAIL_FROM_NAME:-PMB Universitas}
+    volumes:
+      - ../certs:/certs:ro
     depends_on:
+      postgres:
+        condition: service_healthy
       redis:
         condition: service_healthy
-      auth:
-        condition: service_started
+      pmb-service:
+        condition: service_healthy
     deploy:
       resources:
         limits:
@@ -504,11 +165,102 @@ services:
     networks:
       - pmb-network
 
-networks:
-  pmb-network:
-    driver: bridge
+  pmb-service:
+    build:
+      context: ..
+      dockerfile: services/pmb-service/Dockerfile
+    container_name: pmb-service
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      APP_ENV: production
+      APP_PORT: 8080
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-pmb_user}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_NAME: pmb_app
+      DB_SSLMODE: disable
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-pmb_redis_secret}
+      GATEWAY_SHARED_SECRET: ${GATEWAY_SHARED_SECRET}
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      GATEWAY_INTERNAL_URL: http://gateway:8081
+      OCR_SERVICE_URL: http://ocr-service:8088
+      OCR_ENABLED: "true"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_USE_SSL: "false"
+      SMTP_HOST: ${MAIL_HOST}
+      SMTP_PORT: ${MAIL_PORT:-587}
+      SMTP_FROM_EMAIL: ${MAIL_FROM_ADDRESS:-pmb@kampus.ac.id}
+      SMTP_FROM_NAME: ${MAIL_FROM_NAME:-PMB Universitas}
+      OUTBOX_INTERVAL_SECONDS: 2
+      OUTBOX_BATCH_SIZE: 50
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '3.0'
+          memory: 2048M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - pmb-network
+
+  ocr-service:
+    build:
+      context: ../services/ocr-service
+      dockerfile: Dockerfile
+    container_name: pmb-ocr-service
+    restart: unless-stopped
+    ports:
+      - "8088:8088"
+    environment:
+      APP_ENV: production
+      PORT: 8088
+      INTERNAL_TOKEN: ${INTERNAL_TOKEN}
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-pmb_redis_secret}
+      OCR_ENGINE: tesseract
+      OCR_QUALITY_THRESHOLD: 70
+      OCR_FIELD_CONFIDENCE_THRESHOLD: 0.85
+      OCR_RESULT_TTL: 15m
+      OCR_MAX_FILE_MB: 5
+      OCR_CLOUD_ENABLED: "false"
+      WORKER_CONCURRENCY: 4
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2048M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    networks:
+      - pmb-network
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+
+networks:
+  pmb-network:
+    driver: bridge

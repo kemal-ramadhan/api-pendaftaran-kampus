@@ -1,19 +1,11 @@
 #!/bin/bash
 set -e
 
-echo "Menjalankan inisialisasi basis data multi-service PMB..."
+echo "Menjalankan inisialisasi basis data PMB (Konsolidasi 2 Database: pmb_auth, pmb_app)..."
 
 databases=(
-    "pmb_organization"
-    "pmb_identity"
-    "pmb_notification"
-    "pmb_admission"
-    "pmb_finance"
-    "pmb_exam"
-    "pmb_scoring"
-    "pmb_selection"
-    "pmb_student"
-    "pmb_nim"
+    "pmb_auth"
+    "pmb_app"
 )
 
 for db in "${databases[@]}"; do
@@ -25,4 +17,4 @@ for db in "${databases[@]}"; do
 EOSQL
 done
 
-echo "Seluruh database PMB Fase 2 berhasil disiapkan!"
+echo "Seluruh database PMB (pmb_auth, pmb_app) berhasil disiapkan!"
