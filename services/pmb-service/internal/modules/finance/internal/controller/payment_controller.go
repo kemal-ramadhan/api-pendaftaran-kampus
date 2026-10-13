@@ -11,6 +11,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/pkg/gatewayauth"
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/config"
+	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/model"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/repository"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/service"
 )
@@ -25,9 +26,8 @@ func NewPaymentController(svc service.PaymentService, adminSvc service.FinanceAd
 	return &PaymentController{svc: svc, adminSvc: adminSvc, cfg: cfg}
 }
 
-// GetPaymentConfig mengembalikan konfigurasi payment gateway dan URL pustaka POP JS
+// GetPaymentConfig mengembalikan konfigurasi payment gateway mode direct
 func (ctrl *PaymentController) GetPaymentConfig(c *gin.Context) {
-	popURL := "https://app-sandbox.duitku.com/lib/js/duitku.js"
 	env := "sandbox"
 	providerName := "mock"
 	canSimulate := true
@@ -35,21 +35,112 @@ func (ctrl *PaymentController) GetPaymentConfig(c *gin.Context) {
 	if ctrl.cfg != nil {
 		providerName = ctrl.cfg.PaymentProvider
 		env = ctrl.cfg.DuitkuEnv
-		if ctrl.cfg.DuitkuEnv == "production" {
-			popURL = "https://app.duitku.com/lib/js/duitku.js"
-		}
 		if ctrl.cfg.AppEnv == "production" || ctrl.cfg.PaymentProvider == "duitku" {
 			canSimulate = false
 		}
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"provider":       providerName,
-		"env":            env,
-		"pop_script_url": popURL,
-		"can_simulate":   canSimulate,
+		"mode":         "direct",
+		"provider":     providerName,
+		"env":          env,
+		"can_simulate": canSimulate,
 	})
 }
+
+type DirectPaymentInput struct {
+	PaymentMethod string `json:"payment_method"`
+}
+
+func (ctrl *PaymentController) CreateDirectPayment(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	idStr := c.Param("id")
+	invID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID tagihan tidak valid")
+		return
+	}
+
+	var input DirectPaymentInput
+	_ = c.ShouldBindJSON(&input)
+
+	directResp, err := ctrl.svc.CreateDirectPayment(c.Request.Context(), invID, userID, input.PaymentMethod)
+	if err != nil {
+		if errors.Is(err, repository.ErrInvoiceNotFound) {
+			response.NotFound(c, "Data tagihan tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrForbiddenAccess) {
+			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak diizinkan membayar tagihan ini")
+			return
+		}
+		if errors.Is(err, service.ErrInvoiceFree) {
+			response.Conflict(c, "INVOICE_FREE", "Tagihan ini gratis (Rp 0) dan tidak memerlukan pembayaran.")
+			return
+		}
+		if errors.Is(err, service.ErrInvoiceAlreadyPaid) {
+			response.BadRequest(c, "ALREADY_PAID", err.Error())
+			return
+		}
+		response.InternalServerError(c, "Gagal membuat pembayaran: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, directResp)
+}
+
+func (ctrl *PaymentController) GetDirectPaymentByID(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	idStr := c.Param("id")
+	paymentID, err := uuid.Parse(idStr)
+	if err != nil {
+		response.BadRequest(c, "INVALID_ID", "Format ID pembayaran tidak valid")
+		return
+	}
+
+	roles := gatewayauth.GetUserRoles(c)
+	role := "user"
+	if len(roles) > 0 {
+		role = roles[0]
+	}
+
+	payment, err := ctrl.svc.GetPaymentByID(c.Request.Context(), paymentID, userID, role)
+	if err != nil {
+		if errors.Is(err, repository.ErrPaymentNotFound) {
+			response.NotFound(c, "Data pembayaran tidak ditemukan")
+			return
+		}
+		if errors.Is(err, service.ErrForbiddenAccess) {
+			response.Forbidden(c, response.ErrCodeForbidden, "Anda tidak memiliki akses ke data pembayaran ini")
+			return
+		}
+		response.InternalServerError(c, "Gagal mengambil data pembayaran: "+err.Error())
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"payment_id": payment.ID,
+		"invoice_id": payment.InvoiceID,
+		"status":     payment.Status,
+		"is_paid":    payment.Status == model.PaymentStatusSuccess,
+		"amount":     payment.Amount,
+		"va_number":  payment.VANumber,
+		"qr_string":  payment.QRString,
+		"paid_at":    payment.PaidAt,
+		"expired_at": payment.ExpiresAt,
+	})
+}
+
 
 type PayInput struct {
 	Method string `json:"method"`

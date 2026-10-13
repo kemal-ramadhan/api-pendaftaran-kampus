@@ -36,6 +36,12 @@ func (m *mockProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amount
 func (m *mockProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResult, error) {
 	randomSuffix := 10000000 + rand.Intn(90000000)
 	vaNumber := fmt.Sprintf("98800%d", randomSuffix)
+	qrString := ""
+	if strings.EqualFold(req.PaymentMethod, "SP") || strings.EqualFold(req.PaymentMethod, "QRIS") {
+		qrString = fmt.Sprintf("00020101021226580014ID.LINKAJA.WWW011893600911002%d5204581253033605802ID5908MOCK PMB6013TASIKMALAYA62070703A016304%d", randomSuffix, rand.Intn(9999))
+		vaNumber = ""
+	}
+
 	providerRef := req.MerchantOrderID
 	if providerRef == "" {
 		providerRef = fmt.Sprintf("MOCK-PAY-%s", uuid.New().String()[:8])
@@ -48,6 +54,7 @@ func (m *mockProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (
 		PaymentURL:       paymentURL,
 		VANumber:         vaNumber,
 		PaymentCode:      vaNumber,
+		QRString:         qrString,
 		PublisherOrderID: fmt.Sprintf("PUB-%s", providerRef),
 		Amount:           req.Amount,
 		ExpiresAt:        expiresAt,

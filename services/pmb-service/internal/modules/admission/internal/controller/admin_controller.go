@@ -295,6 +295,70 @@ func (ctrl *AdminController) ExportApplications(c *gin.Context) {
 	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes)
 }
 
+// ExportSevimaApplications mengekspor data pendaftar format SEVIMA (62 kolom)
+func (ctrl *AdminController) ExportSevimaApplications(c *gin.Context) {
+	filter := repository.ApplicationFilter{
+		Search: c.Query("search"),
+	}
+
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			filter.PeriodID = &u
+		}
+	}
+
+	if pathIDStr := c.Query("path_id"); pathIDStr != "" {
+		if pathID, err := strconv.ParseUint(pathIDStr, 10, 32); err == nil {
+			u := uint(pathID)
+			filter.AdmissionPathID = &u
+		}
+	}
+
+	if status := c.Query("status"); status != "" {
+		filter.Status = &status
+	}
+
+	if prodiIDStr := c.Query("program_id"); prodiIDStr != "" {
+		if pUUID, err := uuid.Parse(prodiIDStr); err == nil {
+			filter.StudyProgramID = &pUUID
+		}
+	}
+
+	xlsxBytes, err := ctrl.svc.ExportSevimaXLSX(c.Request.Context(), filter)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengekspor data SEVIMA ke Excel: "+err.Error())
+		return
+	}
+
+	fileName := fmt.Sprintf("format-migrasi-sevima_%s.xlsx", time.Now().Format("20060102_150405"))
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%s", fileName))
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Length", strconv.Itoa(len(xlsxBytes)))
+	c.Data(http.StatusOK, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", xlsxBytes)
+}
+
+// ValidateSevimaApplications memvalidasi data pendaftar untuk ekspor SEVIMA
+func (ctrl *AdminController) ValidateSevimaApplications(c *gin.Context) {
+	var periodID *uint
+	if pIDStr := c.Query("period_id"); pIDStr != "" {
+		if pID, err := strconv.ParseUint(pIDStr, 10, 32); err == nil {
+			u := uint(pID)
+			periodID = &u
+		}
+	}
+
+	res, err := ctrl.svc.ValidateSevima(c.Request.Context(), periodID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memvalidasi data pendaftaran SEVIMA: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Hasil validasi migrasi SEVIMA berhasil diambil", res)
+}
+
+
 // GetStats mengembalikan ringkasan statistik pendaftaran PMB
 func (ctrl *AdminController) GetStats(c *gin.Context) {
 	stats, err := ctrl.svc.GetStats(c.Request.Context())

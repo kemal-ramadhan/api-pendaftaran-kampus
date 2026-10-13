@@ -46,6 +46,7 @@ type ResendOTPRequest struct {
 type LoginRequest struct {
 	Email    string `json:"email" binding:"required"`
 	Password string `json:"password" binding:"required"`
+	Service  string `json:"service"` // Opsional (CR-012): "pmb-admin", "pmb-pendaftaran", "pmb-mitra"
 }
 
 type UserResponseData struct {

@@ -9,6 +9,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/pkg/response"
 	"github.com/pkm-asia/pmb-backend/services/gateway/internal/auth/dto"
 	"github.com/pkm-asia/pmb-backend/services/gateway/internal/auth/middleware"
+	"github.com/pkm-asia/pmb-backend/services/gateway/internal/auth/model"
 	"github.com/pkm-asia/pmb-backend/services/gateway/internal/auth/service"
 )
 
@@ -368,4 +369,140 @@ func (ctl *AdminController) UpdateRolePermissions(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, "Permissions role berhasil diperbarui", res)
+}
+
+// ListServiceAccounts godoc
+// @Summary Daftar Service Accounts
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Success 200 {object} response.SuccessResponse
+// @Router /auth/admin/service-accounts [get]
+func (ctl *AdminController) ListServiceAccounts(c *gin.Context) {
+	list, err := ctl.adminService.ListServiceAccounts(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil daftar service account")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil daftar service account", list)
+}
+
+// CreateServiceAccount godoc
+// @Summary Buat Service Account Baru
+// @Tags Admin
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Router /auth/admin/service-accounts [post]
+func (ctl *AdminController) CreateServiceAccount(c *gin.Context) {
+	var sa model.ServiceAccount
+	if !response.BindJSON(c, &sa) {
+		return
+	}
+	if err := ctl.adminService.CreateServiceAccount(c.Request.Context(), &sa); err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusCreated, "Berhasil membuat service account", sa)
+}
+
+// GetServiceAccount godoc
+// @Summary Ambil Detail Service Account
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Router /auth/admin/service-accounts/{id} [get]
+func (ctl *AdminController) GetServiceAccount(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "ID tidak valid")
+		return
+	}
+	sa, err := ctl.adminService.GetServiceAccount(c.Request.Context(), id)
+	if err != nil || sa == nil {
+		response.NotFound(c, "Service account tidak ditemukan")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mengambil service account", sa)
+}
+
+// UpdateServiceAccount godoc
+// @Summary Update Service Account
+// @Tags Admin
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Router /auth/admin/service-accounts/{id} [put]
+func (ctl *AdminController) UpdateServiceAccount(c *gin.Context) {
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "ID tidak valid")
+		return
+	}
+	var sa model.ServiceAccount
+	if !response.BindJSON(c, &sa) {
+		return
+	}
+	sa.ID = id
+	if err := ctl.adminService.UpdateServiceAccount(c.Request.Context(), &sa); err != nil {
+		response.InternalServerError(c, "Gagal memperbarui service account")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil memperbarui service account", sa)
+}
+
+// GrantUserAccountAccess godoc
+// @Summary Beri Akses Service Account ke User
+// @Tags Admin
+// @Security BearerAuth
+// @Accept json
+// @Produce json
+// @Router /auth/admin/users/{id}/service-accounts [post]
+func (ctl *AdminController) GrantUserAccountAccess(c *gin.Context) {
+	actorID, _ := middleware.GetUserID(c)
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "ID User tidak valid")
+		return
+	}
+
+	var req struct {
+		ServiceAccountID uuid.UUID `json:"service_account_id" binding:"required"`
+		RoleCodes        []string  `json:"role_codes"`
+	}
+	if !response.BindJSON(c, &req) {
+		return
+	}
+
+	if err := ctl.adminService.GrantUserAccountAccess(c.Request.Context(), userID, req.ServiceAccountID, req.RoleCodes, actorID); err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil memberikan akses service account ke pengguna", nil)
+}
+
+// RevokeUserAccountAccess godoc
+// @Summary Cabut Akses Service Account dari User
+// @Tags Admin
+// @Security BearerAuth
+// @Produce json
+// @Router /auth/admin/users/{id}/service-accounts/{service_id} [delete]
+func (ctl *AdminController) RevokeUserAccountAccess(c *gin.Context) {
+	actorID, _ := middleware.GetUserID(c)
+	userID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "ID User tidak valid")
+		return
+	}
+	saID, err := uuid.Parse(c.Param("service_id"))
+	if err != nil {
+		response.BadRequest(c, response.ErrCodeValidationError, "ID Service Account tidak valid")
+		return
+	}
+
+	if err := ctl.adminService.RevokeUserAccountAccess(c.Request.Context(), userID, saID, actorID); err != nil {
+		response.InternalServerError(c, "Gagal mencabut akses service account")
+		return
+	}
+	response.Success(c, http.StatusOK, "Berhasil mencabut akses service account", nil)
 }

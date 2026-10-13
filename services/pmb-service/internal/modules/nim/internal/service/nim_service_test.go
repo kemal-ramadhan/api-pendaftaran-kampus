@@ -244,3 +244,102 @@ func TestNIMService_ConcurrencyAndIdempotency(t *testing.T) {
 	})
 }
 
+func TestRenderNIMSK065_AllCases(t *testing.T) {
+	tests := []struct {
+		name         string
+		fakultasCode string
+		prodiCode    string
+		kkniCode     string
+		jalurCode    string
+		year         int
+		semesterCode string
+		urut         int
+		expected     string
+	}{
+		{
+			name:         "1. S1 Farmasi Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "01",
+			prodiCode:    "01",
+			kkniCode:     "7",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "010171261001",
+		},
+		{
+			name:         "2. S1 Farmasi RPL 2026 Ganjil Urut 1",
+			fakultasCode: "01",
+			prodiCode:    "01",
+			kkniCode:     "7",
+			jalurCode:    "2",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "010172261001",
+		},
+		{
+			name:         "3. D3 Farmasi Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "01",
+			prodiCode:    "02",
+			kkniCode:     "5",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "010251261001",
+		},
+		{
+			name:         "4. D3 TLM Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "01",
+			prodiCode:    "03",
+			kkniCode:     "5",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "010351261001",
+		},
+		{
+			name:         "5. D3 RMIK Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "01",
+			prodiCode:    "04",
+			kkniCode:     "5",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "010451261001",
+		},
+		{
+			name:         "6. S1 Manajemen Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "02",
+			prodiCode:    "01",
+			kkniCode:     "7",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "020171261001",
+		},
+		{
+			name:         "7. S1 Bisnis Digital Reguler 2026 Ganjil Urut 1",
+			fakultasCode: "02",
+			prodiCode:    "02",
+			kkniCode:     "7",
+			jalurCode:    "1",
+			year:         2026,
+			semesterCode: "1",
+			urut:         1,
+			expected:     "020271261001",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			res := RenderNIMSK065(DefaultNIMPattern, tt.fakultasCode, tt.prodiCode, tt.kkniCode, tt.jalurCode, tt.year, tt.semesterCode, tt.urut)
+			assert.Equal(t, tt.expected, res)
+		})
+	}
+}
+

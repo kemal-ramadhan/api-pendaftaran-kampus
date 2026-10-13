@@ -30,6 +30,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/nim"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/notification"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/organization"
+	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/referral"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/scoring"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/selection"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/student"
@@ -179,6 +180,15 @@ func main() {
 		IsDevelopment: cfg.AppEnv != "production",
 	}, appLog); err != nil {
 		appLog.Fatal("Gagal inisialisasi modul finance", zap.Error(err))
+	}
+
+	// 5b. Referral (CR-014)
+	if _, _, err := referral.Init(r, baseDB, referral.Config{
+		GatewaySecret: cfg.GatewaySharedSecret,
+		InternalToken: cfg.InternalToken,
+		AppPort:       cfg.AppPort,
+	}, appLog); err != nil {
+		appLog.Fatal("Gagal inisialisasi modul referral", zap.Error(err))
 	}
 
 	// 6. Exam

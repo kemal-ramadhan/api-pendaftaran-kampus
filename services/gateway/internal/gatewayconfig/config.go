@@ -28,6 +28,7 @@ type Config struct {
 	RateLimitGlobalReq  int
 	RateLimitGlobalWin  time.Duration
 	TrustedProxies      []string
+	SSOEnabled          bool
 	Routes              *RoutesConfig
 }
 
@@ -139,6 +140,11 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("gagal memuat konfigurasi routes: %w", err)
 	}
 
+	ssoEnabled := appEnv != "production"
+	if val, ok := os.LookupEnv("SSO_ENABLED"); ok {
+		ssoEnabled = val == "true" || val == "1"
+	}
+
 	cfg := &Config{
 		AppEnv:              appEnv,
 		AppPort:             appPort,
@@ -154,6 +160,7 @@ func LoadConfig() (*Config, error) {
 		RateLimitGlobalReq:  reqLimit,
 		RateLimitGlobalWin:  winLimit,
 		TrustedProxies:      trustedProxies,
+		SSOEnabled:          ssoEnabled,
 		Routes:              routesConfig,
 	}
 

@@ -76,6 +76,10 @@ func RegisterRoutes(
 		// Camaba v2 Dashboard
 		authGroup.GET("/admission/dashboard", publicCtrl.GetDashboard)
 
+		// G2 WhatsApp Group Onboarding endpoints
+		authGroup.GET("/admission/me/onboarding", appCtrl.GetOnboarding)
+		authGroup.POST("/admission/me/onboarding/:key/confirm", appCtrl.ConfirmOnboarding)
+
 		// Pendaftar endpoints
 		registerUserRoutes := func(prefix string) {
 			userGroup := authGroup.Group(prefix)
@@ -145,6 +149,8 @@ func RegisterRoutes(
 				adminGroup.GET("/reports/applicants/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
 				adminGroup.GET("/reports/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
 				adminGroup.GET("/applications/export", rbac.RequirePermission("report.export"), adminCtrl.ExportApplications)
+				adminGroup.GET("/exports/sevima", rbac.RequirePermission("admission.export.sevima", "report.export"), adminCtrl.ExportSevimaApplications)
+				adminGroup.GET("/exports/sevima/validate", rbac.RequirePermission("admission.export.sevima", "report.export"), adminCtrl.ValidateSevimaApplications)
 				adminGroup.GET("/reports/official.pdf", rbac.RequirePermission("report.official.print"), adminCtrl.PrintOfficialReport)
 				adminGroup.GET("/reports/:type/official.pdf", rbac.RequirePermission("report.official.print"), adminCtrl.PrintOfficialReport)
 

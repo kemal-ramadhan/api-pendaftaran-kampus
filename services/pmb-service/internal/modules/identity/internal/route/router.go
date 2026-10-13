@@ -53,6 +53,9 @@ func RegisterRoutes(
 	gatewayGroup := r.Group("")
 	gatewayGroup.Use(gatewayauth.Middleware(cfg.GatewaySecret))
 	{
+		// Reference data endpoints (CR-015 44.2)
+		gatewayGroup.GET("/identity/reference/:jenis", userCtrl.GetReferenceData)
+
 		// Admin endpoints
 		adminGroup := gatewayGroup.Group("/identity/admin")
 		adminGroup.Use(gatewayauth.RequireRole("admin_pmb", "superadmin"))

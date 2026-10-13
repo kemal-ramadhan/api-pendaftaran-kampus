@@ -49,6 +49,10 @@ services:
     url: ${PMB_SERVICE_URL:-http://pmb-service:8080}
     timeout: 15s
     max_body: 5MB
+  referral:
+    url: ${PMB_SERVICE_URL:-http://pmb-service:8080}
+    timeout: 15s
+    max_body: 10MB
 
 routes:
   - prefix: /api/v1/auth/.well-known
@@ -267,6 +271,33 @@ routes:
     rewrite: /notifications
     auth: required
     max_body: 5MB
+  - prefix: /api/v1/referral/codes
+    service: referral
+    rewrite: /referral/codes
+    auth: public
+    max_body: 5MB
+  - prefix: /api/v1/referral/me
+    service: referral
+    rewrite: /referral/me
+    auth: required
+    max_body: 5MB
+  - prefix: /api/v1/referral/partner
+    service: referral
+    rewrite: /referral/partner
+    auth: required
+    roles: [guru_bk, admin_pmb, keuangan, superadmin]
+    max_body: 10MB
+  - prefix: /api/v1/referral/admin
+    service: referral
+    rewrite: /referral/admin
+    auth: required
+    roles: [admin_pmb, keuangan, superadmin]
+    max_body: 10MB
+  - prefix: /api/v1/referral
+    service: referral
+    rewrite: /referral
+    auth: required
+    max_body: 10MB
 
 
 

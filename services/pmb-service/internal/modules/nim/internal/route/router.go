@@ -79,6 +79,12 @@ func RegisterRoutes(
 				formatsGroup.POST("", nimCtrl.CreateFormat)
 				formatsGroup.PUT("/:id", nimCtrl.UpdateFormat)
 			}
+
+			// SK Rektor 065 Format endpoints (CR-015 43.4)
+			pGroup.GET("/admin/format", rbac.RequirePermission("student.nim.issue"), nimCtrl.GetFormatTemplate)
+			pGroup.PUT("/admin/format", rbac.RequirePermission("student.nim.issue"), nimCtrl.UpdateFormatTemplate)
+			pGroup.POST("/admin/preview", rbac.RequirePermission("student.nim.issue"), nimCtrl.PreviewNIM)
+			pGroup.POST("/admin/generate", rbac.RequirePermission("student.nim.issue"), nimCtrl.GenerateBatchNIM)
 		}
 
 		registerNIMRoutes("/nim")

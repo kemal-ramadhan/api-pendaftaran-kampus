@@ -78,6 +78,12 @@ func SetupRoutes(
 		admin.PUT("/users/:id", adminCtrl.UpdateUser)
 		admin.PUT("/users/:id/roles", adminCtrl.UpdateUserRoles)
 		admin.PATCH("/users/:id/status", adminCtrl.UpdateUserStatus)
+		admin.GET("/service-accounts", adminCtrl.ListServiceAccounts)
+		admin.POST("/service-accounts", adminCtrl.CreateServiceAccount)
+		admin.GET("/service-accounts/:id", adminCtrl.GetServiceAccount)
+		admin.PUT("/service-accounts/:id", adminCtrl.UpdateServiceAccount)
+		admin.POST("/users/:id/service-accounts", adminCtrl.GrantUserAccountAccess)
+		admin.DELETE("/users/:id/service-accounts/:service_id", adminCtrl.RevokeUserAccountAccess)
 	}
 
 	// Internal Endpoints (Inter-Service, tidak diekspos keluar)

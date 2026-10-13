@@ -10,6 +10,7 @@ import (
 const (
 	RoleCalonMahasiswa = "calon_mahasiswa"
 	RoleMahasiswa      = "mahasiswa"
+	RoleGuruBK         = "guru_bk"
 	RoleAdminPMB       = "admin_pmb"
 	RoleKeuangan       = "keuangan"
 	RoleDosen          = "dosen"
@@ -20,18 +21,20 @@ const (
 )
 
 type Role struct {
-	ID          uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Code        string    `gorm:"type:varchar(50);uniqueIndex;not null" json:"code"`
-	Name        string    `gorm:"type:varchar(100);not null" json:"name"`
-	Description string    `gorm:"type:text" json:"description"`
-	CreatedAt   time.Time `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	ID               uint       `gorm:"primaryKey;autoIncrement" json:"id"`
+	ServiceAccountID *uuid.UUID `gorm:"type:uuid;index" json:"service_account_id,omitempty"`
+	Code             string     `gorm:"type:varchar(50);uniqueIndex;not null" json:"code"`
+	Name             string     `gorm:"type:varchar(100);not null" json:"name"`
+	Description      string     `gorm:"type:text" json:"description"`
+	CreatedAt        time.Time  `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 type Permission struct {
-	Code        string    `gorm:"primaryKey;type:varchar(100)" json:"code"`
-	Module      string    `gorm:"type:varchar(50);not null" json:"module"`
-	Description string    `gorm:"type:text" json:"description"`
-	CreatedAt   time.Time `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
+	Code             string     `gorm:"primaryKey;type:varchar(100)" json:"code"`
+	ServiceAccountID *uuid.UUID `gorm:"type:uuid;index" json:"service_account_id,omitempty"`
+	Module           string     `gorm:"type:varchar(50);not null" json:"module"`
+	Description      string     `gorm:"type:text" json:"description"`
+	CreatedAt        time.Time  `gorm:"type:timestamptz;not null;default:CURRENT_TIMESTAMP" json:"created_at"`
 }
 
 type RolePermission struct {

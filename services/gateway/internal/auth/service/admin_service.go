@@ -33,6 +33,14 @@ type AdminService interface {
 	GetRolePermissions(ctx context.Context, roleCode string) (*dto.RolePermissionsResponseData, error)
 	UpdateRolePermissions(ctx context.Context, roleCode string, permissions []string, actorID uuid.UUID) (*dto.RolePermissionsResponseData, error)
 
+	// Service Accounts & User Accounts Management (CR-012)
+	ListServiceAccounts(ctx context.Context) ([]model.ServiceAccount, error)
+	CreateServiceAccount(ctx context.Context, sa *model.ServiceAccount) error
+	GetServiceAccount(ctx context.Context, id uuid.UUID) (*model.ServiceAccount, error)
+	UpdateServiceAccount(ctx context.Context, sa *model.ServiceAccount) error
+	GrantUserAccountAccess(ctx context.Context, userID, saID uuid.UUID, roleCodes []string, actorID uuid.UUID) error
+	RevokeUserAccountAccess(ctx context.Context, userID, saID uuid.UUID, actorID uuid.UUID) error
+
 	// Internal Inter-Service Methods
 	InternalGetUser(ctx context.Context, id uuid.UUID) (*dto.UserResponseData, error)
 	InternalGetUsersBatch(ctx context.Context, ids []uuid.UUID) ([]dto.UserResponseData, error)
@@ -51,6 +59,7 @@ type adminService struct {
 	rateLimiter  limiter.RateLimiter
 	mailer       mailer.Mailer
 	orgClient    internalclient.Client
+	serviceRepo  repository.ServiceAccountRepository
 	logger       *zap.Logger
 }
 
@@ -65,7 +74,13 @@ func NewAdminService(
 	mailer mailer.Mailer,
 	orgClient internalclient.Client,
 	logger *zap.Logger,
+	serviceRepos ...repository.ServiceAccountRepository,
 ) AdminService {
+	var sRepo repository.ServiceAccountRepository
+	if len(serviceRepos) > 0 {
+		sRepo = serviceRepos[0]
+	}
+
 	return &adminService{
 		cfg:          cfg,
 		userRepo:     userRepo,
@@ -76,6 +91,7 @@ func NewAdminService(
 		rateLimiter:  rateLimiter,
 		mailer:       mailer,
 		orgClient:    orgClient,
+		serviceRepo:  sRepo,
 		logger:       logger,
 	}
 }
@@ -749,4 +765,123 @@ func (s *adminService) UpdateRolePermissions(ctx context.Context, roleCode strin
 		RoleCode:    roleCode,
 		Permissions: permissions,
 	}, nil
+}
+
+func (s *adminService) ListServiceAccounts(ctx context.Context) ([]model.ServiceAccount, error) {
+	if s.serviceRepo == nil {
+		return []model.ServiceAccount{}, nil
+	}
+	return s.serviceRepo.ListServiceAccounts(ctx)
+}
+
+func (s *adminService) CreateServiceAccount(ctx context.Context, sa *model.ServiceAccount) error {
+	if s.serviceRepo == nil {
+		return errors.New("service repository belum terhubung")
+	}
+	if sa.ID == uuid.Nil {
+		sa.ID = uuid.New()
+	}
+	sa.CreatedAt = time.Now()
+	sa.UpdatedAt = time.Now()
+	return s.serviceRepo.CreateServiceAccount(ctx, sa)
+}
+
+func (s *adminService) GetServiceAccount(ctx context.Context, id uuid.UUID) (*model.ServiceAccount, error) {
+	if s.serviceRepo == nil {
+		return nil, errors.New("service repository belum terhubung")
+	}
+	return s.serviceRepo.GetServiceAccountByID(ctx, id)
+}
+
+func (s *adminService) UpdateServiceAccount(ctx context.Context, sa *model.ServiceAccount) error {
+	if s.serviceRepo == nil {
+		return errors.New("service repository belum terhubung")
+	}
+	sa.UpdatedAt = time.Now()
+	return s.serviceRepo.UpdateServiceAccount(ctx, sa)
+}
+
+func (s *adminService) GrantUserAccountAccess(ctx context.Context, userID, saID uuid.UUID, roleCodes []string, actorID uuid.UUID) error {
+	if s.serviceRepo == nil {
+		return errors.New("service repository belum terhubung")
+	}
+	user, err := s.userRepo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return ErrUserNotFound
+	}
+
+	sa, err := s.serviceRepo.GetServiceAccountByID(ctx, saID)
+	if err != nil || sa == nil {
+		return errors.New("service account tidak ditemukan")
+	}
+
+	ua, err := s.serviceRepo.GetUserAccount(ctx, userID, saID)
+	now := time.Now()
+	if ua == nil {
+		newUA := model.UserAccount{
+			ID:               uuid.New(),
+			UserID:           userID,
+			ServiceAccountID: saID,
+			Status:           model.UserAccountStatusActive,
+			GrantedBy:        &actorID,
+			GrantedAt:        now,
+			CreatedAt:        now,
+			UpdatedAt:        now,
+		}
+		if err := s.serviceRepo.CreateUserAccount(ctx, &newUA); err != nil {
+			return err
+		}
+		ua = &newUA
+	} else if ua.Status != model.UserAccountStatusActive {
+		_ = s.serviceRepo.UpdateUserAccountStatus(ctx, ua.ID, model.UserAccountStatusActive)
+	}
+
+	for _, rc := range roleCodes {
+		r, err := s.roleRepo.FindByCode(ctx, rc)
+		if err == nil && r != nil {
+			emptyScope := ""
+			_ = s.serviceRepo.AddRoleToUserAccount(ctx, ua.ID, r.ID, &emptyScope, &emptyScope, &actorID)
+			_ = s.roleRepo.AssignRole(ctx, &model.UserRole{
+				UserID:    userID,
+				RoleID:    r.ID,
+				ScopeType: &emptyScope,
+				ScopeID:   &emptyScope,
+				CreatedBy: &actorID,
+				CreatedAt: now,
+			})
+		}
+	}
+
+	_ = s.auditRepo.Create(ctx, &model.AuditLog{
+		UserID:    &actorID,
+		Action:    "admin.user_account.granted",
+		Metadata:  fmt.Sprintf(`{"user_id":"%s","service_account_id":"%s"}`, userID, saID),
+		CreatedAt: now,
+	})
+
+	return nil
+}
+
+func (s *adminService) RevokeUserAccountAccess(ctx context.Context, userID, saID uuid.UUID, actorID uuid.UUID) error {
+	if s.serviceRepo == nil {
+		return errors.New("service repository belum terhubung")
+	}
+	ua, err := s.serviceRepo.GetUserAccount(ctx, userID, saID)
+	if err != nil || ua == nil {
+		return nil
+	}
+
+	err = s.serviceRepo.UpdateUserAccountStatus(ctx, ua.ID, model.UserAccountStatusRevoked)
+	if err != nil {
+		return err
+	}
+
+	_ = s.auditRepo.Create(ctx, &model.AuditLog{
+		UserID:    &actorID,
+		Action:    "admin.user_account.revoked",
+		Metadata:  fmt.Sprintf(`{"user_id":"%s","service_account_id":"%s"}`, userID, saID),
+		CreatedAt: time.Now(),
+	})
+
+	return nil
 }

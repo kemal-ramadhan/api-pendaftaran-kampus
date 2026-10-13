@@ -25,13 +25,16 @@ type ScopeClaim struct {
 }
 
 type AccessClaims struct {
-	Typ         string       `json:"typ"`
-	Email       string       `json:"email"`
-	Name        string       `json:"name"`
-	Roles       []string     `json:"roles"`
-	Scopes      []ScopeClaim `json:"scopes"`
-	Permissions []string     `json:"perms"`
-	Sid         string       `json:"sid"`
+	Typ               string       `json:"typ"`
+	Email             string       `json:"email"`
+	Name              string       `json:"name"`
+	Roles             []string     `json:"roles"`
+	Scopes            []ScopeClaim `json:"scopes"`
+	Permissions       []string     `json:"perms"`
+	Sid               string       `json:"sid"`
+	Services          []string     `json:"svc,omitempty"`
+	EmailVerified     bool         `json:"email_verified,omitempty"`
+	PreferredUsername string       `json:"preferred_username,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -56,6 +59,7 @@ type JWKSResponse struct {
 
 type TokenManager interface {
 	GenerateAccessToken(userID uuid.UUID, email, name string, roles []string, scopes []ScopeClaim, permissions []string, sessionID string) (tokenStr string, jti string, expiresAt time.Time, err error)
+	GenerateAccessTokenWithServices(userID uuid.UUID, email, name string, roles []string, scopes []ScopeClaim, permissions []string, sessionID string, services []string, audience string) (tokenStr string, jti string, expiresAt time.Time, err error)
 	GenerateRefreshToken(userID uuid.UUID, sessionID string) (tokenStr string, jti string, expiresAt time.Time, err error)
 	ValidateAccessToken(tokenStr string) (*AccessClaims, error)
 	ValidateRefreshToken(tokenStr string) (*RefreshClaims, error)
@@ -137,6 +141,19 @@ func (tm *tokenManager) GenerateAccessToken(
 	permissions []string,
 	sessionID string,
 ) (string, string, time.Time, error) {
+	return tm.GenerateAccessTokenWithServices(userID, email, name, roles, scopes, permissions, sessionID, nil, "")
+}
+
+func (tm *tokenManager) GenerateAccessTokenWithServices(
+	userID uuid.UUID,
+	email, name string,
+	roles []string,
+	scopes []ScopeClaim,
+	permissions []string,
+	sessionID string,
+	services []string,
+	audience string,
+) (string, string, time.Time, error) {
 	now := time.Now()
 	jti := uuid.NewString()
 	exp := now.Add(tm.cfg.JWTAccessTTL)
@@ -145,18 +162,26 @@ func (tm *tokenManager) GenerateAccessToken(
 		sessionID = uuid.NewString()
 	}
 
+	aud := tm.cfg.JWTAudience
+	if audience != "" {
+		aud = audience
+	}
+
 	claims := AccessClaims{
-		Typ:         "access",
-		Email:       email,
-		Name:        name,
-		Roles:       roles,
-		Scopes:      scopes,
-		Permissions: permissions,
-		Sid:         sessionID,
+		Typ:               "access",
+		Email:             email,
+		Name:              name,
+		Roles:             roles,
+		Scopes:            scopes,
+		Permissions:       permissions,
+		Sid:               sessionID,
+		Services:          services,
+		EmailVerified:     true,
+		PreferredUsername: email,
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    tm.cfg.JWTIssuer,
 			Subject:   userID.String(),
-			Audience:  jwt.ClaimStrings{tm.cfg.JWTAudience},
+			Audience:  jwt.ClaimStrings{aud},
 			ExpiresAt: jwt.NewNumericDate(exp),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ID:        jti,

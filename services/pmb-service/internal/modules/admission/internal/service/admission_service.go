@@ -100,7 +100,24 @@ type ProgressResponse struct {
 	Steps               []ProgressStep `json:"steps"`
 }
 
+type OnboardingStepItem struct {
+	Key         string     `json:"key"`
+	Name        string     `json:"name"`
+	URL         string     `json:"url"`
+	Required    bool       `json:"required"`
+	ConfirmedAt *time.Time `json:"confirmed_at"`
+}
+
+type OnboardingResponse struct {
+	Steps []OnboardingStepItem `json:"steps"`
+	Next  string               `json:"next"`
+}
+
 type AdmissionService interface {
+	SetOnboardingRepo(repo repository.OnboardingRepository)
+	GetOnboarding(ctx context.Context, userID uuid.UUID) (*OnboardingResponse, error)
+	ConfirmOnboarding(ctx context.Context, userID uuid.UUID, stepKey string) error
+	CheckWAGroupOnboarding(ctx context.Context, userID uuid.UUID) error
 	CreateApplication(ctx context.Context, req *CreateApplicationRequest) (*model.Application, error)
 	ChangeChoices(ctx context.Context, req *ChangeChoicesRequest) error
 	GetMyApplications(ctx context.Context, userID uuid.UUID) ([]model.Application, error)
@@ -121,6 +138,8 @@ type AdmissionService interface {
 	VerifyApplicationDocuments(ctx context.Context, appID, reviewerID uuid.UUID, reviews []DocumentReviewItem) (*model.Application, error)
 	GetDocumentPresignedURL(ctx context.Context, appID uuid.UUID, reqCode string, requesterID uuid.UUID, role string) (string, error)
 	ExportApplicationsXLSX(ctx context.Context, filter repository.ApplicationFilter) ([]byte, error)
+	ExportSevimaXLSX(ctx context.Context, filter repository.ApplicationFilter) ([]byte, error)
+	ValidateSevima(ctx context.Context, periodID *uint) (map[string]any, error)
 	GetStats(ctx context.Context) (*model.AdmissionStats, error)
 
 	// CR-009 & CR-010 Admin Portal & Camaba v2
@@ -141,6 +160,7 @@ type admissionService struct {
 	quotaRepo       repository.QuotaRepository
 	appRepo         repository.ApplicationRepository
 	docRepo         repository.ApplicationDocumentRepository
+	onboardingRepo  repository.OnboardingRepository
 	outboxRepo      outbox.Repository
 	officialDocRepo repository.OfficialDocumentRepository
 	notifCli        internalclient.Client
@@ -1200,3 +1220,112 @@ func OutboxDispatcher(financeCli internalclient.Client) outbox.DispatcherFunc {
 		return nil
 	}
 }
+
+func (s *admissionService) SetOnboardingRepo(repo repository.OnboardingRepository) {
+	s.onboardingRepo = repo
+}
+
+func (s *admissionService) GetOnboarding(ctx context.Context, userID uuid.UUID) (*OnboardingResponse, error) {
+	camabaName := "Grup WhatsApp PMB"
+	camabaURL := "https://chat.whatsapp.com/pmb-camaba"
+	waRequired := true
+
+	var records []model.AdmissionOnboarding
+	if s.onboardingRepo != nil {
+		records, _ = s.onboardingRepo.GetByUserID(ctx, userID)
+	}
+
+	var camabaConfirmedAt *time.Time
+	var jalurConfirmedAt *time.Time
+	for _, r := range records {
+		if r.StepKey == "wa_group_camaba" {
+			camabaConfirmedAt = r.ConfirmedAt
+		} else if r.StepKey == "wa_group_jalur" {
+			jalurConfirmedAt = r.ConfirmedAt
+		}
+	}
+
+	steps := []OnboardingStepItem{
+		{
+			Key:         "wa_group_camaba",
+			Name:        camabaName,
+			URL:         camabaURL,
+			Required:    waRequired,
+			ConfirmedAt: camabaConfirmedAt,
+		},
+	}
+
+	// Cek jika camaba memiliki active application dengan grup WA jalur
+	activeApp, _ := s.GetMyActiveApplication(ctx, userID)
+	if activeApp != nil && activeApp.AdmissionPath.WAGroupURL != "" {
+		pathName := activeApp.AdmissionPath.WAGroupName
+		if pathName == "" {
+			pathName = "Grup WhatsApp Jalur " + activeApp.AdmissionPath.Name
+		}
+		steps = append(steps, OnboardingStepItem{
+			Key:         "wa_group_jalur",
+			Name:        pathName,
+			URL:         activeApp.AdmissionPath.WAGroupURL,
+			Required:    true,
+			ConfirmedAt: jalurConfirmedAt,
+		})
+	}
+
+	next := "dashboard"
+	if waRequired && camabaConfirmedAt == nil && camabaURL != "" {
+		next = "wa_group_camaba"
+	} else if len(steps) > 1 && steps[1].ConfirmedAt == nil && steps[1].URL != "" {
+		next = "wa_group_jalur"
+	}
+
+	return &OnboardingResponse{
+		Steps: steps,
+		Next:  next,
+	}, nil
+}
+
+func (s *admissionService) ConfirmOnboarding(ctx context.Context, userID uuid.UUID, stepKey string) error {
+	if s.onboardingRepo == nil {
+		return nil
+	}
+	return s.onboardingRepo.ConfirmStep(ctx, userID, stepKey)
+}
+
+func (s *admissionService) CheckWAGroupOnboarding(ctx context.Context, userID uuid.UUID) error {
+	if s.onboardingRepo == nil {
+		return nil
+	}
+	confirmed, err := s.onboardingRepo.IsStepConfirmed(ctx, userID, "wa_group_camaba")
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return errors.New("WA_GROUP_JOIN_REQUIRED")
+	}
+	return nil
+}
+
+func (s *admissionService) ExportSevimaXLSX(ctx context.Context, filter repository.ApplicationFilter) ([]byte, error) {
+	apps, err := s.appRepo.ListAllForExport(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	return exporter.GenerateSevimaExcel(apps, "docs/referensi/format-migrasi-sevima.xlsx")
+}
+
+func (s *admissionService) ValidateSevima(ctx context.Context, periodID *uint) (map[string]any, error) {
+	filter := repository.ApplicationFilter{PeriodID: periodID}
+	apps, err := s.appRepo.ListAllForExport(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+	valid, invalid, invalidList := exporter.ValidateSevimaApplicants(apps)
+	return map[string]any{
+		"total":           len(apps),
+		"valid":           valid,
+		"invalid":         invalid,
+		"invalid_records": invalidList,
+	}, nil
+}
+
+

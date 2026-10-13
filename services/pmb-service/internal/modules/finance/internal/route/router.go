@@ -103,6 +103,12 @@ func RegisterRoutes(
 		invGroupAlt := authGroup.Group("/finance/me/invoices")
 		registerCamabaInvoiceRoutes(invGroupAlt)
 
+		// Direct payment G1 (Duitku v2 inquiry / Mock direct)
+		authGroup.POST("/invoices/:id/payments", payCtrl.CreateDirectPayment)
+		authGroup.POST("/finance/invoices/:id/payments", payCtrl.CreateDirectPayment)
+		authGroup.GET("/payments/:id", payCtrl.GetDirectPaymentByID)
+		authGroup.GET("/finance/payments/:id", payCtrl.GetDirectPaymentByID)
+
 		// Kwitansi resmi
 		receiptGroup := authGroup.Group("/receipts/me")
 		{

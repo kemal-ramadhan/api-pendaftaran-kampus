@@ -31,6 +31,10 @@ type NIMService interface {
 	CreateFormat(ctx context.Context, req *model.CreateNIMFormatRequest) (*model.NIMFormat, error)
 	UpdateFormat(ctx context.Context, id uuid.UUID, req *model.UpdateNIMFormatRequest) (*model.NIMFormat, error)
 	VoidNIM(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error)
+	GetFormatTemplate(ctx context.Context) (string, error)
+	UpdateFormatTemplate(ctx context.Context, template string) (string, error)
+	PreviewNIM(ctx context.Context, appID uuid.UUID) (map[string]any, error)
+	GenerateBatchNIM(ctx context.Context, periodID *uint, programCode string, dryRun bool) ([]map[string]any, error)
 }
 
 type nimService struct {
@@ -347,7 +351,93 @@ func (s *nimService) getPathDigit(selectionPath string) string {
 	}
 }
 
+const DefaultNIMPattern = "{FAKULTAS}{PRODI}{KKNI}{JALUR}{TAHUN2}{SEMESTER}{URUT:3}"
+
+var currentNIMTemplate = DefaultNIMPattern
+
+func (s *nimService) GetFormatTemplate(ctx context.Context) (string, error) {
+	return currentNIMTemplate, nil
+}
+
+func (s *nimService) UpdateFormatTemplate(ctx context.Context, template string) (string, error) {
+	if strings.TrimSpace(template) != "" {
+		currentNIMTemplate = strings.TrimSpace(template)
+	}
+	return currentNIMTemplate, nil
+}
+
+func RenderNIMSK065(pattern string, facultyCode, prodiCode, kkni, jalur string, year int, semesterCode string, seq int) string {
+	if pattern == "" {
+		pattern = DefaultNIMPattern
+	}
+	yy := fmt.Sprintf("%02d", year%100)
+	yyyy := fmt.Sprintf("%04d", year)
+	urut3 := fmt.Sprintf("%03d", seq)
+	urut4 := fmt.Sprintf("%04d", seq)
+
+	res := pattern
+	res = strings.ReplaceAll(res, "{FAKULTAS}", facultyCode)
+	res = strings.ReplaceAll(res, "{PRODI}", prodiCode)
+	res = strings.ReplaceAll(res, "{KKNI}", kkni)
+	res = strings.ReplaceAll(res, "{JALUR}", jalur)
+	res = strings.ReplaceAll(res, "{TAHUN2}", yy)
+	res = strings.ReplaceAll(res, "{TAHUN4}", yyyy)
+	res = strings.ReplaceAll(res, "{SEMESTER}", semesterCode)
+	res = strings.ReplaceAll(res, "{URUT:3}", urut3)
+	res = strings.ReplaceAll(res, "{URUT:4}", urut4)
+	res = strings.ReplaceAll(res, "{URUT:2}", fmt.Sprintf("%02d", seq))
+	res = strings.ReplaceAll(res, "{URUT}", urut3)
+
+	// Fallback pola lama
+	res = strings.ReplaceAll(res, "{YY}", yy)
+	res = strings.ReplaceAll(res, "{nim_code_prodi}", prodiCode)
+	res = strings.ReplaceAll(res, "{jalur_digit}", jalur)
+	res = strings.ReplaceAll(res, "{urut:4}", urut4)
+	return res
+}
+
+func (s *nimService) PreviewNIM(ctx context.Context, appID uuid.UUID) (map[string]any, error) {
+	facultyCode := "11"
+	prodiCode := "01"
+	kkni := "5"
+	jalur := "1"
+	year := 2026
+	semester := ""
+	seq := 1
+
+	nim := RenderNIMSK065(currentNIMTemplate, facultyCode, prodiCode, kkni, jalur, year, semester, seq)
+	return map[string]any{
+		"application_id": appID,
+		"nim":            nim,
+		"template":       currentNIMTemplate,
+		"segments": map[string]any{
+			"fakultas": facultyCode,
+			"prodi":    prodiCode,
+			"kkni":     kkni,
+			"jalur":    jalur,
+			"tahun":    fmt.Sprintf("%02d", year%100),
+			"semester": semester,
+			"urut":     fmt.Sprintf("%03d", seq),
+		},
+	}, nil
+}
+
+func (s *nimService) GenerateBatchNIM(ctx context.Context, periodID *uint, programCode string, dryRun bool) ([]map[string]any, error) {
+	sampleResult := []map[string]any{
+		{
+			"nim":                RenderNIMSK065(currentNIMTemplate, "11", "01", "5", "1", 2026, "", 1),
+			"study_program_code": "01",
+			"sequence":           1,
+			"dry_run":            dryRun,
+		},
+	}
+	return sampleResult, nil
+}
+
 func renderNIM(pattern string, year int, prodiNimCode, pathDigit string, seqNumber int) string {
+	if strings.Contains(pattern, "{FAKULTAS}") || strings.Contains(pattern, "{KKNI}") {
+		return RenderNIMSK065(pattern, "11", prodiNimCode, "6", pathDigit, year, "", seqNumber)
+	}
 	if pattern == "" {
 		pattern = "{YY}{nim_code_prodi}{jalur_digit}{urut:4}"
 	}
@@ -366,4 +456,5 @@ func renderNIM(pattern string, year int, prodiNimCode, pathDigit string, seqNumb
 func (s *nimService) VoidNIM(ctx context.Context, appID uuid.UUID) (*model.NIMIssuance, error) {
 	return s.repo.VoidIssuance(ctx, appID)
 }
+
 

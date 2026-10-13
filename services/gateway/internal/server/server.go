@@ -30,6 +30,7 @@ func SetupGatewayEngine(
 	tokenMgr authtoken.TokenManager,
 	sessionStore authtoken.SessionStore,
 	appLog *zap.Logger,
+	ssoControllers ...*authcontroller.SSOController,
 ) *gin.Engine {
 	r := gin.New()
 
@@ -106,6 +107,43 @@ func SetupGatewayEngine(
 				adminGroup.PUT("/users/:id", adminCtrl.UpdateUser)
 				adminGroup.PUT("/users/:id/roles", adminCtrl.UpdateUserRoles)
 				adminGroup.PATCH("/users/:id/status", adminCtrl.UpdateUserStatus)
+				adminGroup.GET("/service-accounts", adminCtrl.ListServiceAccounts)
+				adminGroup.POST("/service-accounts", adminCtrl.CreateServiceAccount)
+				adminGroup.GET("/service-accounts/:id", adminCtrl.GetServiceAccount)
+				adminGroup.PUT("/service-accounts/:id", adminCtrl.UpdateServiceAccount)
+				adminGroup.POST("/users/:id/service-accounts", adminCtrl.GrantUserAccountAccess)
+				adminGroup.DELETE("/users/:id/service-accounts/:service_id", adminCtrl.RevokeUserAccountAccess)
+			}
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// SSO / OPENID CONNECT ROUTING (CR-012)
+	// -------------------------------------------------------------------------
+	var ssoCtrl *authcontroller.SSOController
+	if len(ssoControllers) > 0 {
+		ssoCtrl = ssoControllers[0]
+	}
+
+	if ssoCtrl != nil {
+		r.GET("/.well-known/openid-configuration", ssoCtrl.GetOpenIDConfiguration)
+		r.GET("/api/v1/auth/.well-known/openid-configuration", ssoCtrl.GetOpenIDConfiguration)
+
+		if cfg.SSOEnabled {
+			oauth2 := r.Group("/oauth2")
+			{
+				oauth2.GET("/authorize", ssoCtrl.Authorize)
+				oauth2.POST("/token", ssoCtrl.Token)
+				oauth2.GET("/userinfo", ssoCtrl.UserInfo)
+				oauth2.POST("/revoke", ssoCtrl.Revoke)
+				oauth2.GET("/logout", ssoCtrl.Logout)
+				oauth2.POST("/logout", ssoCtrl.Logout)
+			}
+
+			sso := r.Group("/sso")
+			{
+				sso.GET("/login", ssoCtrl.ShowLoginPage)
+				sso.POST("/login", ssoCtrl.ProcessLogin)
 			}
 		}
 	}

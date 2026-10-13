@@ -16,6 +16,9 @@ var initSchemaSQL string
 //go:embed sql/000002_create_rbac_permissions.up.sql
 var rbacSchemaSQL string
 
+//go:embed sql/000003_create_sso_service_accounts.up.sql
+var ssoSchemaSQL string
+
 type migrationItem struct {
 	version string
 	sql     string
@@ -38,6 +41,7 @@ func RunMigrations(ctx context.Context, db *gorm.DB, log *zap.Logger) error {
 	migrations := []migrationItem{
 		{version: "000001_create_auth_tables", sql: initSchemaSQL},
 		{version: "000002_create_rbac_permissions", sql: rbacSchemaSQL},
+		{version: "000003_create_sso_service_accounts", sql: ssoSchemaSQL},
 	}
 
 	for _, m := range migrations {

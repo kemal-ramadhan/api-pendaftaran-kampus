@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log"
@@ -17,6 +18,7 @@ import (
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/pdf"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/provider"
 	"github.com/pkm-asia/pmb-backend/services/pmb-service/internal/modules/finance/internal/repository"
+	"github.com/skip2/go-qrcode"
 	"gorm.io/gorm"
 )
 
@@ -26,10 +28,30 @@ var (
 	ErrPaymentAlreadyPaid  = errors.New("pembayaran ini sudah sukses diselesaikan")
 )
 
+type DirectPaymentResponse struct {
+	PaymentID    uuid.UUID `json:"payment_id"`
+	MethodCode   string    `json:"method_code"`
+	MethodName   string    `json:"method_name"`
+	Group        string    `json:"group"`
+	BankName     string    `json:"bank_name"`
+	VANumber     string    `json:"va_number"`
+	QRString     string    `json:"qr_string"`
+	QRImageURL   string    `json:"qr_image_url"`
+	PaymentURL   string    `json:"payment_url"`
+	Amount       int64     `json:"amount"`
+	Fee          int64     `json:"fee"`
+	Total        int64     `json:"total"`
+	ExpiredAt    time.Time `json:"expired_at"`
+	Instructions []string  `json:"instructions"`
+	Status       string    `json:"status"`
+}
+
 type PaymentService interface {
 	SetInstallmentRepo(repo repository.InstallmentRepository)
 	PayWithVirtualAccount(ctx context.Context, invoiceID, userID uuid.UUID) (*model.Payment, error)
 	PayWithManualTransfer(ctx context.Context, invoiceID, userID uuid.UUID, proofBytes []byte, fileName string) (*model.Payment, error)
+	CreateDirectPayment(ctx context.Context, invoiceID, userID uuid.UUID, paymentMethod string) (*DirectPaymentResponse, error)
+	BuildDirectPaymentResponse(p *model.Payment, inv *model.Invoice) *DirectPaymentResponse
 	ProcessWebhook(ctx context.Context, providerName string, signature string, payloadBytes []byte) error
 	SimulatePaid(ctx context.Context, paymentID uuid.UUID) (*model.Payment, error)
 	VerifyManualTransfer(ctx context.Context, paymentID uuid.UUID, action, notes string, verifiedBy uuid.UUID) error
@@ -666,4 +688,177 @@ func (s *paymentService) GetPaymentMethods(ctx context.Context, amount int64) ([
 	}
 	return s.provider.GetPaymentMethods(ctx, amount)
 }
+
+func (s *paymentService) CreateDirectPayment(ctx context.Context, invoiceID, userID uuid.UUID, paymentMethod string) (*DirectPaymentResponse, error) {
+	inv, err := s.invoiceRepo.FindByID(ctx, invoiceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if inv.UserID != userID {
+		return nil, ErrForbiddenAccess
+	}
+
+	if inv.PaymentScheme == "free" || inv.Amount == 0 {
+		return nil, ErrInvoiceFree
+	}
+
+	if inv.Status == model.InvoiceStatusCancelled {
+		return nil, errors.New("tagihan sudah dibatalkan dan tidak dapat dibayar")
+	}
+
+	if inv.IsPaid() {
+		return nil, ErrInvoiceAlreadyPaid
+	}
+
+	if paymentMethod == "" {
+		paymentMethod = "VC" // default BCA VA
+	}
+
+	now := time.Now()
+	// Cek pembayaran pending sebelumnya
+	for _, p := range inv.Payments {
+		if p.Status == model.PaymentStatusPending {
+			// Idempoten: jika metode sama dan belum expired, return data yang sama
+			if strings.EqualFold(p.MethodCode, paymentMethod) || (p.MethodCode == "" && strings.EqualFold(string(p.Method), paymentMethod)) {
+				return s.BuildDirectPaymentResponse(&p, inv), nil
+			}
+			// Ganti metode: tandai pembayaran lama sebagai superseded
+			p.Status = model.PaymentStatusSuperseded
+			_ = s.paymentRepo.Update(ctx, &p)
+		}
+	}
+
+	// Panggil provider
+	merchantOrderID := fmt.Sprintf("INV-%s-%d", invoiceID.String()[:8], time.Now().Unix())
+	payReq := &provider.PaymentRequest{
+		InvoiceID:       invoiceID,
+		MerchantOrderID: merchantOrderID,
+		Amount:          inv.Amount,
+		ProductDetails:  inv.Description,
+		CustomerName:    "Calon Mahasiswa PMB",
+		PaymentMethod:   paymentMethod,
+	}
+
+	payResult, err := s.provider.CreatePayment(ctx, payReq)
+	if err != nil {
+		return nil, err
+	}
+
+	var expiry time.Time
+	if payResult.ExpiresAt.IsZero() {
+		expiry = now.Add(24 * time.Hour)
+	} else {
+		expiry = payResult.ExpiresAt
+	}
+
+	methodType := model.PaymentMethodVirtualAccount
+	if strings.EqualFold(paymentMethod, "SP") || strings.EqualFold(paymentMethod, "QRIS") || payResult.QRString != "" {
+		methodType = model.PaymentMethodQRIS
+	}
+
+	newPayment := &model.Payment{
+		ID:               uuid.New(),
+		InvoiceID:        invoiceID,
+		Method:           methodType,
+		MethodCode:       paymentMethod,
+		Provider:         "duitku",
+		ProviderRef:      payResult.ProviderRef,
+		VANumber:         payResult.VANumber,
+		QRString:         payResult.QRString,
+		PaymentURL:       payResult.PaymentURL,
+		PaymentCode:      payResult.PaymentCode,
+		PublisherOrderID: payResult.PublisherOrderID,
+		Amount:           inv.Amount,
+		Fee:              0,
+		Total:            inv.Amount,
+		Status:           model.PaymentStatusPending,
+		ExpiresAt:        &expiry,
+	}
+
+	if err := s.paymentRepo.CreateInTx(s.paymentRepo.DB(), newPayment); err != nil {
+		return nil, fmt.Errorf("gagal menyimpan data pembayaran: %w", err)
+	}
+
+	return s.BuildDirectPaymentResponse(newPayment, inv), nil
+}
+
+func (s *paymentService) BuildDirectPaymentResponse(p *model.Payment, inv *model.Invoice) *DirectPaymentResponse {
+	methodCode := p.MethodCode
+	if methodCode == "" {
+		methodCode = "VA"
+	}
+
+	methodName := "Virtual Account"
+	group := "Virtual Account"
+	bankName := "Bank Transfer"
+	switch strings.ToUpper(methodCode) {
+	case "VC":
+		methodName = "BCA Virtual Account"
+		bankName = "Bank Central Asia (BCA)"
+	case "VA":
+		methodName = "BNI Virtual Account"
+		bankName = "Bank Negara Indonesia (BNI)"
+	case "M2":
+		methodName = "Mandiri Virtual Account"
+		bankName = "Bank Mandiri"
+	case "BR":
+		methodName = "BRI Virtual Account"
+		bankName = "Bank Rakyat Indonesia (BRI)"
+	case "SP", "QRIS":
+		methodName = "QRIS"
+		group = "QRIS"
+		bankName = "QRIS"
+	}
+
+	qrImageURL := ""
+	if p.QRString != "" {
+		pngBytes, err := qrcode.Encode(p.QRString, qrcode.Medium, 256)
+		if err == nil {
+			qrImageURL = fmt.Sprintf("data:image/png;base64,%s", base64.StdEncoding.EncodeToString(pngBytes))
+		}
+	}
+
+	expiredAt := time.Now().Add(24 * time.Hour)
+	if p.ExpiresAt != nil {
+		expiredAt = *p.ExpiresAt
+	}
+
+	instructions := s.getInstructions(methodCode, p.VANumber)
+
+	return &DirectPaymentResponse{
+		PaymentID:    p.ID,
+		MethodCode:   methodCode,
+		MethodName:   methodName,
+		Group:        group,
+		BankName:     bankName,
+		VANumber:     p.VANumber,
+		QRString:     p.QRString,
+		QRImageURL:   qrImageURL,
+		PaymentURL:   p.PaymentURL,
+		Amount:       p.Amount,
+		Fee:          p.Fee,
+		Total:        p.Amount + p.Fee,
+		ExpiredAt:    expiredAt,
+		Instructions: instructions,
+		Status:       string(p.Status),
+	}
+}
+
+func (s *paymentService) getInstructions(methodCode, vaNumber string) []string {
+	if vaNumber == "" {
+		return []string{
+			"Buka aplikasi mobile banking atau e-wallet Anda yang mendukung QRIS",
+			"Pilih menu Bayar / Scan QRIS",
+			"Arahkan kamera ke kode QR yang ditampilkan pada layar",
+			"Periksa rincian pembayaran dan konfirmasi transaksi",
+		}
+	}
+	return []string{
+		fmt.Sprintf("ATM: Masukkan kartu dan PIN > Menu Lainnya > Transfer > Virtual Account > Masukkan nomor VA: %s > Konfirmasi jumlah", vaNumber),
+		fmt.Sprintf("Mobile Banking: Buka aplikasi M-Banking > Menu Pembayaran / Transfer > Virtual Account > Masukkan nomor VA: %s > Masukkan PIN untuk verifikasi", vaNumber),
+		fmt.Sprintf("Internet Banking: Login Internet Banking > Pembayaran > Virtual Account > Masukkan nomor VA: %s > Masukkan respon token untuk menyelesaikan pembayaran", vaNumber),
+	}
+}
+
 

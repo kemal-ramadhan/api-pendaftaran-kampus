@@ -11,6 +11,7 @@ func TestDefaultRolesList(t *testing.T) {
 	expectedRoles := map[string]string{
 		model.RoleCalonMahasiswa: "Calon Mahasiswa",
 		model.RoleMahasiswa:      "Mahasiswa",
+		model.RoleGuruBK:         "Guru BK / Mitra",
 		model.RoleAdminPMB:       "Admin PMB",
 		model.RoleKeuangan:       "Keuangan",
 		model.RoleDosen:          "Dosen",
@@ -20,8 +21,8 @@ func TestDefaultRolesList(t *testing.T) {
 		model.RoleSuperadmin:     "Superadmin",
 	}
 
-	if len(defaultRoles) != 9 {
-		t.Fatalf("Jumlah role bawaan harus tepat 9, didapat %d", len(defaultRoles))
+	if len(defaultRoles) != 10 {
+		t.Fatalf("Jumlah role bawaan harus tepat 10, didapat %d", len(defaultRoles))
 	}
 
 	for _, role := range defaultRoles {

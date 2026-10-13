@@ -30,6 +30,7 @@ type PaymentResult struct {
 	PaymentURL       string
 	VANumber         string
 	PaymentCode      string
+	QRString         string
 	PublisherOrderID string
 	Amount           int64
 	ExpiresAt        time.Time

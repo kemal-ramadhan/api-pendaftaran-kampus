@@ -19,9 +19,10 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
 | **CR-009** | 2026-09-29 | Portal Admin (8 modul) & RBAC berbasis permission (tabel permissions/role_permissions, role dekan scope fakultas, header X-User-Permissions di gateway, pkg/rbac, pemetaan permission, 8 modul portal admin) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Seluruh service (Auth, Gateway, Organization, Notification, Admission, Finance, Identity, Exam, Scoring, Selection, Student, NIM) | Tahap 14 / CR-009 | **done** | `PRD-TAMBAHAN-CR009-010.md` Bagian 1 & 2, `docs/RBAC.md` |
 | **CR-010** | 2026-09-29 | Penyesuaian desain Portal Calon Mahasiswa v2 (stepper 6 tahap, agenda & ringkasan, options admission_open & biaya formulir, 5 berkas wajib, tab pembayaran VA/Transfer/QRIS + badge + biaya gratis + jatuh tempo 3 hari kerja, pembukaan CBT otomatis K11, receipt-view) | Desain Figma PMB v2 & Arahan Lead (Pak Kemal) | Admission, Finance, Identity, Exam, Selection, Gateway, Organization | Tahap 14 / CR-010 | **done** | `PRD-TAMBAHAN-CR009-010.md` Bagian 3 |
 | **CR-011** | 2026-10-04 | Konsolidasi 13 service menjadi 3 service (gateway, pmb-service, ocr-service) & 2 database (pmb_auth, pmb_app) | Arahan Lead / PRD TAMBAHAN CR011 | Seluruh 13 service backend | Fase K (M0–M5) | **done** | `docs/DECISIONS.md` Bagian 32, `docs/CONSOLIDATION-REPORT.md` |
-| **CR-012** | 2026-10-04 | Auth 2 Versi (Versi A: SSO Core mandiri, Versi B: Auth PMB) & skema users-service_accounts-user_accounts | Arahan Lead / PRD TAMBAHAN CR011 | Auth Service, Gateway | Fase K (M6–M8) | open | `docs/DECISIONS.md` Bagian 32 |
+| **CR-012** | 2026-10-04 | Auth 2 Versi (Versi A: SSO Core mandiri, Versi B: Auth PMB) & skema users-service_accounts-user_accounts | Arahan Lead / PRD TAMBAHAN CR011 | Auth Service, Gateway | Fase K (M6–M8) | **done** | `docs/DECISIONS.md` Bagian 32 |
 | **CR-013** | 2026-10-04 | Kesiapan Rilis Aplikasi Pendaftaran PMB (audit alur camaba, jalur gratis Rp 0, integrasi Duitku produksi, dokumen rilis) | Arahan Lead / PRD TAMBAHAN CR011 | Admission, Finance, Gateway, Docs | Fase R (R0–R4) | **done** | `docs/RELEASE-CHECKLIST.md`, `docs/DUITKU-PRODUKSI.md` |
-| **CR-014** | 2026-10-04 | Modul Referal Guru BK, Pembayaran Kolektif & Komisi (150 mitra guru BK, komisi snapshot, setoran & buku besar) | Arahan Lead / PRD TAMBAHAN CR011 | pmb-service (referral), gateway | Fase F (F1–F5) | open | `docs/REFERRAL.md` |
+| **CR-014** | 2026-10-04 | Modul Referal Guru BK, Pembayaran Kolektif & Komisi (150 mitra guru BK, komisi snapshot, setoran & buku besar) | Arahan Lead / PRD TAMBAHAN CR011 | pmb-service (referral), gateway | Fase F (F1–F5) | **done** | `docs/REFERRAL.md` |
+| **CR-015** | 2026-10-13 | Penyesuaian Launching (Direct Payment Duitku v2 tanpa popup, WA Group Onboarding, NIM SK Rektor 065, Ekspor SEVIMA 62-kolom, Identitas Kampus Dinamis, Dashboard Mitra) | Arahan Lead / PRD TAMBAHAN CR011 | Seluruh modul pmb-service & Gateway | Fase G (G1–G6) | **done** | `PRD-TAMBAHAN-CR011.md` Bagian VI |
 
 ---
 
@@ -160,7 +161,7 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Versi A: SSO Core mandiri (`cmd/sso`), OpenID Connect Authorization Code + PKCE, JWKS & rotasi kunci, discovery `.well-known/openid-configuration`, `/oauth2/*`, `/sso/login` sementara.
   - Versi B: Auth PMB (`/api/v1/auth/*`) tetap berjalan di atas Versi A.
   - Seeder service account (`pmb-pendaftaran`, `pmb-admin`, `pmb-mitra`, `keuangan`), migrasi data `user_roles` ke `user_accounts` + `user_account_roles`.
-- **Status**: **open** (Fase K / M6–M8).
+- **Status**: **done** (Fase K / M6–M8 selesai, implementasi SSO/OIDC standalone dan discovery endpoint).
 
 ### CR-013 — Kesiapan Rilis Aplikasi Pendaftaran PMB (4 Oktober 2026)
 - **Arahan Lead**: Aplikasi pendaftaran camaba bebas bug dan siap didemokan Selasa 6 Okt malam, pembayaran sungguhan Duitku siap, jalur gratis tanpa pembayaran (Rp 0), panduan alur, data demo, dan audit stabilitas.
@@ -179,7 +180,18 @@ Dokumen ini mencatat seluruh permintaan perubahan (*Change Request* / CR) yang d
   - Pengaturan komisi per kode (persen / nominal) disalin snapshot saat verifikasi; jalur gratis tanpa komisi; mode penyelesaian komisi (`terpisah` atau `potong_setoran`).
   - Pengajuan setoran guru BK dengan bukti transfer, verifikasi setoran oleh keuangan + pencatatan buku besar.
   - Portal & kartu ringkasan guru BK mirip sistem BTH, form pembuatan akun guru BK oleh admin + impor CSV multi-baris.
-- **Status**: **open** (Fase F / F1–F5).
+- **Status**: **done** (Fase F / F1–F5 selesai, modul terisolasi & teruji).
+
+### CR-015 — Penyesuaian Launching (13 Oktober 2026)
+- **Arahan Lead**: Penyesuaian menjelang launching sistem PMB meliputi pembayaran langsung Duitku v2 tanpa popup, WhatsApp group onboarding dengan gatekeeper, format NIM SK Rektor 065, validasi & ekspor biodata format SEVIMA (62 kolom), audit hardcode kampus, dan dashboard guru BK.
+- **Ruang Lingkup**:
+  - G1: Duitku API v2 inquiry langsung (tanpa popup), render QRIS base64 PNG dengan `go-qrcode`, instruksi per kanal.
+  - G2: WhatsApp Group Onboarding (`GET/POST /admission/me/onboarding`), gatekeeper `409 WA_GROUP_JOIN_REQUIRED` pada aksi pendaftaran.
+  - G3: Format NIM otomatis SK Rektor 065 (`{FAKULTAS}{PRODI}{KKNI}{JALUR}{TAHUN2}{SEMESTER}{URUT:3}`).
+  - G4: Master referensi biodata & ekspor Excel SEVIMA 62-kolom dengan validasi tipe string cell (NIK, KK, HP, dsb).
+  - G5: Identitas institusi terpusat & dinamis (`GET /organization/institution-profile`).
+  - G6: Dashboard guru BK siap sosialisasi (`GET /api/v1/referral/partner/dashboard`).
+- **Status**: **done** (Fase G / G1–G6 selesai, 100% tes lulus).
 
 
 

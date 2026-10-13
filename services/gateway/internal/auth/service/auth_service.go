@@ -39,10 +39,11 @@ var (
 	ErrUserNotFound            = errors.New("pengguna tidak ditemukan")
 	ErrRoleNotFound            = errors.New("role tidak ditemukan")
 	ErrAccountAlreadyActive    = errors.New("akun sudah aktif dan terverifikasi")
-	ErrLastSuperadmin          = errors.New("sistem harus memiliki minimal satu superadmin aktif")
-	ErrSelfDemoteSuperadmin    = errors.New("superadmin tidak boleh mencabut role superadmin dari dirinya sendiri")
+	ErrLastSuperadmin           = errors.New("sistem harus memiliki minimal satu superadmin aktif")
+	ErrSelfDemoteSuperadmin     = errors.New("superadmin tidak boleh mencabut role superadmin dari dirinya sendiri")
 	ErrSelfDeactivateSuperadmin = errors.New("superadmin tidak boleh menonaktifkan akun miliknya sendiri")
 	ErrUpstreamUnavailable      = errors.New("layanan upstream tidak dapat dihubungi")
+	ErrServiceAccessDenied      = errors.New("SERVICE_ACCESS_DENIED")
 )
 
 type AuthService interface {
@@ -72,6 +73,7 @@ type authService struct {
 	sessionStore token.SessionStore
 	rateLimiter  limiter.RateLimiter
 	mailer       mailer.Mailer
+	serviceRepo  repository.ServiceAccountRepository
 	log          *zap.Logger
 }
 
@@ -87,7 +89,13 @@ func NewAuthService(
 	rateLimiter limiter.RateLimiter,
 	mailer mailer.Mailer,
 	log *zap.Logger,
+	serviceRepos ...repository.ServiceAccountRepository,
 ) AuthService {
+	var sRepo repository.ServiceAccountRepository
+	if len(serviceRepos) > 0 {
+		sRepo = serviceRepos[0]
+	}
+
 	return &authService{
 		cfg:          cfg,
 		userRepo:     userRepo,
@@ -99,6 +107,7 @@ func NewAuthService(
 		sessionStore: sessionStore,
 		rateLimiter:  rateLimiter,
 		mailer:       mailer,
+		serviceRepo:  sRepo,
 		log:          log,
 	}
 }
@@ -183,6 +192,25 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 				ScopeID:   &emptyScope,
 				CreatedAt: now,
 			})
+
+			// CR-012: Daftarkan akses user ke service account pmb-pendaftaran
+			if s.serviceRepo != nil {
+				saPendaftaran, _ := s.serviceRepo.GetServiceAccountByCode(ctx, "pmb-pendaftaran")
+				if saPendaftaran != nil {
+					ua := model.UserAccount{
+						ID:               uuid.New(),
+						UserID:           newUser.ID,
+						ServiceAccountID: saPendaftaran.ID,
+						Status:           model.UserAccountStatusActive,
+						GrantedAt:        now,
+						CreatedAt:        now,
+						UpdatedAt:        now,
+					}
+					if err := s.serviceRepo.CreateUserAccount(ctx, &ua); err == nil {
+						_ = s.serviceRepo.AddRoleToUserAccount(ctx, ua.ID, roleCalon.ID, &emptyScope, &emptyScope, nil)
+					}
+				}
+			}
 		}
 		targetUser = &newUser
 	}
@@ -441,7 +469,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, ip, userA
 	now := time.Now()
 	_ = s.userRepo.UpdateLastLogin(ctx, user.ID)
 
-	authData, err := s.createAuthResponse(ctx, user)
+	authData, err := s.createAuthResponseWithService(ctx, user, req.Service)
 	if err != nil {
 		return nil, err
 	}
@@ -458,6 +486,63 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest, ip, userA
 }
 
 func (s *authService) createAuthResponse(ctx context.Context, user *model.User) (*dto.AuthResponseData, error) {
+	return s.createAuthResponseWithService(ctx, user, "")
+}
+
+func (s *authService) createAuthResponseWithService(ctx context.Context, user *model.User, requestedService string) (*dto.AuthResponseData, error) {
+	// Cek apakah user adalah superadmin
+	isSuperadmin := false
+	for _, ur := range user.UserRoles {
+		if ur.Role.Code == model.RoleSuperadmin {
+			isSuperadmin = true
+			break
+		}
+	}
+
+	audience := s.cfg.JWTAudience
+	if requestedService != "" {
+		if s.serviceRepo != nil {
+			sa, err := s.serviceRepo.GetServiceAccountByCode(ctx, requestedService)
+			if err != nil || sa == nil || !sa.IsActive {
+				return nil, ErrServiceAccessDenied
+			}
+			if sa.Audience != "" {
+				audience = sa.Audience
+			}
+
+			// Cek apakah user memiliki hak akses user_accounts aktif untuk service ini
+			if !isSuperadmin {
+				ua, err := s.serviceRepo.GetUserAccount(ctx, user.ID, sa.ID)
+				if err != nil || ua == nil || ua.Status != model.UserAccountStatusActive {
+					return nil, ErrServiceAccessDenied
+				}
+			}
+		}
+	}
+
+	// Ambil daftar service accounts aktif milik user untuk klaim 'svc'
+	servicesList := make([]string, 0)
+	if s.serviceRepo != nil {
+		userAccounts, _ := s.serviceRepo.GetUserAccountsByUserID(ctx, user.ID)
+		for _, ua := range userAccounts {
+			if ua.Status == model.UserAccountStatusActive && ua.ServiceAccount.Code != "" {
+				servicesList = append(servicesList, ua.ServiceAccount.Code)
+			}
+		}
+	}
+	if len(servicesList) == 0 {
+		for _, ur := range user.UserRoles {
+			switch ur.Role.Code {
+			case model.RoleCalonMahasiswa, model.RoleMahasiswa:
+				servicesList = append(servicesList, "pmb-pendaftaran")
+			case model.RoleGuruBK:
+				servicesList = append(servicesList, "pmb-mitra")
+			default:
+				servicesList = append(servicesList, "pmb-admin")
+			}
+		}
+	}
+
 	roles := make([]string, 0)
 	scopes := make([]token.ScopeClaim, 0)
 
@@ -491,7 +576,7 @@ func (s *authService) createAuthResponse(ctx context.Context, user *model.User) 
 		perms = []string{}
 	}
 
-	accessToken, _, _, err := s.tokenManager.GenerateAccessToken(
+	accessToken, _, _, err := s.tokenManager.GenerateAccessTokenWithServices(
 		user.ID,
 		user.Email,
 		user.FullName,
@@ -499,6 +584,8 @@ func (s *authService) createAuthResponse(ctx context.Context, user *model.User) 
 		scopes,
 		perms,
 		sessionID,
+		servicesList,
+		audience,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("gagal generate access token: %w", err)

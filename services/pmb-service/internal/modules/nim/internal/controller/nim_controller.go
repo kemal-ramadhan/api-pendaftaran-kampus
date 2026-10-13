@@ -249,3 +249,75 @@ func (ctrl *NIMController) VoidNIM(c *gin.Context) {
 	})
 }
 
+func (ctrl *NIMController) GetFormatTemplate(c *gin.Context) {
+	tmpl, err := ctrl.svc.GetFormatTemplate(c.Request.Context())
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil template NIM: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Template NIM berhasil diambil", gin.H{
+		"template": tmpl,
+		"preview_example": gin.H{
+			"d3_keperawatan_umum_2026": "11015126001",
+			"s1_farmasi_asing_2026":    "10016326003",
+			"s1_kosmetik_umum_2026":    "10026126001",
+			"s2_farmasi_sem2_2026":     "100181262005",
+		},
+	})
+}
+
+func (ctrl *NIMController) UpdateFormatTemplate(c *gin.Context) {
+	var input struct {
+		Template string `json:"template" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		response.BadRequest(c, "TEMPLATE_REQUIRED", "Template NIM wajib diisi")
+		return
+	}
+	tmpl, err := ctrl.svc.UpdateFormatTemplate(c.Request.Context(), input.Template)
+	if err != nil {
+		response.InternalServerError(c, "Gagal memperbarui template NIM: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Template NIM berhasil diperbarui", gin.H{
+		"template": tmpl,
+	})
+}
+
+func (ctrl *NIMController) PreviewNIM(c *gin.Context) {
+	var input struct {
+		ApplicationID uuid.UUID `json:"application_id"`
+	}
+	_ = c.ShouldBindJSON(&input)
+	if input.ApplicationID == uuid.Nil {
+		input.ApplicationID = uuid.New()
+	}
+
+	res, err := ctrl.svc.PreviewNIM(c.Request.Context(), input.ApplicationID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal membuat preview NIM: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Preview NIM berhasil dibuat", res)
+}
+
+func (ctrl *NIMController) GenerateBatchNIM(c *gin.Context) {
+	var input struct {
+		PeriodID    *uint  `json:"period_id"`
+		ProgramCode string `json:"program_id"`
+		DryRun      bool   `json:"dry_run"`
+	}
+	_ = c.ShouldBindJSON(&input)
+
+	res, err := ctrl.svc.GenerateBatchNIM(c.Request.Context(), input.PeriodID, input.ProgramCode, input.DryRun)
+	if err != nil {
+		response.InternalServerError(c, "Gagal melakukan generate NIM: "+err.Error())
+		return
+	}
+	response.Success(c, http.StatusOK, "Penerbitan NIM batch berhasil diproses", gin.H{
+		"results": res,
+		"dry_run": input.DryRun,
+	})
+}
+
+

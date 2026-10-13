@@ -48,6 +48,7 @@ func Init(r *gin.Engine, baseDB *gorm.DB, storageCli storage.Client, cfg Config,
 		&model.PathChangeRequest{},
 		&model.Withdrawal{},
 		&model.OfficialDocument{},
+		&model.AdmissionOnboarding{},
 		&outbox.Event{},
 	)
 
@@ -129,6 +130,7 @@ func Init(r *gin.Engine, baseDB *gorm.DB, storageCli storage.Client, cfg Config,
 		storageCli,
 		admissCfg,
 	)
+	admissionSvc.SetOnboardingRepo(repository.NewOnboardingRepository(db))
 
 	changeSvc := service.NewChangeService(
 		changeRepo,

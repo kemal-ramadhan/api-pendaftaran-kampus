@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -363,3 +364,96 @@ func (ctrl *UserController) ConfirmKTPScan(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Data KTP berhasil dikonfirmasi dan disimpan ke biodata", updatedProfile)
 }
+
+func (ctrl *UserController) GetReferenceData(c *gin.Context) {
+	jenis := strings.ToLower(c.Param("jenis"))
+	switch jenis {
+	case "agama":
+		response.Success(c, http.StatusOK, "Data referensi agama berhasil diambil", []gin.H{
+			{"id": "1", "name": "Islam"},
+			{"id": "2", "name": "Kristen"},
+			{"id": "3", "name": "Katolik"},
+			{"id": "4", "name": "Hindu"},
+			{"id": "5", "name": "Buddha"},
+			{"id": "6", "name": "Konghucu"},
+		})
+	case "negara":
+		response.Success(c, http.StatusOK, "Data referensi negara berhasil diambil", []gin.H{
+			{"id": "IDN", "name": "Indonesia"},
+			{"id": "MYS", "name": "Malaysia"},
+			{"id": "SGP", "name": "Singapura"},
+		})
+	case "penghasilan":
+		response.Success(c, http.StatusOK, "Data referensi penghasilan berhasil diambil", []gin.H{
+			{"id": "1", "name": "Kurang dari/ Sama dengan 1.000.000"},
+			{"id": "2", "name": "1.000.001 - 2.000.000"},
+			{"id": "3", "name": "2.000.001 - 4.000.000"},
+			{"id": "4", "name": "4.000.001 - 6.000.000"},
+			{"id": "5", "name": "Lebih dari 6.000.000"},
+		})
+	case "pendidikan":
+		response.Success(c, http.StatusOK, "Data referensi pendidikan berhasil diambil", []gin.H{
+			{"id": "SD", "name": "SD - Sekolah Dasar"},
+			{"id": "SMP", "name": "SMP/ Sederajat"},
+			{"id": "SMA", "name": "SMA/SMK Sederajat"},
+			{"id": "D1", "name": "Diploma 1"},
+			{"id": "D3", "name": "Diploma 3"},
+			{"id": "S1", "name": "Sarjana (S1)"},
+			{"id": "S2", "name": "Magister (S2)"},
+			{"id": "S3", "name": "Doktor (S3)"},
+		})
+	case "pekerjaan":
+		response.Success(c, http.StatusOK, "Data referensi pekerjaan berhasil diambil", []gin.H{
+			{"id": "0", "name": "Tidak Bekerja"},
+			{"id": "1", "name": "PNS / ASN"},
+			{"id": "2", "name": "Pegawai Swasta"},
+			{"id": "3", "name": "Wiraswasta / Pengusaha"},
+			{"id": "4", "name": "TNI / Polri"},
+			{"id": "5", "name": "Petani / Nelayan"},
+			{"id": "6", "name": "Buruh"},
+			{"id": "7", "name": "Ibu Rumah Tangga"},
+		})
+	case "status_hidup":
+		response.Success(c, http.StatusOK, "Data referensi status hidup berhasil diambil", []gin.H{
+			{"id": "1", "name": "Hidup"},
+			{"id": "2", "name": "Meninggal"},
+		})
+	case "ukuran_almamater", "almamater":
+		response.Success(c, http.StatusOK, "Data referensi ukuran almamater berhasil diambil", []gin.H{
+			{"id": "XS", "name": "XS"},
+			{"id": "S", "name": "S"},
+			{"id": "M", "name": "M"},
+			{"id": "L", "name": "L"},
+			{"id": "XL", "name": "XL"},
+			{"id": "XXL", "name": "XXL"},
+		})
+	case "jenis_institusi":
+		response.Success(c, http.StatusOK, "Data referensi jenis institusi berhasil diambil", []gin.H{
+			{"id": "1", "name": "SMA", "pendidikan_id": "SMA"},
+			{"id": "2", "name": "SMK", "pendidikan_id": "SMA"},
+			{"id": "3", "name": "MA", "pendidikan_id": "SMA"},
+			{"id": "4", "name": "MAK", "pendidikan_id": "SMA"},
+		})
+	case "provinsi":
+		response.Success(c, http.StatusOK, "Data referensi provinsi berhasil diambil", []gin.H{
+			{"id": "11", "name": "ACEH"},
+			{"id": "12", "name": "SUMATERA UTARA"},
+			{"id": "13", "name": "SUMATERA BARAT"},
+			{"id": "31", "name": "DKI JAKARTA"},
+			{"id": "32", "name": "JAWA BARAT"},
+			{"id": "33", "name": "JAWA TENGAH"},
+			{"id": "34", "name": "DI YOGYAKARTA"},
+			{"id": "35", "name": "JAWA TIMUR"},
+			{"id": "36", "name": "BANTEN"},
+		})
+	case "jenis_program":
+		response.Success(c, http.StatusOK, "Data referensi jenis program berhasil diambil", []gin.H{
+			{"id": "IPA", "name": "IPA"},
+			{"id": "IPS", "name": "IPS"},
+			{"id": "REG", "name": "Reguler"},
+		})
+	default:
+		response.NotFound(c, "Jenis referensi tidak dikenali")
+	}
+}
+

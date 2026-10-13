@@ -81,6 +81,8 @@ func main() {
 	_ = authseeder.SeedRoles(migCtx, db, appLog)
 	_ = authseeder.SeedPermissions(migCtx, db, appLog)
 	_ = authseeder.SeedSuperadmin(migCtx, db, authCfg, appLog)
+	_ = authseeder.SeedServiceAccounts(migCtx, db, appLog)
+	_ = authseeder.MigrateUserRolesToUserAccounts(migCtx, db, appLog)
 	migCancel()
 
 	// 2. Redis Client
@@ -111,6 +113,7 @@ func main() {
 	otpRepo := authrepo.NewOTPRepository(db)
 	resetRepo := authrepo.NewPasswordResetRepository(db)
 	auditRepo := authrepo.NewAuditLogRepository(db)
+	serviceAccountRepo := authrepo.NewServiceAccountRepository(db)
 
 	rateLimiter := authlimiter.NewRateLimiter(rdb)
 	mailService := authmailer.NewMailer(authCfg, appLog)
@@ -127,6 +130,7 @@ func main() {
 		rateLimiter,
 		mailService,
 		appLog,
+		serviceAccountRepo,
 	)
 
 	adminSvc := authservice.NewAdminService(
@@ -140,12 +144,23 @@ func main() {
 		mailService,
 		nil, // Inter-service client ke organization jika dipanggil
 		appLog,
+		serviceAccountRepo,
 	)
 
 	authCtrl := authcontroller.NewAuthController(authSvc, tokenMgr)
 	adminCtrl := authcontroller.NewAdminController(adminSvc)
 	internalCtrl := authcontroller.NewInternalController(adminSvc)
 	authHealthCtrl := authcontroller.NewHealthController(db, rdb, authCfg.AppEnv)
+	ssoCtrl := authcontroller.NewSSOController(
+		authCfg,
+		authSvc,
+		serviceAccountRepo,
+		userRepo,
+		tokenMgr,
+		sessionStore,
+		rdb,
+		appLog,
+	)
 
 	// 4. Local JWKS Client (Validasi JWT lokal dari RSA public key sendiri)
 	jwksClient := jwks.NewClient(gwCfg.JWKSURL, appLog)
@@ -174,6 +189,7 @@ func main() {
 		tokenMgr,
 		sessionStore,
 		appLog,
+		ssoCtrl,
 	)
 
 	// 7. Gin Engine Internal (Port :8081 - inter-service internal endpoints)

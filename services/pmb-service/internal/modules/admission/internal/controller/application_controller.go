@@ -56,6 +56,11 @@ func (ctrl *ApplicationController) CreateApplication(c *gin.Context) {
 		return
 	}
 
+	if err := ctrl.svc.CheckWAGroupOnboarding(c.Request.Context(), userID); err != nil {
+		response.Conflict(c, "WA_GROUP_JOIN_REQUIRED", "Silakan bergabung ke grup WhatsApp PMB terlebih dahulu.")
+		return
+	}
+
 	var input CreateApplicationInput
 	if err := c.ShouldBindJSON(&input); err != nil {
 		response.BadRequest(c, "VALIDATION_ERROR", "Data permohonan pendaftaran tidak lengkap: "+err.Error())
@@ -487,3 +492,41 @@ func (ctrl *ApplicationController) SubmitApplication(c *gin.Context) {
 
 	response.Success(c, http.StatusOK, "Pendaftaran berhasil disubmit dan menunggu verifikasi panitia PMB", app)
 }
+
+func (ctrl *ApplicationController) GetOnboarding(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	onboarding, err := ctrl.svc.GetOnboarding(c.Request.Context(), userID)
+	if err != nil {
+		response.InternalServerError(c, "Gagal mengambil status onboarding: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Status onboarding berhasil diambil", onboarding)
+}
+
+func (ctrl *ApplicationController) ConfirmOnboarding(c *gin.Context) {
+	userID, err := gatewayauth.GetUserID(c)
+	if err != nil {
+		response.Unauthorized(c, response.ErrCodeTokenMissing, "Identitas pengguna tidak ditemukan")
+		return
+	}
+
+	key := c.Param("key")
+	if key == "" {
+		response.BadRequest(c, "KEY_REQUIRED", "Kunci langkah onboarding wajib diisi")
+		return
+	}
+
+	if err := ctrl.svc.ConfirmOnboarding(c.Request.Context(), userID, key); err != nil {
+		response.InternalServerError(c, "Gagal mengonfirmasi langkah onboarding: "+err.Error())
+		return
+	}
+
+	response.Success(c, http.StatusOK, "Langkah onboarding berhasil dikonfirmasi", gin.H{"confirmed": true, "key": key})
+}
+

@@ -17,6 +17,7 @@ import (
 var defaultRoles = []model.Role{
 	{Code: model.RoleCalonMahasiswa, Name: "Calon Mahasiswa", Description: "Pendaftar mandiri calon mahasiswa baru"},
 	{Code: model.RoleMahasiswa, Name: "Mahasiswa", Description: "Mahasiswa aktif terdaftar"},
+	{Code: model.RoleGuruBK, Name: "Guru BK / Mitra", Description: "Guru BK penanggung jawab referal dan verifikasi pembayaran siswa"},
 	{Code: model.RoleAdminPMB, Name: "Admin PMB", Description: "Administrator seleksi dan verifikasi berkas PMB"},
 	{Code: model.RoleKeuangan, Name: "Keuangan", Description: "Petugas verifikasi tagihan dan pembayaran"},
 	{Code: model.RoleDosen, Name: "Dosen", Description: "Tenaga pendidik / pewawancara"},
@@ -77,6 +78,16 @@ var defaultPermissions = []model.Permission{
 	{Code: "auth.permission.read", Module: "auth", Description: "Melihat daftar permission dan pemetaan role"},
 	{Code: "auth.permission.manage", Module: "auth", Description: "Mengubah pemetaan permission role"},
 	{Code: "auth.role.manage", Module: "auth", Description: "Mengelola master role sistem"},
+	// Permissions CR-014 (Referral & Guru BK)
+	{Code: "referral.partner.read", Module: "referral", Description: "Melihat kode referal sendiri, ringkasan, dan komisi"},
+	{Code: "referral.partner.approve", Module: "referral", Description: "Memverifikasi atau menolak pembayaran siswa"},
+	{Code: "referral.partner.settle", Module: "referral", Description: "Mengajukan setoran referal ke kampus"},
+	{Code: "referral.admin.manage", Module: "referral", Description: "Mengelola kode referal, akun guru BK, dan impor"},
+	{Code: "referral.admin.read", Module: "referral", Description: "Melihat seluruh kode referal dan laporan komisi"},
+	{Code: "referral.admin.approve", Module: "referral", Description: "Memverifikasi atau menolak pembayaran atas nama guru BK"},
+	{Code: "referral.settlement.verify", Module: "referral", Description: "Memverifikasi bukti setoran guru BK"},
+	{Code: "referral.commission.pay", Module: "referral", Description: "Mencatat pembayaran komisi guru BK"},
+	{Code: "referral.settings.manage", Module: "referral", Description: "Mengelola mode penyelesaian dan tarif komisi default"},
 }
 
 var rolePermissionMap = map[string][]string{
@@ -90,6 +101,7 @@ var rolePermissionMap = map[string][]string{
 		"broadcast.send",
 		"organization.program.read", "organization.program.manage",
 		"auth.user.read", "auth.user.manage", "auth.permission.read", "auth.permission.manage", "auth.role.manage",
+		"referral.admin.manage", "referral.admin.read", "referral.admin.approve", "referral.settlement.verify", "referral.commission.pay", "referral.settings.manage",
 	},
 	model.RoleAdminPMB: {
 		"dashboard.overview.read", "dashboard.institution.read",
@@ -101,6 +113,7 @@ var rolePermissionMap = map[string][]string{
 		"broadcast.send",
 		"organization.program.read",
 		"auth.user.read",
+		"referral.admin.manage", "referral.admin.read", "referral.settings.manage",
 	},
 	model.RoleKeuangan: {
 		"dashboard.overview.read", "dashboard.institution.read",
@@ -108,6 +121,12 @@ var rolePermissionMap = map[string][]string{
 		"student.nim.issue",
 		"report.export",
 		"organization.program.read",
+		"referral.admin.read", "referral.admin.approve", "referral.settlement.verify", "referral.commission.pay",
+	},
+	model.RoleGuruBK: {
+		"referral.partner.read",
+		"referral.partner.approve",
+		"referral.partner.settle",
 	},
 	model.RoleProdi: {
 		"dashboard.overview.read", "dashboard.institution.read",
@@ -245,5 +264,196 @@ func SeedSuperadmin(ctx context.Context, db *gorm.DB, cfg *config.Config, log *z
 	}
 
 	log.Info("Berhasil membuat akun superadmin bawaan", zap.String("email", email))
+	return nil
+}
+
+var defaultServiceAccounts = []model.ServiceAccount{
+	{
+		Code:          "pmb-pendaftaran",
+		Name:          "Layanan Pendaftaran",
+		Description:   "Portal pendaftaran mandiri calon mahasiswa baru",
+		ProductGroup:  "pmb",
+		Audience:      "pmb-api",
+		ClientType:    "public",
+		AllowedScopes: "openid profile email",
+		FirstParty:    true,
+		IsActive:      true,
+	},
+	{
+		Code:          "pmb-admin",
+		Name:          "Layanan Admin PMB",
+		Description:   "Portal manajemen dan administrasi panitia PMB",
+		ProductGroup:  "pmb",
+		Audience:      "pmb-api",
+		ClientType:    "public",
+		AllowedScopes: "openid profile email",
+		FirstParty:    true,
+		IsActive:      true,
+	},
+	{
+		Code:          "pmb-mitra",
+		Name:          "Layanan Mitra & Guru BK",
+		Description:   "Portal mitra sekolah dan guru BK untuk verifikasi referal",
+		ProductGroup:  "pmb",
+		Audience:      "pmb-api",
+		ClientType:    "public",
+		AllowedScopes: "openid profile email",
+		FirstParty:    true,
+		IsActive:      true,
+	},
+	{
+		Code:          "keuangan",
+		Name:          "Layanan Keuangan",
+		Description:   "Sistem informasi keuangan universitas (terintegrasi kelak)",
+		ProductGroup:  "pmb",
+		Audience:      "pmb-api",
+		ClientType:    "confidential",
+		AllowedScopes: "openid profile email",
+		FirstParty:    true,
+		IsActive:      false,
+	},
+}
+
+// SeedServiceAccounts menanam service accounts default idempoten
+func SeedServiceAccounts(ctx context.Context, db *gorm.DB, log *zap.Logger) error {
+	for _, sa := range defaultServiceAccounts {
+		var existing model.ServiceAccount
+		err := db.WithContext(ctx).Where("code = ?", sa.Code).First(&existing).Error
+		if err == gorm.ErrRecordNotFound {
+			newSA := model.ServiceAccount{
+				ID:            uuid.New(),
+				Code:          sa.Code,
+				Name:          sa.Name,
+				Description:   sa.Description,
+				ProductGroup:  sa.ProductGroup,
+				Audience:      sa.Audience,
+				ClientType:    sa.ClientType,
+				AllowedScopes: sa.AllowedScopes,
+				FirstParty:    sa.FirstParty,
+				IsActive:      sa.IsActive,
+				CreatedAt:     time.Now(),
+				UpdatedAt:     time.Now(),
+			}
+			if err := db.WithContext(ctx).Create(&newSA).Error; err != nil {
+				return fmt.Errorf("gagal seed service account %s: %w", sa.Code, err)
+			}
+			log.Info("Seeded service account", zap.String("code", sa.Code))
+		} else if err != nil {
+			return err
+		}
+	}
+
+	// Update service_account_id pada roles
+	var saPendaftaran, saAdmin, saMitra model.ServiceAccount
+	_ = db.WithContext(ctx).Where("code = ?", "pmb-pendaftaran").First(&saPendaftaran).Error
+	_ = db.WithContext(ctx).Where("code = ?", "pmb-admin").First(&saAdmin).Error
+	_ = db.WithContext(ctx).Where("code = ?", "pmb-mitra").First(&saMitra).Error
+
+	if saPendaftaran.ID != uuid.Nil {
+		_ = db.WithContext(ctx).Model(&model.Role{}).
+			Where("code IN ?", []string{model.RoleCalonMahasiswa, model.RoleMahasiswa}).
+			Update("service_account_id", saPendaftaran.ID).Error
+	}
+	if saAdmin.ID != uuid.Nil {
+		_ = db.WithContext(ctx).Model(&model.Role{}).
+			Where("code IN ?", []string{
+				model.RoleSuperadmin, model.RoleAdminPMB, model.RoleKeuangan,
+				model.RoleProdi, model.RoleDekan, model.RolePimpinan, model.RoleDosen,
+			}).
+			Update("service_account_id", saAdmin.ID).Error
+	}
+	if saMitra.ID != uuid.Nil {
+		_ = db.WithContext(ctx).Model(&model.Role{}).
+			Where("code = ?", model.RoleGuruBK).
+			Update("service_account_id", saMitra.ID).Error
+	}
+
+	return nil
+}
+
+// MigrateUserRolesToUserAccounts memindahkan data user_roles ke user_accounts dan user_account_roles (CR-012)
+func MigrateUserRolesToUserAccounts(ctx context.Context, db *gorm.DB, log *zap.Logger) error {
+	var userRoles []model.UserRole
+	if err := db.WithContext(ctx).Preload("Role").Find(&userRoles).Error; err != nil {
+		return fmt.Errorf("gagal membaca data user_roles lama: %w", err)
+	}
+
+	var saPendaftaran, saAdmin, saMitra model.ServiceAccount
+	if err := db.WithContext(ctx).Where("code = ?", "pmb-pendaftaran").First(&saPendaftaran).Error; err != nil {
+		return err
+	}
+	if err := db.WithContext(ctx).Where("code = ?", "pmb-admin").First(&saAdmin).Error; err != nil {
+		return err
+	}
+	_ = db.WithContext(ctx).Where("code = ?", "pmb-mitra").First(&saMitra).Error
+
+	for _, ur := range userRoles {
+		var targetSA model.ServiceAccount
+		switch ur.Role.Code {
+		case model.RoleCalonMahasiswa, model.RoleMahasiswa:
+			targetSA = saPendaftaran
+		case model.RoleGuruBK:
+			targetSA = saMitra
+		default:
+			targetSA = saAdmin
+		}
+
+		if targetSA.ID == uuid.Nil {
+			continue
+		}
+
+		// Cari atau buat user_account
+		var ua model.UserAccount
+		err := db.WithContext(ctx).
+			Where("user_id = ? AND service_account_id = ?", ur.UserID, targetSA.ID).
+			First(&ua).Error
+		if err == gorm.ErrRecordNotFound {
+			ua = model.UserAccount{
+				ID:               uuid.New(),
+				UserID:           ur.UserID,
+				ServiceAccountID: targetSA.ID,
+				Status:           model.UserAccountStatusActive,
+				GrantedAt:        ur.CreatedAt,
+				CreatedAt:        time.Now(),
+				UpdatedAt:        time.Now(),
+			}
+			if err := db.WithContext(ctx).Create(&ua).Error; err != nil {
+				log.Warn("Gagal migrasi user_account", zap.Error(err))
+				continue
+			}
+		} else if err != nil {
+			continue
+		}
+
+		// Masukkan ke user_account_roles
+		scopeType := ""
+		if ur.ScopeType != nil {
+			scopeType = *ur.ScopeType
+		}
+		scopeID := ""
+		if ur.ScopeID != nil {
+			scopeID = *ur.ScopeID
+		}
+
+		var countUAR int64
+		_ = db.WithContext(ctx).Model(&model.UserAccountRole{}).
+			Where("user_account_id = ? AND role_id = ? AND scope_type = ? AND scope_id = ?",
+				ua.ID, ur.RoleID, scopeType, scopeID).
+			Count(&countUAR).Error
+
+		if countUAR == 0 {
+			uar := model.UserAccountRole{
+				UserAccountID: ua.ID,
+				RoleID:        ur.RoleID,
+				ScopeType:     &scopeType,
+				ScopeID:       &scopeID,
+				CreatedAt:     ur.CreatedAt,
+				CreatedBy:     ur.CreatedBy,
+			}
+			_ = db.WithContext(ctx).Create(&uar).Error
+		}
+	}
+
+	log.Info("Migrasi user_roles ke user_accounts dan user_account_roles selesai")
 	return nil
 }

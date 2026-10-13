@@ -175,6 +175,10 @@ func (ctl *AuthController) Login(c *gin.Context) {
 			response.Error(c, http.StatusForbidden, response.ErrCodeAccountInactive, "Akun Anda dinonaktifkan oleh administrator", nil)
 			return
 		}
+		if errors.Is(err, service.ErrServiceAccessDenied) {
+			response.Error(c, http.StatusForbidden, "SERVICE_ACCESS_DENIED", "Anda tidak memiliki akses ke layanan ini", nil)
+			return
+		}
 		response.InternalServerError(c, "Terjadi kesalahan saat proses login")
 		return
 	}

@@ -117,13 +117,10 @@ func (d *duitkuProvider) CreateVA(ctx context.Context, invoiceID uuid.UUID, amou
 }
 
 func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest) (*PaymentResult, error) {
-	baseURL := d.getPOPBaseURL()
-	endpoint := fmt.Sprintf("%s/api/merchant/createInvoice", baseURL)
+	baseURL := d.getWebAPIBaseURL()
+	endpoint := fmt.Sprintf("%s/webapi/api/merchant/v2/inquiry", baseURL)
 
-	timestampMs := fmt.Sprintf("%d", time.Now().UnixMilli())
-	signature := GenerateDuitkuHeaderSignature(d.cfg.MerchantCode, timestampMs, d.cfg.APIKey)
-
-	// Potong customer name jika melebihi 20 karakter sesuai spesifikasi Duitku POP
+	// Potong customer name jika melebihi 20 karakter sesuai spesifikasi Duitku
 	customerName := req.CustomerName
 	if len(customerName) > 20 {
 		customerName = customerName[:20]
@@ -137,7 +134,11 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 		merchantOrderID = merchantOrderID[:50]
 	}
 
+	amountStr := strconv.FormatInt(req.Amount, 10)
+	signature := GenerateDuitkuInquirySignature(d.cfg.MerchantCode, merchantOrderID, amountStr, d.cfg.APIKey)
+
 	bodyMap := map[string]any{
+		"merchantCode":    d.cfg.MerchantCode,
 		"paymentAmount":   req.Amount,
 		"merchantOrderId": merchantOrderID,
 		"productDetails":  req.ProductDetails,
@@ -146,6 +147,7 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 		"customerVaName":  customerName,
 		"callbackUrl":     d.cfg.CallbackURL,
 		"returnUrl":       d.cfg.ReturnURL,
+		"signature":       signature,
 		"expiryPeriod":    d.cfg.ExpiryMinutes,
 	}
 	if req.PaymentMethod != "" {
@@ -164,13 +166,11 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("x-duitku-merchantcode", d.cfg.MerchantCode)
-	httpReq.Header.Set("x-duitku-timestamp", timestampMs)
-	httpReq.Header.Set("x-duitku-signature", signature)
 
 	resp, err := d.httpClient.Do(httpReq)
 	if err != nil {
 		if d.cfg.Logger != nil {
-			d.cfg.Logger.Error("Koneksi ke gateway Duitku createInvoice gagal", zap.Error(err))
+			d.cfg.Logger.Error("Koneksi ke gateway Duitku v2 inquiry gagal", zap.Error(err))
 		}
 		return nil, fmt.Errorf("%w: koneksi ke gateway gagal", ErrPaymentProviderError)
 	}
@@ -183,7 +183,7 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 
 	if resp.StatusCode != http.StatusOK {
 		if d.cfg.Logger != nil {
-			d.cfg.Logger.Error("Duitku createInvoice mengembalikan status non-200",
+			d.cfg.Logger.Error("Duitku v2 inquiry mengembalikan status non-200",
 				zap.Int("http_status", resp.StatusCode),
 				zap.String("response_body", string(respBody)),
 			)
@@ -192,13 +192,14 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 	}
 
 	var duitkuResp struct {
-		StatusCode     string `json:"statusCode"`
-		StatusMessage  string `json:"statusMessage"`
-		Reference      string `json:"reference"`
-		PaymentURL     string `json:"paymentUrl"`
-		VANumber       string `json:"vaNumber"`
-		PaymentCode    string `json:"paymentCode"`
-		Amount         string `json:"amount"`
+		StatusCode    string `json:"statusCode"`
+		StatusMessage string `json:"statusMessage"`
+		Reference     string `json:"reference"`
+		PaymentURL    string `json:"paymentUrl"`
+		VANumber      string `json:"vaNumber"`
+		QRString      string `json:"qrString"`
+		PaymentCode   string `json:"paymentCode"`
+		Amount        string `json:"amount"`
 	}
 
 	if err := json.Unmarshal(respBody, &duitkuResp); err != nil {
@@ -207,7 +208,7 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 
 	if duitkuResp.StatusCode != "00" {
 		if d.cfg.Logger != nil {
-			d.cfg.Logger.Warn("Duitku createInvoice gagal bisnis",
+			d.cfg.Logger.Warn("Duitku v2 inquiry gagal bisnis",
 				zap.String("status_code", duitkuResp.StatusCode),
 				zap.String("status_message", duitkuResp.StatusMessage),
 			)
@@ -217,11 +218,17 @@ func (d *duitkuProvider) CreatePayment(ctx context.Context, req *PaymentRequest)
 
 	expiresAt := time.Now().Add(time.Duration(d.cfg.ExpiryMinutes) * time.Minute)
 
+	qrString := duitkuResp.QRString
+	if qrString == "" && strings.EqualFold(req.PaymentMethod, "SP") || strings.EqualFold(req.PaymentMethod, "QRIS") {
+		qrString = duitkuResp.PaymentCode
+	}
+
 	return &PaymentResult{
 		ProviderRef:      duitkuResp.Reference,
 		PaymentURL:       duitkuResp.PaymentURL,
 		VANumber:         duitkuResp.VANumber,
 		PaymentCode:      duitkuResp.PaymentCode,
+		QRString:         qrString,
 		PublisherOrderID: merchantOrderID,
 		Amount:           req.Amount,
 		ExpiresAt:        expiresAt,
@@ -503,3 +510,10 @@ func GenerateDuitkuTransactionStatusSignature(merchantCode, merchantOrderID, api
 	h.Write([]byte(merchantCode + merchantOrderID + apiKey))
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+func GenerateDuitkuInquirySignature(merchantCode, merchantOrderID, amountStr, apiKey string) string {
+	h := md5.New()
+	h.Write([]byte(merchantCode + merchantOrderID + amountStr + apiKey))
+	return hex.EncodeToString(h.Sum(nil))
+}
+

@@ -28,6 +28,7 @@ type User struct {
 	DeletedAt         gorm.DeletedAt `gorm:"index" json:"-"`
 
 	UserRoles []UserRole `gorm:"foreignKey:UserID" json:"user_roles,omitempty"`
+	UserAccounts []UserAccount `gorm:"foreignKey:UserID" json:"user_accounts,omitempty"`
 }
 
 func (u *User) BeforeCreate(tx *gorm.DB) error {
