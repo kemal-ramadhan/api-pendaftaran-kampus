@@ -582,6 +582,18 @@ func (s *paymentService) GetPaymentByID(ctx context.Context, id uuid.UUID, reque
 		}
 	}
 
+	// Jika status pembayaran masih pending dan menggunakan gateway Duitku,
+	// lakukan pengecekan status transaksi langsung ke gateway Duitku (Sinkronisasi On-Demand)
+	if payment.Status == model.PaymentStatusPending && payment.PublisherOrderID != "" && s.provider != nil {
+		statusResult, checkErr := s.provider.CheckStatus(ctx, payment.PublisherOrderID)
+		if checkErr == nil && statusResult != nil && statusResult.StatusCode == "00" {
+			_, finErr := s.finalizePaymentSuccess(ctx, payment, inv)
+			if finErr == nil {
+				return s.paymentRepo.FindByID(ctx, id)
+			}
+		}
+	}
+
 	return payment, nil
 }
 
